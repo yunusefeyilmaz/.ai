@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# Cross-platform launcher for the .ai workspace CLI.
+# Auto-detects a Python 3 interpreter; no installation step required when
+# Python 3 is already present. The file protocol remains usable without it.
+set -eu
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+find_python() {
+    for candidate in python3 python py; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+if ! PYTHON=$(find_python); then
+    echo "error: Python 3 was not found." >&2
+    echo "The workspace still works manually: read AGENTS.md and docs/task-flow.md." >&2
+    echo "To enable automation, install Python 3 or run the protocol with your agent." >&2
+    exit 127
+fi
+
+exec "$PYTHON" "$DIR/ai.py" "$@"

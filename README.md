@@ -1,0 +1,163 @@
+# .ai
+
+A small, self-contained workspace that lets coding agents share one task ledger,
+one set of file leases, and one definition of "finished" — without a server, a
+database, or a package install.
+
+Copy it into a repository. An agent can then answer four questions from files
+alone: what should I work on, may I touch this file, how do I prove it works, and
+where do my notes go. Humans get the same answers, which makes review and
+recovery much cheaper.
+
+## The guarantees
+
+- **A durable task ledger.** Every piece of work is a Markdown file with an id,
+  owner, status and log. It survives the session that created it.
+- **Ownership with leases.** A task claim and any file lock are JSON leases with
+  a TTL. A live lease is a refusal; an expired one can be reclaimed.
+- **One verification command.** `ai check` is the gate locally and in CI. It
+  never depends on an agent's confidence.
+- **A place for operational state.** Checkpoints, handoff markers, locks and
+  scratch artifacts live under `.ai/runtime/` and never enter the product tree.
+- **A continuation record.** If a context window ends, the next session resumes
+  from a checkpoint and a drift report instead of from memory.
+
+## Pick an install shape
+
+| Shape | What you do | Result |
+|-------|-------------|--------|
+| **Template** | Copy this repository's contents into the project root | Works immediately; root `AGENTS.md` is the entry point |
+| **Subfolder** | Clone into `.ai/` and run `ai adopt` once | Root pointer files are committed; later clones need nothing |
+
+The subfolder shape is the common one:
+
+```sh
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+.ai/scripts/ai adopt              # Windows: .ai\scripts\ai.cmd adopt
+```
+
+`adopt` writes a managed pointer block into `AGENTS.md`, `CLAUDE.md`,
+`.cursor/rules/ai-workspace.mdc` and `.github/copilot-instructions.md`. Commit
+those four files and the install is finished. `adopt --check` is suitable for CI;
+`adopt --print` emits a bootstrap prompt for tools that cannot read files.
+
+Python is optional. Without it, the same protocol is followed by editing the
+Markdown and JSON files directly.
+
+## A short walkthrough
+
+```sh
+ai doctor                                  # is the workspace intact?
+ai task new "Export invoices as CSV"       # creates tasks/active/0001-...
+ai task claim 0001 --agent implementer     # takes the task lease
+ai lock acquire src/billing --agent implementer --task 0001
+# ... edit, test ...
+ai checkpoint 0001 --agent implementer --percent 70 --next "write the CSV writer"
+ai check --fast                            # iteration gate
+ai check                                   # the real gate
+ai task done 0001 --agent implementer      # archives the task, frees the lease
+```
+
+If the session ends before `done`, run `ai handoff`; a fresh session starts with
+`ai resume` and a drift report. The full command surface is in `GUIDE.md`.
+
+## How the pieces fit
+
+```
+your-project/
+├── <product code>
+└── .ai/
+    ├── AGENTS.md        entry contract for every agent
+    ├── GUIDE.md         operator's handbook
+    ├── config/          mode, TTLs, budgets, watch list, project checks
+    ├── tasks/           task ledger: active/, done/, generated BOARD.md
+    ├── specs/           acceptance criteria per behavior change
+    ├── docs/            architecture, flow, concurrency, recovery, ADRs
+    ├── agents/          role cards
+    ├── prompts/         reusable prompt bodies
+    ├── adapters/        per-tool pointers
+    ├── scripts/         stdlib-only Python CLI + launchers
+    └── runtime/         leases, checkpoints, handoffs, artifacts, logs
+```
+
+The split matters: `.ai/` is agent territory, the rest is product territory. The
+only thing an agent should write outside `.ai/` is product code or product docs.
+
+## Work states
+
+A task moves `todo -> in_progress -> review -> done`, and can be `blocked` at any
+point. Claiming is what creates ownership; `done` archives the file and releases
+the lease. `depends_on` prevents a task from starting before its predecessor is
+finished. The exact transitions are in `docs/task-flow.md`.
+
+## Running more than one agent
+
+- One task per session. Claim it before editing.
+- Lock the paths you will touch. Paths and globs overlap, so `src/billing` and
+  `src/billing/invoice.py` conflict.
+- Acquire in a fixed order: task lease, file leases, then the git index.
+- Review in a separate session; the producer does not sign off on its own work.
+- Prefer `git worktree` for parallel implementation. It removes most contention;
+  leases still apply inside each worktree.
+
+`ai git begin/end` serializes the shared index, and `ai git verify --strict`
+refuses to call a staged set safe when a path has no held lease. Details:
+`docs/multi-agent.md` and `docs/orchestration.md`.
+
+## When a context window ends
+
+```sh
+ai checkpoint 0007 --agent codex --percent 85 \
+  --status "writer fails on empty rows" \
+  --next "handle missing vat_id, add the empty-row test" \
+  --files src/export/writer.py \
+  --verification "npm test: 12 passed, 1 failing"
+
+ai handoff 0007 --agent codex --reason "context limit"
+ai resume 0007
+```
+
+A checkpoint is a structured snapshot: objective, current truth, done items,
+exact stopping point, next steps, decisions, forbidden approaches, files and
+verification. Its JSON sidecar records git state and file fingerprints, so
+`resume` can show commits and files that changed since it was written. The
+recovery rules are in `docs/recovery.md`.
+
+## Keeping the repository clean
+
+AI scratch output is quarantined:
+
+```sh
+ai artifact put scratch/ --reason "agent temp files"
+ai artifact list
+ai artifact clean --all
+```
+
+`ai check` fails when a watched path (`tmp/`, `scratch/`, ...) appears in the
+project root. The watch list and the rest of the configuration live in
+`config/workspace.json`.
+
+## Tool wiring
+
+Adapters do not restate rules; they point a tool at `.ai/AGENTS.md`.
+
+| Tool | Root file |
+|------|-----------|
+| Claude Code | `CLAUDE.md` |
+| Cursor | `.cursor/rules/ai-workspace.mdc` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+| Codex | `AGENTS.md` |
+| Other | Paste `adapters/generic/README.md` into the session |
+
+`ai adopt` generates the first four. Manual instructions remain in
+`adapters/`.
+
+## Requirements
+
+- Git, if you plan to clone and commit.
+- Python 3.8+ for the CLI. The launchers discover `python3`, `python` or `py -3`.
+- Nothing else: no packages, no build step, no background service.
+
+## License
+
+MIT. See `LICENSE`.

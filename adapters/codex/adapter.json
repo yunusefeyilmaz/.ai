@@ -1,0 +1,6 @@
+{
+  "tool": "codex",
+  "entry": "AGENTS.md",
+  "autoload": ["AGENTS.md"],
+  "supports": ["auto-load", "fresh-session", "skills"]
+}

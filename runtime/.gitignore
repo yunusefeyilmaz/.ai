@@ -1,0 +1,5 @@
+# Keep the shape, ignore transient state.
+*
+!.gitignore
+!**/
+!**/.gitkeep

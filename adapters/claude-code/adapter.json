@@ -1,0 +1,6 @@
+{
+  "tool": "claude-code",
+  "entry": "CLAUDE.md",
+  "autoload": ["CLAUDE.md"],
+  "supports": ["auto-load", "subagents", "hooks", "permissions"]
+}
