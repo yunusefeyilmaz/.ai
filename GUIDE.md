@@ -127,6 +127,8 @@ ai capabilities
 ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--depends-on 0002]
 ai task list [--all] [--json]
 ai task show <id> [--json]
+ai task ready [--json]                 # claimable: todo, deps done, no live lease
+ai task next --agent <name> [--json]   # atomic claim of the best ready task
 ai task claim <id> --agent <name> [--force]
 ai task release <id> --agent <name> [--force]
 ai task block <id> --agent <name> --reason "<why>"
@@ -309,6 +311,26 @@ Rules that matter more than tooling:
 - A handoff includes a checkpoint; otherwise the next session is guessing.
 
 Roles and longer playbooks: `docs/orchestration.md`.
+
+### Two-window setup: plan in one, build in another
+
+This is the simplest multi-agent arrangement:
+
+1. **Orchestrator window** (for example Claude Code). Give it the request. It
+   reads the workspace, looks for an existing task, and if none matches it
+   creates tasks, specs and `depends_on` links. It does not write code.
+   Prompt: `prompts/orchestrator.md`.
+2. **Worker windows** (for example DeepSeek in another terminal). Each one runs
+   `ai task ready`, claims one task with `ai task next --agent <name>`, and
+   implements only that task. A task whose dependency is not `done` never
+   appears in the ready list and cannot be claimed without `--force`.
+   Prompt: `prompts/worker.md`.
+3. A third window can be the reviewer. It reads the spec and the diff and does
+   not edit code.
+
+The queue is the coordination point: the orchestrator writes it, workers consume
+it, and `depends_on` plus leases prevent two windows from starting incompatible
+work.
 
 ## External assistants
 

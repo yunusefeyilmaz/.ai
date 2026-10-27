@@ -73,6 +73,16 @@ A claim is also refused when the task is `blocked` or when a task in
 `depends_on` is not `done`. `--force` overrides both; use it only with a reason
 recorded in the log.
 
+Workers do not need to pick an id by hand:
+
+```sh
+ai task ready                 # todo + dependencies done + no live task lease
+ai task next --agent worker1  # atomically claim the best ready task
+```
+
+`next` sorts by priority and skips anything a concurrent agent claimed first. If
+nothing is ready it exits nonzero and prints why each candidate is waiting.
+
 ### 3. Work
 
 - Read the spec, if one exists.

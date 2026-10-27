@@ -64,7 +64,11 @@ or tasks they do not own. Use `depends_on` to encode order:
 ai task new "Add CSV export" --depends-on 0007
 ```
 
-`ai task claim` refuses while the dependency is not `done`.
+`ai task claim` refuses while the dependency is not `done`. Workers start with
+`ai task ready` or `ai task next --agent <name>` instead of choosing an id, so a
+blocked task never enters their queue. The orchestrator writes tasks and specs;
+it does not implement. Prompts: `prompts/orchestrator.md`,
+`prompts/worker.md`.
 
 ## Lock protocol
 
@@ -100,6 +104,20 @@ Good tasks are:
 Split by **seam**, not by layer. "Billing export" is better than "all models",
 "all services", "all tests". If two tasks must edit the same file in the same
 week, either serialize them with `depends_on` or give one task both changes.
+
+### The ready queue
+
+`depends_on` is only useful if workers respect it mechanically:
+
+```sh
+ai task ready          # todo + all dependencies done + no live task lease
+ai task next --agent <name>
+```
+
+`ready` lists only tasks that can start now; `next` atomically claims the
+highest-priority one. A worker that sees "No ready task" must stop or help with a
+different role, not force a blocked task. This is the coordination point between
+the window that creates tasks and the windows that consume them.
 
 Every behavior change gets a spec. Acceptance criteria are testable sentences:
 

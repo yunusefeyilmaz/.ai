@@ -93,6 +93,8 @@ finished. The exact transitions are in `docs/task-flow.md`.
 ## Running more than one agent
 
 - One task per session. Claim it before editing.
+- Workers take work from `ai task ready` or `ai task next --agent <name>`; a
+  task whose dependency is not done never appears there.
 - Lock the paths you will touch. Paths and globs overlap, so `src/billing` and
   `src/billing/invoice.py` conflict.
 - Acquire in a fixed order: task lease, file leases, then the git index.

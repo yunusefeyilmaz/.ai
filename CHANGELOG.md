@@ -23,6 +23,11 @@ All notable changes to this workspace are documented here.
   markers.
 - `ai git begin/end/verify`: coordinates the shared git index and verifies staged
   paths are covered by a held lock.
+- `ai task ready` (todo, dependencies done, no live lease) and
+  `ai task next --agent <name>` (atomic claim of the best ready task).
+- `prompts/orchestrator.md` and `prompts/worker.md`: two-window plan/build
+  prompts. The orchestrator creates tasks, specs and dependencies; workers only
+  consume the ready queue.
 - `ai task block/unblock`, `depends_on` gating on claim, and `--json` output for
   `doctor`, `check`, `status`, `task list/show`, `lock status`, `resume`,
   `recover`, `artifact list`.

@@ -28,6 +28,8 @@ once, or invoke it as `sh scripts/ai ...`. Windows users always use `ai.cmd`.
 | `ai task new "<title>" [--priority high] [--spec <path>] [--depends-on 0002]` | Create a task with a race-safe id. |
 | `ai task list [--all] [--json]` | List tasks and refresh `tasks/BOARD.md`. |
 | `ai task show <id> [--json]` | Print one task. |
+| `ai task ready [--json]` | List claimable tasks (todo, dependencies done, no live lease). |
+| `ai task next --agent <name> [--json]` | Atomically claim the highest-priority ready task. |
 | `ai task claim <id> --agent <name> [--force]` | Atomically lock and own a task. |
 | `ai task release <id> --agent <name> [--force]` | Give the task back. |
 | `ai task block <id> --agent <name> --reason "..."` | Mark a task blocked. |

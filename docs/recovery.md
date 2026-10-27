@@ -109,7 +109,7 @@ Repairs:
 |---------------|-----------|--------|
 | Status `done`, file in `active/` | task folder vs status | move to `done/` |
 | File in `done/`, status not `done` | folder vs status | set status `done` |
-| Owner set, no task lock | task meta vs locks | clear owner |
+| Owner set, no live task lock | task meta vs locks (stale = absent) | clear owner; `in_progress` -> `todo` |
 | Lock held, owner empty | task meta vs locks | restore owner from lock |
 | Done task still locked | status vs locks | delete task lock |
 | Orphan task lock | lock has no task file | delete lock |

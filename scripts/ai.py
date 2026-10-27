@@ -1328,63 +1328,147 @@ def cmd_task_show(args) -> int:
     return 0
 
 
+def dependency_blockers(meta: dict) -> list[str]:
+    blockers = []
+    depends = meta.get("depends_on")
+    if not depends:
+        return blockers
+    for dependency in re.split(r"[,\s]+", str(depends)):
+        dependency = dependency.strip()
+        if not dependency:
+            continue
+        dep_path = find_task(dependency)
+        if not dep_path:
+            blockers.append(f"unknown task {dependency}")
+            continue
+        dep_meta, _ = parse_task(dep_path)
+        if dep_meta.get("status") != "done":
+            blockers.append(f"{dependency} is {dep_meta.get('status') or 'unknown'}")
+    return blockers
+
+
+def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    if os.path.dirname(path) != ACTIVE_DIR:
+        return False, "This task is already in done/."
+    meta, body = parse_task(path)
+    task_id = str(meta.get("id"))
+    if meta.get("status") == "blocked" and not force:
+        return False, f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`."
+    blockers = dependency_blockers(meta)
+    if blockers and not force:
+        return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
+    resource = f"task-{task_id}"
+    result = acquire_lock(resource, agent=agent, task=task_id, force=force)
+    if not result["ok"]:
+        if result.get("error"):
+            return False, f"Could not claim task {task_id}: {result['error']}"
+        holder = result["holder"] or {}
+        if holder.get("agent") == agent:
+            heartbeat_lock(resource, agent=agent)
+        else:
+            return False, (
+                f"Task {task_id} is locked by {holder.get('agent')} "
+                f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
+            )
+    meta["owner"] = agent
+    meta["status"] = "in_progress"
+    meta["updated"] = iso()
+    meta["lock"] = resource
+    body = body.rstrip("\n") + f"\n- {iso()} claimed by {agent}\n"
+    write_task(path, meta, body)
+    write_board(load_tasks())
+    return True, task_id
+
+
 def cmd_task_claim(args) -> int:
     path = find_task(args.task_id)
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
-    if os.path.dirname(path) != ACTIVE_DIR:
-        print("This task is already in done/.", file=sys.stderr)
+    ok, message = claim_task(path, args.agent, args.force)
+    if not ok:
+        print(message, file=sys.stderr)
         return 1
-    meta, body = parse_task(path)
-    task_id = str(meta.get("id"))
-    if meta.get("status") == "blocked" and not args.force:
-        print(f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`.", file=sys.stderr)
-        return 1
-    depends = meta.get("depends_on")
-    if depends and not args.force:
-        for dependency in re.split(r"[,\s]+", str(depends)):
-            dependency = dependency.strip()
-            if not dependency:
-                continue
-            dep_path = find_task(dependency)
-            if not dep_path:
-                print(f"Task {task_id} depends on unknown task {dependency}.", file=sys.stderr)
-                return 1
-            dep_meta, _ = parse_task(dep_path)
-            if dep_meta.get("status") != "done":
-                print(
-                    f"Task {task_id} is blocked by {dependency} (status {dep_meta.get('status')}). "
-                    "Use --force to override.",
-                    file=sys.stderr,
-                )
-                return 1
-    resource = f"task-{task_id}"
-    result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
-    if not result["ok"]:
-        if result.get("error"):
-            print(f"Could not claim task {task_id}: {result['error']}", file=sys.stderr)
-            return 1
-        holder = result["holder"] or {}
-        if holder.get("agent") == args.agent:
-            heartbeat_lock(resource, agent=args.agent)
-        else:
-            print(
-                f"Task {task_id} is locked by {holder.get('agent')} "
-                f"(pid {holder.get('pid')}, since {holder.get('started_at')}).",
-                file=sys.stderr,
-            )
-            return 1
-    meta["owner"] = args.agent
-    meta["status"] = "in_progress"
-    meta["updated"] = iso()
-    meta["lock"] = resource
-    body = body.rstrip("\n") + f"\n- {iso()} claimed by {args.agent}\n"
-    write_task(path, meta, body)
-    write_board(load_tasks())
-    print(f"Claimed {task_id} for {args.agent}.")
-    print(f"Release when done: ai task release {task_id} --agent {args.agent}")
+    print(f"Claimed {message} for {args.agent}.")
+    print(f"Release when done: ai task release {message} --agent {args.agent}")
     return 0
+
+
+PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
+    active = [task for task in load_tasks() if task["_folder"] == "active"]
+    locks = {str(lock.get("resource")): lock for lock in list_locks()}
+    _, stale_after = lock_settings()
+    ready = []
+    waiting = []
+    for task in active:
+        if task.get("status") != "todo":
+            continue
+        reasons = dependency_blockers(task)
+        lock = locks.get(f"task-{task.get('id')}")
+        if lock and not lock_is_stale(lock, stale_after):
+            reasons.append(f"leased by {lock.get('agent')}")
+        if reasons:
+            waiting.append((task, reasons))
+        else:
+            ready.append(task)
+    ready.sort(key=lambda item: (PRIORITY_ORDER.get(str(item.get("priority")), 1), str(item.get("id"))))
+    return ready, waiting
+
+
+def cmd_task_ready(args) -> int:
+    ready, waiting = ready_and_waiting()
+    if args.json:
+        print(json.dumps({
+            "ready": ready,
+            "waiting": [{"task": task, "reasons": reasons} for task, reasons in waiting],
+        }, indent=2, default=str))
+        return 0
+    if ready:
+        print(f"{'ID':<6} {'PRIORITY':<10} {'SPEC':<28} TITLE")
+        for task in ready:
+            print(
+                f"{str(task.get('id')):<6} {str(task.get('priority') or '-'):<10} "
+                f"{str(task.get('spec') or '-'):<28} {task.get('title')}"
+            )
+    else:
+        print("No ready task.")
+    if waiting:
+        print("\nWaiting:")
+        for task, reasons in waiting:
+            print(f"  {task.get('id')} {task.get('title')}: {'; '.join(reasons)}")
+    return 0
+
+
+def cmd_task_next(args) -> int:
+    ready, waiting = ready_and_waiting()
+    for task in ready:
+        ok, message = claim_task(task["_path"], args.agent)
+        if not ok:
+            print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
+            continue
+        claimed_path = find_task(message)
+        meta, body = parse_task(claimed_path)
+        if args.json:
+            print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
+            return 0
+        print(f"Claimed {message} - {meta.get('title')}")
+        if meta.get("spec"):
+            print(f"Spec: {meta.get('spec')}")
+        print(f"Read it: ai task show {message}")
+        return 0
+    if args.json:
+        print(json.dumps({
+            "ready": [],
+            "waiting": [{"task": task, "reasons": reasons} for task, reasons in waiting],
+        }, indent=2, default=str))
+        return 1
+    print("No ready task. Nothing was claimed.", file=sys.stderr)
+    for task, reasons in waiting:
+        print(f"  {task.get('id')} {task.get('title')}: {'; '.join(reasons)}", file=sys.stderr)
+    return 1
 
 
 def cmd_task_release(args) -> int:
@@ -1755,7 +1839,12 @@ def cmd_recover(args) -> int:
     handled_locks: set[str] = set()
 
     tasks = load_tasks()
-    locks = {str(lock.get("resource")): lock for lock in list_locks()}
+    _, stale_after = lock_settings()
+    locks = {
+        str(lock.get("resource")): lock
+        for lock in list_locks()
+        if not lock_is_stale(lock, stale_after)
+    }
     for task in tasks:
         task_id = str(task.get("id"))
         path = task["_path"]
@@ -1809,7 +1898,6 @@ def cmd_recover(args) -> int:
             handled_locks.add(resource)
             repairs.append(lambda res=resource: os.remove(os.path.join(LOCKS_DIR, safe_name(res) + ".lock")))
 
-    _, stale_after = lock_settings()
     for lock in list_locks():
         resource = str(lock.get("resource"))
         if resource in handled_locks:
@@ -2077,7 +2165,7 @@ CAPABILITIES = {
         "doctor": "workspace health; --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
         "status": "tasks, locks, checkpoints, handoffs; --json",
-        "task": "new | list | show | claim | release | done | block | unblock",
+        "task": "new | list | show | ready | next | claim | release | done | block | unblock",
         "lock": "acquire | release | heartbeat | status",
         "checkpoint": "save resumable context",
         "resume": "print a compact resume brief with drift",
@@ -2281,6 +2369,15 @@ def build_parser() -> argparse.ArgumentParser:
     task_show.add_argument("task_id")
     task_show.add_argument("--json", action="store_true")
     task_show.set_defaults(func=cmd_task_show)
+
+    task_ready = task_sub.add_parser("ready", help="list claimable tasks whose dependencies are done")
+    task_ready.add_argument("--json", action="store_true")
+    task_ready.set_defaults(func=cmd_task_ready)
+
+    task_next = task_sub.add_parser("next", help="atomically claim the highest-priority ready task")
+    task_next.add_argument("--agent", required=True)
+    task_next.add_argument("--json", action="store_true")
+    task_next.set_defaults(func=cmd_task_next)
 
     task_claim = task_sub.add_parser("claim", help="atomically claim a task")
     task_claim.add_argument("task_id")

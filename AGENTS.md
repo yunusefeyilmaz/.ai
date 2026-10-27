@@ -9,6 +9,12 @@ state lives under `.ai/`. The project outside it is product territory.
    files and experiments go under `.ai/`. Product code goes in the project.
 2. **Claim before you work.** Find or create a task in `tasks/active/`, then
    `ai task claim <id> --agent <name>`. Never edit a task owned by another agent.
+   If the human's request has no task, create the task (or a task set with
+   `depends_on`) and write the spec first. Do not start coding from a chat
+   request alone.
+   When several tasks exist, `ai task ready` lists what can start and
+   `ai task next --agent <name>` atomically claims the highest-priority ready
+   task. Never bypass `depends_on` with `--force`.
 3. **Lock shared resources.** Before editing a file or subsystem another agent
    may touch, `ai lock acquire <resource> --agent <name> --task <id>`. Release
    when done. A live lock is a refusal, not a suggestion.
@@ -34,7 +40,8 @@ state lives under `.ai/`. The project outside it is product territory.
 1. If resuming, run `ai resume <id>` and read the drift report.
 2. Read `docs/task-flow.md`, `docs/multi-agent.md`, and `GUIDE.md`.
 3. Run `ai status` (or read `tasks/BOARD.md`).
-4. Claim a task, or create one with `ai task new "<title>"`.
+4. Claim a task, or create one with `ai task new "<title>"`. For a multi-step
+   request, create the task set and dependencies first.
 5. Work, checkpoint at milestones, then run `ai check`.
 
 ## Where things live
@@ -63,6 +70,8 @@ state lives under `.ai/`. The project outside it is product territory.
 ai doctor
 ai status
 ai task new "<title>"
+ai task ready
+ai task next --agent <name>
 ai task claim <id> --agent <name>
 ai task release <id> --agent <name>
 ai task done <id> --agent <name>
