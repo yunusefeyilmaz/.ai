@@ -152,6 +152,20 @@ Adapters do not restate rules; they point a tool at `.ai/AGENTS.md`.
 `ai adopt` generates the first four. Manual instructions remain in
 `adapters/`.
 
+## Chat-only assistants
+
+A web chat or a model without repository access cannot read `.ai/`. Generate a
+self-contained brief and paste it into that chat:
+
+```sh
+ai brief 0007                  # current task, spec, checkpoint, repo state, rules
+ai brief 0007 --max-chars 12000
+```
+
+The brief tells the external model what it may not assume (for example, that it
+ran tests) and asks it to return patches and commands for a human to execute.
+It is read-only and never changes the workspace.
+
 ## Requirements
 
 - Git, if you plan to clone and commit.

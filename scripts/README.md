@@ -40,6 +40,7 @@ once, or invoke it as `sh scripts/ai ...`. Windows users always use `ai.cmd`.
 | `ai checkpoint [id] --agent <name> [flags]` | Save resumable context; merges with the previous checkpoint. |
 | `ai handoff [id] --agent <name> --reason "..."` | Checkpoint, write a handoff marker, print the next prompt. |
 | `ai resume [id] [--json]` | Print the saved context, drift report and resume prompt. |
+| `ai brief [id] [--max-chars N] [--json]` | Paste-ready brief for a chat AI without repository access. |
 | `ai recover [--apply] [--json]` | Detect or repair inconsistent task/lock state. |
 | `ai git begin --agent <name> --task <id>` | Take the shared `@git/index` lock. |
 | `ai git end --agent <name>` | Release `@git/index`. |

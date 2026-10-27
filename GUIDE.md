@@ -170,6 +170,7 @@ below.
 ai checkpoint [id] --agent <name> [narrative flags] [--reason ...] [--percent N]
 ai handoff    [id] --agent <name> --reason "<why>"
 ai resume     [id] [--json]
+ai brief      [id] [--max-chars N] [--json]
 ```
 
 Narrative flags: `--objective`, `--status`, `--done`, `--in-progress`, `--next`,
@@ -308,6 +309,27 @@ Rules that matter more than tooling:
 - A handoff includes a checkpoint; otherwise the next session is guessing.
 
 Roles and longer playbooks: `docs/orchestration.md`.
+
+## External assistants
+
+A chat model that cannot open the repository will not discover `.ai/` on its
+own. Two options:
+
+1. **Give it repository access** (a coding agent, a GitHub connector, uploads).
+   Then point it at `AGENTS.md` and let it read the rest.
+2. **Paste a brief.** `ai brief` assembles the rules, the selected task, its
+   spec, the last checkpoint and the repository state into one block:
+
+```sh
+ai brief                  # latest active task
+ai brief 0007             # a specific task
+ai brief 0007 --json      # structured form
+```
+
+The brief explicitly says the model may not have shell access and must not claim
+it ran tests. It should answer with a plan, diffs and commands for a human to
+execute. Regenerate the brief after the task or checkpoint changes; do not keep
+pasting an old one.
 
 ## Failure recovery
 

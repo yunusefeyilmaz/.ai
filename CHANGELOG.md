@@ -27,6 +27,9 @@ All notable changes to this workspace are documented here.
   `doctor`, `check`, `status`, `task list/show`, `lock status`, `resume`,
   `recover`, `artifact list`.
 - `ai capabilities`: machine-readable CLI contract.
+- `ai brief`: a paste-ready, self-contained context block for chat-only models
+  (rules, task, spec, checkpoint, repo state, commands). Supports `--max-chars`
+  and `--json`.
 - Lock resources are repo-relative; **overlapping paths and globs conflict**.
   Acquisitions are serialized through a registry mutex.
 - `config/workspace.json`: `locks.maxTtlSeconds`, `handoff`, `budget` and
