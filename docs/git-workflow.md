@@ -55,7 +55,10 @@ ai git setup
 This sets the local `commit.template` to
 `templates/git/commit-template.txt` and creates the configured production and
 integration branches when missing. If no Git repository exists, it initializes
-one. If a repository has no commits, setup previews the non-ignored project
+one. A standalone checkout of this framework (where `.ai` itself is the Git
+root) is treated as the project root; an adopted `.ai` subfolder continues to
+use its host project root. Branches without a commit are not valid bases. If a
+repository has no commits, setup previews the non-ignored project
 files and asks for an exact interactive confirmation before creating the
 initial production commit. Non-interactive setup and declined confirmation do
 not stage or commit project files. Setup is idempotent; run it when first using
