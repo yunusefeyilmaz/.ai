@@ -8,9 +8,11 @@ Give the agent this at the start of a session:
 
 ```
 This project uses the .ai engineering workspace.
-Read .ai/AGENTS.md before doing anything.
+Read .ai/AGENTS.md and .ai/docs/git-workflow.md before doing anything.
+For every file-changing task in a Git repository, claim a task and start its
+branch with .ai/scripts/ai git start before editing. Run setup if needed. Stop
+if branch creation fails. Read-only work and non-Git folders are exempt.
 Follow .ai/docs/task-flow.md.
-Claim a task with .ai/scripts/ai task claim <id> --agent <name> before editing.
 Verify with .ai/scripts/ai check. Do not claim "done" without its output.
 Keep all AI-generated files inside .ai/.
 ```

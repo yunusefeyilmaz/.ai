@@ -11,6 +11,7 @@ First read:
 - .ai/AGENTS.md
 - .ai/GUIDE.md
 - .ai/docs/task-flow.md
+- .ai/docs/git-workflow.md
 - agents/implementer.md
 
 Then:
@@ -23,20 +24,24 @@ Then:
    same session.
 3. Read the claimed task with `.ai/scripts/ai task show <id>` and read its spec.
    If the spec is missing for a behavior change, stop and report it.
-4. Before editing shared paths, take leases:
+4. In a Git repository, Gitflow is mandatory for every file-changing task. Run
+   `.ai/scripts/ai git setup` if this clone has not been set up (safe to rerun), then start the
+   claimed task branch with `.ai/scripts/ai git start --task <id> --agent
+   <AGENT_NAME> --type <type>` before editing any file. Stop and report the
+   blocker if branch creation fails. Read-only tasks do not need a branch; skip
+   Gitflow only outside a Git repository.
+5. Before editing shared paths, take leases:
    `.ai/scripts/ai lock acquire <path> --agent <AGENT_NAME> --task <id>`
-5. Implement only the acceptance criteria. Add or update tests. Keep every
+6. Implement only the acceptance criteria. Add or update tests. Keep every
    AI-generated note inside .ai/.
-6. For Git work, run `.ai/scripts/ai git setup` once per clone, start the task
-   branch with `.ai/scripts/ai git start`, then stage only owned files and run
-   `.ai/scripts/ai git verify --strict` before committing with `.ai/scripts/ai git commit`.
-   Follow `.ai/docs/git-workflow.md`.
-7. Run `.ai/scripts/ai check --fast` while iterating.
-8. Save context at milestones:
+7. Stage only owned files, run `.ai/scripts/ai git verify --strict`, and commit
+   with `.ai/scripts/ai git commit`. Follow `.ai/docs/git-workflow.md`.
+8. Run `.ai/scripts/ai check --fast` while iterating.
+9. Save context at milestones:
    `.ai/scripts/ai checkpoint <id> --agent <AGENT_NAME> --next "<next step>"`
-9. Before finishing, run `.ai/scripts/ai check --strict` and paste the result
+10. Before finishing, run `.ai/scripts/ai check --strict` and paste the result
    into the task log.
-10. Release your file leases. For review, run `.ai/scripts/ai task review <id>
+11. Release your file leases. For review, run `.ai/scripts/ai task review <id>
     --agent <AGENT_NAME>` followed by `.ai/scripts/ai task release <id> --agent
     <AGENT_NAME>`. A different session reviews and merges. Only mark the task
     done after verification and merge.

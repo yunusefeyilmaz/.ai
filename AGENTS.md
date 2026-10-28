@@ -40,15 +40,26 @@ state lives under `.ai/`. The project outside it is product territory.
 13. **Do not hard reset the workspace.** `ai reset --hard` clears task/spec and
     runtime state; agents may invoke it only when the user explicitly requests
     a reset.
+14. **Use Gitflow for every file-changing task in a Git repository.** Run
+    `ai git setup` if this clone is not set up, claim the task, then successfully
+    run `ai git start` before editing. Commit through `ai git commit`; a separate
+    reviewer merges with `ai git finish` before the task is marked done. Read-only
+    tasks need no branch; skip Gitflow only when the folder is not a Git repo.
 
 ## Start of session
 
 1. If resuming, run `ai resume <id>` and read the drift report.
-2. Read `docs/task-flow.md`, `docs/multi-agent.md`, and `GUIDE.md`.
+2. Read `docs/task-flow.md`, `docs/multi-agent.md`, `docs/git-workflow.md`, and
+   `GUIDE.md`.
 3. Run `ai status` (or read `tasks/BOARD.md`).
 4. Claim a task, or create one with `ai task new "<title>"`. For a multi-step
    request, create the task set and dependencies first.
-5. Work, checkpoint at milestones, then run `ai check`.
+5. In a Git repository, run `ai git setup` when needed. After claiming a task
+   and before editing any file, run `ai git start --task <id> --agent <name>
+   --type <type>`. If it fails, stop before editing and report the blocker.
+6. Work, checkpoint at milestones, then stage owned paths, run
+   `ai git verify --strict`, and commit with `ai git commit`. Follow the separate
+   review and merge flow in `docs/git-workflow.md` before marking the task done.
 
 ## Where things live
 
@@ -96,6 +107,7 @@ ai git setup
 ai git start --task <id> --agent <name> --type <type>
 ai git commit --task <id> --agent <name> --type <type> --message "<subject>"
 ai git finish --task <id> --agent <name>
+ai git verify --strict
 ai artifact put <path> --reason "<why>"
 ai check
 ```

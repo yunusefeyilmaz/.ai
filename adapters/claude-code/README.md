@@ -10,7 +10,11 @@ Create `CLAUDE.md` at the project root:
 This project uses the .ai engineering workspace.
 
 Read `.ai/AGENTS.md` first. It is the only signpost you need.
-Task flow: `.ai/docs/task-flow.md`.
+For every file-changing task in a Git repository, claim the task and
+successfully start its branch with `.ai/scripts/ai git start` before editing.
+Run `git setup` if needed and stop if branch creation fails. Read-only tasks and
+non-Git folders are exempt. Follow `.ai/docs/git-workflow.md` and
+`.ai/docs/task-flow.md`.
 Verification: `.ai/scripts/ai check`.
 
 Never create AI notes or scratch files outside `.ai/`.

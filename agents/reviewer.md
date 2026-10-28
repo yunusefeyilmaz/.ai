@@ -20,7 +20,9 @@ session that did not produce it.
    run it.
 5. Classify findings: `blocker`, `should-fix`, `nit`. Include a recommendation
    for every finding.
-6. Do not edit code. Write findings into the task log.
+6. In a Git repository, if approved, run `ai git finish --task <id> --agent
+   <name>` to merge the task branch. Do not mark the task done before the merge.
+7. Do not edit implementation code. Write findings into the task log.
 
 ## Outputs
 

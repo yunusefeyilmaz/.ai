@@ -70,9 +70,11 @@ ai task done 0001 --agent reviewer         # archives after verification
 If the session ends before `done`, run `ai handoff`; a fresh session starts with
 `ai resume` and a drift report. The full command surface is in `GUIDE.md`.
 
-Git work follows a local Gitflow loop: task branches start from `develop`
-(hotfixes from `main`), commits include task and agent trailers, and reviewed
-branches merge back with a guarded no-ff merge. See [`docs/git-workflow.md`](docs/git-workflow.md)
+In a Git repository, every file-changing task must follow the local Gitflow
+loop: start from a task branch on `develop` (hotfixes from `main`), use
+task/agent commit trailers, and have a separate reviewer merge with guarded
+no-ff. Agents must start the task branch before editing. Read-only tasks and
+non-Git folders are exempt. See [`docs/git-workflow.md`](docs/git-workflow.md)
 for setup, branch naming and the full review flow.
 
 ## How the pieces fit

@@ -206,12 +206,15 @@ ai git end    --agent <name> [--force]
 ai git verify [--strict] [--json]
 ```
 
-Run setup once per clone. Each task gets its own branch, and the implementer
-submits it for review before releasing the task claim. A different reviewer
-runs `ai git finish`, which checks the tree and workspace, then merges with
-`--no-ff`. `verify` checks that every staged path is covered by a held file
-lease. Use `begin` and `end` only when multiple sessions share one index; separate
-worktrees avoid that contention. See `docs/git-workflow.md` for the full loop.
+In a Git repository, every file-changing task must use this flow. Run setup once
+per clone, claim the task, then start its task branch before editing; stop if
+branch creation fails. Read-only tasks need no branch, and non-Git folders skip
+Gitflow. The implementer submits the committed task for review before releasing
+the claim. A different reviewer runs `ai git finish`, which checks the tree and
+workspace, then merges with `--no-ff`. `verify` checks that every staged path is
+covered by a held file lease. Use `begin` and `end` only when multiple sessions
+share one index; separate worktrees avoid that contention. See
+`docs/git-workflow.md` for the full loop.
 
 ### Artifacts and repair
 

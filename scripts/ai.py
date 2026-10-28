@@ -958,11 +958,23 @@ ROOT_BLOCK = """<!-- ai-workspace:start -->
 This project uses the `.ai` engineering workspace. Task state, specs, locks,
 checkpoints, logs and scratch artifacts live under `.ai/` and nowhere else.
 
-Before starting any work:
-1. Read `.ai/AGENTS.md`, then `.ai/GUIDE.md` and `.ai/docs/task-flow.md`.
-2. Claim a task with `.ai/scripts/ai task claim <id> --agent <name>` before editing.
-3. Checkpoint before the context window fills: `.ai/scripts/ai checkpoint <id> --agent <name>`.
-4. Verify with `.ai/scripts/ai check`; "done" requires its output.
+Before any file-changing task in this Git repository, use Gitflow:
+1. Read `.ai/AGENTS.md`, `.ai/GUIDE.md`, `.ai/docs/task-flow.md` and
+   `.ai/docs/git-workflow.md`.
+2. Create or claim one task. Run `.ai/scripts/ai git setup` if this clone has
+   not been set up; it is safe to rerun.
+3. After claiming and before editing any file, successfully run
+   `.ai/scripts/ai git start --task <id> --agent <name> --type <type>`. If it
+   fails, stop before editing and report the blocker.
+4. Stage only owned paths, run `.ai/scripts/ai git verify --strict`, then commit
+   with `.ai/scripts/ai git commit`. Submit the task for review; a different
+   reviewer runs `.ai/scripts/ai git finish` before the task is marked done.
+
+Read-only tasks do not need a branch. If this folder is not a Git repository,
+continue with the task workflow and skip Gitflow.
+
+Checkpoint before the context window fills. Verify with
+`.ai/scripts/ai check`; "done" requires its output.
 
 Never create task notes, scratch files or generated logs outside `.ai/`.
 <!-- ai-workspace:end -->
@@ -970,12 +982,17 @@ Never create task notes, scratch files or generated logs outside `.ai/`.
 
 BOOTSTRAP_PROMPT = """This project uses the .ai engineering workspace.
 
-1. Read .ai/AGENTS.md, .ai/GUIDE.md, .ai/docs/task-flow.md and .ai/docs/multi-agent.md.
+1. Read .ai/AGENTS.md, .ai/GUIDE.md, .ai/docs/task-flow.md,
+   .ai/docs/multi-agent.md and .ai/docs/git-workflow.md.
 2. Run `.ai/scripts/ai adopt` once so every AI tool in this project finds the workspace.
-3. Run `.ai/scripts/ai doctor`, then follow the task flow.
+3. Run `.ai/scripts/ai doctor`. In a Git repository, run `.ai/scripts/ai git setup`
+   once in this clone. For every file-changing task, claim it and successfully
+   run `.ai/scripts/ai git start` before editing; then follow the commit and
+   independent review flow in `.ai/docs/git-workflow.md`.
 
-All AI state stays under .ai/. Claim a task before editing, checkpoint before
-your context fills, and never call work done without `.ai/scripts/ai check`.
+Read-only tasks need no branch; skip Gitflow only outside a Git repository. All
+AI state stays under .ai/. Claim a task before editing, checkpoint before your
+context fills, and never call work done without `.ai/scripts/ai check`.
 """
 
 
@@ -2987,6 +3004,8 @@ def cmd_brief(args) -> int:
         "5. Work is done only when `ai check` is green and its output is recorded.",
         "6. Checkpoint at milestones and before the context window fills.",
         f"7. Record lasting decisions as an ADR under {ws_prefix()}docs/decisions/.",
+        "8. In a Git repository, every file-changing task must use Gitflow. Run `ai git setup` if needed, then `ai git start` after claim and before editing; stop if it fails.",
+        "9. Commit with `ai git commit`; a different reviewer must merge with `ai git finish` before the task is marked done. Read-only tasks need no branch; skip Gitflow only outside Git.",
         "",
     ]
 

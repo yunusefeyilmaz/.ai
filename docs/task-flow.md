@@ -99,6 +99,11 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 ### 3. Work
 
+- In a Git repository, Gitflow is required for every task that changes files.
+  Run `ai git setup` if this clone is not configured, then successfully run
+  `ai git start --task <id> --agent <name> --type <type>` after claiming and
+  before the first edit. Stop if branch creation fails. Read-only tasks need no
+  branch; non-Git folders skip these commands. See `docs/git-workflow.md`.
 - Read the spec, if one exists.
 - Acquire locks for any shared subsystem before editing it.
 - Keep notes in the task body, never in the project tree.
@@ -123,7 +128,10 @@ ai check
 ai task done 0001 --agent qa
 ```
 
-Attach the check command and its result to the task before marking it done.
+In a Git repository, stage only owned files, run `ai git verify --strict`, and
+commit with `ai git commit`. The implementer submits and releases the task for
+independent review; a separate reviewer runs `ai git finish` before the task is
+marked done. Attach the check command and its result to the task.
 
 ## Specs
 

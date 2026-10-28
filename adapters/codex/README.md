@@ -12,7 +12,8 @@ For a subfolder install, run once:
 ```
 
 This adds a managed block to the project's root `AGENTS.md` (and the other
-adapter files) pointing at `.ai/AGENTS.md`. Commit them once.
+adapter files) pointing at `.ai/AGENTS.md`. Adopted files are local and ignored;
+each clone runs `ai adopt`.
 
 ## Notes
 

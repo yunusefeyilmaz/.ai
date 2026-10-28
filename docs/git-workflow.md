@@ -4,6 +4,15 @@ Git is the audit trail. A task is not finished because a session says so; it is
 finished when its branch is merged with evidence. This workspace uses a small,
 local Gitflow loop:
 
+## When this workflow is required
+
+Every task that changes repository files in a Git repository must use this
+workflow. A task claim alone does not authorize editing: initialize Gitflow if
+needed, claim the task, and successfully start its task branch before the first
+edit. If `ai git start` fails, stop before changing files and report the reason.
+Read-only tasks do not need a branch. If the workspace is not inside a Git
+repository, use the task workflow without Git commands.
+
 ```text
 main ─────────────────────────────●──────────────● (production / hotfix)
         \                        /              /
@@ -42,6 +51,8 @@ ai git setup
 This sets the local `commit.template` to
 `templates/git/commit-template.txt` and creates the integration branch from
 production (or from the current branch) when it is missing. It is idempotent.
+Run it when first using this workspace in a clone. If setup status is unknown,
+rerun it before the next file-changing task.
 
 The template is also a contract:
 
@@ -59,11 +70,10 @@ Agent: implementer-1
 Check: ai check --strict -> 0 errors, 0 warnings
 ```
 
-## Daily loop
+## Required loop for each file-changing task
 
 ```sh
 ai task claim 0001 --agent implementer-1
-ai git setup                                  # once per clone
 ai git start --task 0001 --agent implementer-1 --type feature
 
 # edit only what the task owns

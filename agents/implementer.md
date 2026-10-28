@@ -18,9 +18,13 @@ Leave the tree cleaner than you found it.
 3. Implement in small steps. Keep product code outside `.ai/`.
 4. Add or update tests for each acceptance criterion.
 5. Run `ai check --fast` while iterating.
-6. For Git work, run `ai git setup` once per clone, start a task branch with
-   `ai git start`, stage only owned files, verify staged paths, and commit with
-   `ai git commit`. Follow `docs/git-workflow.md`.
+6. In a Git repository, every file-changing task must use Gitflow: run
+   `ai git setup` if the clone is not configured, then successfully run
+   `ai git start --task <id> --agent <name> --type <type>` after claiming and
+   before editing. Stop if branch creation fails. Stage only owned files, run
+   `ai git verify --strict`, and commit with `ai git commit`. A separate reviewer
+   merges with `ai git finish` before the task is done. Read-only and non-Git
+   work are the only exceptions. Follow `docs/git-workflow.md`.
 7. Before handoff run the full `ai check --strict` and paste the result into the task.
 8. Release file locks. Run `ai task review <id> --agent <name>`, then release
    the task claim so an independent reviewer can take over. Do not mark your
