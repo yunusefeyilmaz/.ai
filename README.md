@@ -81,6 +81,10 @@ branch. Ask approval if Git rejects the checkout's ownership. See
 [`docs/git-workflow.md`](docs/git-workflow.md)
 for setup, branch naming and the full review flow.
 
+When `.ai` itself is a standalone Git checkout, setup uses that checkout as the
+project root. When `.ai` is adopted inside a host project, setup uses the host
+root. Unborn branch names are not treated as commit-backed Gitflow bases.
+
 ## How the pieces fit
 
 ```

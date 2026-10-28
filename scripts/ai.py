@@ -27,7 +27,41 @@ VERSION = "0.3.2"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
-PROJECT = os.path.dirname(WORKSPACE) if os.path.basename(WORKSPACE) == ".ai" else WORKSPACE
+
+
+def project_root_for_workspace() -> str:
+    """Resolve the host project, including a standalone checkout named `.ai`."""
+    if os.path.basename(WORKSPACE) != ".ai":
+        return WORKSPACE
+
+    parent = os.path.dirname(WORKSPACE)
+    # A host repository wins when `.ai` is installed inside it, even if the
+    # host has no Git metadata yet. `adopt` writes this rule before setup.
+    if os.path.lexists(os.path.join(parent, ".git")):
+        return parent
+    host_markers = (
+        ".gitignore", "package.json", "pyproject.toml", "Cargo.toml", "go.mod",
+        "pom.xml", "composer.json", "Gemfile", "requirements.txt", "src",
+        "app", "index.html",
+    )
+    if any(os.path.lexists(os.path.join(parent, name)) for name in host_markers):
+        return parent
+    # The framework repository itself is also commonly checked out into a
+    # directory named `.ai`; in that layout its Git root is the project root.
+    if os.path.lexists(os.path.join(WORKSPACE, ".git")):
+        return WORKSPACE
+    return parent
+
+
+# `adopt` is the explicit subfolder-install operation, so it must target the
+# containing host even before `.gitignore` or host Git metadata exists.
+PROJECT = (
+    os.path.dirname(WORKSPACE)
+    if os.path.basename(WORKSPACE) == ".ai"
+    and len(sys.argv) > 1
+    and sys.argv[1] == "adopt"
+    else project_root_for_workspace()
+)
 
 REQUIRED_PATHS = [
     "AGENTS.md",
@@ -586,7 +620,8 @@ def git_template_path() -> str:
 
 
 def branch_exists(name: str) -> bool:
-    code, _, _ = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{name}"])
+    # A symbolic unborn branch is not a usable Gitflow base.
+    code, _, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{name}^{{commit}}"])
     return code == 0
 
 
@@ -1110,7 +1145,7 @@ def cmd_adopt(args) -> int:
     if args.print:
         print(BOOTSTRAP_PROMPT)
         return 0
-    if os.path.basename(WORKSPACE) != ".ai":
+    if os.path.basename(WORKSPACE) != ".ai" or PROJECT == WORKSPACE:
         print("Template install detected: the workspace is the project root.")
         print("Root AGENTS.md already acts as the signpost; no wiring needed.")
         if not args.check:
@@ -2716,10 +2751,15 @@ def cmd_git_setup(args) -> int:
     if not os.path.isfile(template):
         print(f"Commit template not found: {os.path.relpath(template, PROJECT)}", file=sys.stderr)
         return 1
-    code, _, err = run_git(["config", "--local", "commit.template", template])
-    if code != 0:
-        print(f"Could not set commit.template: {err}", file=sys.stderr)
-        return 1
+    config_code, current_template, _ = run_git(["config", "--local", "--get", "commit.template"])
+    if (
+        config_code != 0
+        or os.path.normcase(os.path.abspath(current_template)) != os.path.normcase(os.path.abspath(template))
+    ):
+        code, _, err = run_git(["config", "--local", "commit.template", template])
+        if code != 0:
+            print(f"Could not set commit.template: {err}", file=sys.stderr)
+            return 1
     created_production = False
     created_integration = False
     created_baseline = False
@@ -2730,7 +2770,16 @@ def cmd_git_setup(args) -> int:
         if refs_code != 0:
             print(f"Could not inspect local Git branches: {refs_err}", file=sys.stderr)
             return 1
-        refs = [line for line in refs_output.splitlines() if line]
+        refs = []
+        for line in refs_output.splitlines():
+            candidate = line.strip()
+            if not candidate:
+                continue
+            valid_code, _, _ = run_git([
+                "rev-parse", "--verify", "--quiet", f"refs/heads/{candidate}^{{commit}}",
+            ])
+            if valid_code == 0:
+                refs.append(candidate)
         if branch_exists(config["production"]):
             pass
         elif refs:
