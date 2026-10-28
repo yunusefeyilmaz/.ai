@@ -18,9 +18,13 @@ Leave the tree cleaner than you found it.
 3. Implement in small steps. Keep product code outside `.ai/`.
 4. Add or update tests for each acceptance criterion.
 5. Run `ai check --fast` while iterating.
-6. Before handoff run the full `ai check` and paste the result into the task.
-7. Release file locks. Set `status: review` and release the task lock, or finish
-   with `ai task done` when the mode allows it and verification is green.
+6. For Git work, run `ai git setup` once per clone, start a task branch with
+   `ai git start`, stage only owned files, verify staged paths, and commit with
+   `ai git commit`. Follow `docs/git-workflow.md`.
+7. Before handoff run the full `ai check --strict` and paste the result into the task.
+8. Release file locks. Run `ai task review <id> --agent <name>`, then release
+   the task claim so an independent reviewer can take over. Do not mark your
+   own implementation done.
 
 ## Outputs
 

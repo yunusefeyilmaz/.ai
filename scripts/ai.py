@@ -23,7 +23,7 @@ import sys
 import tempfile
 import time
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -35,6 +35,7 @@ REQUIRED_PATHS = [
     "GUIDE.md",
     "config/workspace.json",
     "docs/architecture.md",
+    "docs/git-workflow.md",
     "docs/task-flow.md",
     "docs/multi-agent.md",
     "docs/artifact-hygiene.md",
@@ -45,6 +46,8 @@ REQUIRED_PATHS = [
     "tasks/TEMPLATE.md",
     "specs/README.md",
     "scripts/ai.py",
+    "templates/git/commit-template.txt",
+    "templates/git/pull-request.md",
     "runtime",
 ]
 
@@ -269,6 +272,16 @@ def registry_mutex(timeout: float = 5.0):
             os.rmdir(REGISTRY_MUTEX)
         except OSError:
             pass
+
+
+@contextlib.contextmanager
+def workspace_state_guard():
+    """Serialize state writes against `ai reset --hard`."""
+    with registry_mutex():
+        reset_lock = os.path.join(LOCKS_DIR, safe_name("project") + ".lock")
+        if os.path.exists(reset_lock):
+            raise RuntimeError("workspace reset is in progress")
+        yield
 
 
 def acquire_lock(
@@ -536,6 +549,116 @@ def git_state() -> dict:
         if code_part[0] not in (" ", "?"):
             state["staged"].append(path)
     return state
+
+
+COMMIT_TYPES = (
+    "feat", "fix", "docs", "style", "refactor", "perf",
+    "test", "build", "ci", "chore", "revert",
+)
+
+
+def git_config() -> dict:
+    config = load_config().get("git", {}) or {}
+    branch_types = config.get("branchTypes") or [
+        "feature", "fix", "chore", "docs", "refactor", "hotfix",
+    ]
+    return {
+        "integration": str(config.get("integrationBranch") or "develop"),
+        "production": str(config.get("productionBranch") or "main"),
+        "branchTypes": [str(item) for item in branch_types],
+        "template": str(config.get("commitTemplate") or "templates/git/commit-template.txt"),
+        "merge": str(config.get("merge") or "no-ff"),
+        "deleteAfterMerge": bool(config.get("deleteAfterMerge", True)),
+    }
+
+
+def git_template_path() -> str:
+    template = git_config()["template"].replace("\\", "/")
+    if template.startswith(".ai/") and os.path.basename(WORKSPACE) == ".ai":
+        template = template[4:]
+    return os.path.join(WORKSPACE, template.replace("/", os.sep))
+
+
+def branch_exists(name: str) -> bool:
+    code, _, _ = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{name}"])
+    return code == 0
+
+
+def git_clean() -> bool:
+    return not git_state().get("dirty")
+
+
+def task_branch_name(meta: dict, branch_type: str) -> str:
+    slug = slugify(str(meta.get("title") or "task"))[:40].strip("-")
+    return f"{branch_type}/{normalize_id(str(meta.get('id')))}-{slug or 'task'}"
+
+
+def task_owner_error(meta: dict, agent: str, force: bool = False) -> str | None:
+    owner = meta.get("owner")
+    if owner and owner != agent and not force:
+        return f"Task {meta.get('id')} is owned by {owner}."
+    return None
+
+
+def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
+    _, stale_after = lock_settings()
+    current = next(
+        (
+            lock for lock in list_locks()
+            if str(lock.get("resource")) == "@git/index"
+            and not lock_is_stale(lock, stale_after)
+        ),
+        None,
+    )
+    if current:
+        if current.get("agent") != agent:
+            return False, False, (
+                f"git index is locked by {current.get('agent')} "
+                f"(task {current.get('task') or '-'})."
+            )
+        return True, False, ""
+    result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=600)
+    if not result["ok"]:
+        holder = result["holder"] or {}
+        return False, False, (
+            f"git index is locked by {holder.get('agent')} "
+            f"(task {holder.get('task') or '-'})."
+        )
+    return True, True, ""
+
+
+def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> str | None:
+    paths = [task_path, os.path.join(WORKSPACE, "tasks", "BOARD.md")]
+    rels = [
+        os.path.relpath(item, PROJECT).replace(os.sep, "/")
+        for item in paths
+        if os.path.exists(item)
+    ]
+    if not rels:
+        return None
+    code, _, _ = run_git(["add", "--"] + rels)
+    if code != 0:
+        return None
+    if not git_state().get("staged"):
+        return None
+    args = ["commit", "--amend", "--no-edit"] if amend else ["commit", "-m", message]
+    code, _, _ = run_git(args)
+    if code != 0:
+        return None
+    _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
+    return short
+
+
+def release_git_guard(owned: bool, agent: str) -> None:
+    if not owned:
+        return
+    path = os.path.join(LOCKS_DIR, safe_name(normalize_resource("@git/index")) + ".lock")
+    holder = read_json(path) or {}
+    if holder.get("agent") == agent:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def fingerprint_file(relative: str) -> dict | None:
@@ -822,7 +945,9 @@ def cmd_init(args) -> int:
         else:
             for path, state in adopt_root():
                 print(f"{state.upper():<10} {path}")
-            print("Root adapters are in place. Commit them once; every clone then works with no setup.")
+            state, _ = adopt_gitignore()
+            print(f"{state.upper():<10} .gitignore")
+            print("Local adapters are in place. Each clone runs `ai adopt` to create its own copies.")
     print("Next: run `ai doctor`.")
     return 0
 
@@ -897,9 +1022,61 @@ def adopt_root(force: bool = False, check: bool = False) -> list[tuple[str, str]
     return results
 
 
+ADOPT_IGNORE_ENTRIES = (
+    ".ai/",
+    "/AGENTS.md",
+    "/CLAUDE.md",
+    ".cursor/rules/ai-workspace.mdc",
+    ".github/copilot-instructions.md",
+    ".github/workflows/ai-check.yml",
+)
+
+
+def normalized_ignore_entry(line: str) -> str | None:
+    value = line.strip()
+    if not value or value.startswith("#") or value.startswith("!"):
+        return None
+    while value.startswith("/"):
+        value = value[1:]
+    value = value.replace("\\", "/")
+    if value.endswith("/"):
+        value = value[:-1]
+    return value
+
+
+def adopt_gitignore(check: bool = False) -> tuple[str, list[str]]:
+    path = os.path.join(PROJECT, ".gitignore")
+    existing = ""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8", newline="") as handle:
+            existing = handle.read()
+    present = {
+        normalized_ignore_entry(line)
+        for line in existing.splitlines()
+    }
+    missing = [
+        entry for entry in ADOPT_IGNORE_ENTRIES
+        if normalized_ignore_entry(entry) not in present
+    ]
+    if check:
+        return ("ok" if not missing else "missing"), missing
+    if not missing:
+        return "unchanged", []
+
+    newline = "\r\n" if "\r\n" in existing else "\n"
+    separator = "" if not existing or existing.endswith(("\n", "\r")) else newline
+    addition = newline.join([
+        "# Added by ai adopt: keep the workspace and generated adapters local.",
+        *missing,
+    ]) + newline
+    write_text_atomic(path, existing + separator + addition)
+    return ("created" if not existing else "updated"), missing
+
+
 def cmd_adopt(args) -> int:
-    ensure_dirs()
-    if not os.path.exists(config_path()):
+    if not args.check:
+        ensure_dirs()
+    if not args.check and not os.path.exists(config_path()):
         write_json_atomic(config_path(), default_config())
     if args.print:
         print(BOOTSTRAP_PROMPT)
@@ -913,12 +1090,20 @@ def cmd_adopt(args) -> int:
     results = adopt_root(force=args.force, check=args.check)
     for path, state in results:
         print(f"{state.upper():<10} {path}")
+    try:
+        ignore_state, missing_ignore = adopt_gitignore(check=args.check)
+    except OSError as exc:
+        print(f"Could not update the project .gitignore: {exc}", file=sys.stderr)
+        return 1
+    print(f"{ignore_state.upper():<10} .gitignore")
+    if missing_ignore:
+        print("Missing ignore rules: " + ", ".join(missing_ignore))
     if args.check:
         missing = [path for path, state in results if state != "ok"]
-        return 1 if missing else 0
+        return 1 if missing or missing_ignore else 0
     if args.ci:
         write_ci()
-    print("\nRoot adapters are in place. Commit them once; every clone then works with no setup.")
+    print("\nLocal adapters are in place. Each clone runs `ai adopt` to create its own copies.")
     print("Next: ai doctor")
     return 0
 
@@ -1218,53 +1403,63 @@ def cmd_status(args) -> int:
     return 0
 
 
-def allocate_task_number() -> int:
+@contextlib.contextmanager
+def task_index_guard():
     resource = "tasks.index"
     result = acquire_lock(resource, agent="task-index", ttl=60)
     if not result["ok"]:
+        holder = result.get("holder") or {}
         print(
             "Could not allocate a task id: the task index is locked by "
-            f"{result['holder'].get('agent')}.",
+            f"{holder.get('agent')}.",
             file=sys.stderr,
         )
-        raise SystemExit(1)
+        raise RuntimeError("task index is locked")
     try:
-        state = read_json(COUNTER_PATH) or {"last": 0}
-        last = int(state.get("last", 0) or 0)
-        for task in load_tasks():
-            digits = "".join(ch for ch in str(task.get("id") or "") if ch.isdigit())
-            if digits:
-                last = max(last, int(digits))
-        number = last + 1
-        write_json_atomic(COUNTER_PATH, {"last": number})
-        return number
+        yield
     finally:
-        try:
-            os.remove(os.path.join(LOCKS_DIR, safe_name(resource) + ".lock"))
-        except FileNotFoundError:
-            pass
+        release_lock(resource, agent="task-index")
+
+
+def allocate_task_number() -> int:
+    """Allocate an ID while the caller holds task_index_guard()."""
+    resource = "tasks.index"
+    holder = read_json(os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")) or {}
+    if holder.get("agent") != "task-index":
+        raise RuntimeError("task ID allocation requires the tasks.index lock")
+    state = read_json(COUNTER_PATH) or {"last": 0}
+    last = int(state.get("last", 0) or 0)
+    for task in load_tasks():
+        digits = "".join(ch for ch in str(task.get("id") or "") if ch.isdigit())
+        if digits:
+            last = max(last, int(digits))
+    number = last + 1
+    write_json_atomic(COUNTER_PATH, {"last": number})
+    return number
 
 
 def cmd_task_new(args) -> int:
     ensure_dirs()
-    number = allocate_task_number()
-    task_id = f"{number:04d}"
-    title = args.title.strip()
-    slug = slugify(title)
-    path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
-    meta = {
-        "id": task_id,
-        "title": title,
-        "status": "todo",
-        "owner": None,
-        "priority": args.priority,
-        "spec": args.spec,
-        "depends_on": getattr(args, "depends_on", None),
-        "created": iso(),
-        "updated": iso(),
-        "lock": None,
-    }
-    body = f"""# {task_id} - {title}
+    try:
+        with task_index_guard():
+            number = allocate_task_number()
+            task_id = f"{number:04d}"
+            title = args.title.strip()
+            slug = slugify(title)
+            path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
+            meta = {
+                "id": task_id,
+                "title": title,
+                "status": "todo",
+                "owner": None,
+                "priority": args.priority,
+                "spec": args.spec,
+                "depends_on": getattr(args, "depends_on", None),
+                "created": iso(),
+                "updated": iso(),
+                "lock": None,
+            }
+            body = f"""# {task_id} - {title}
 
 ## Intent
 
@@ -1284,8 +1479,10 @@ def cmd_task_new(args) -> int:
 
 - {iso()} created
 """
-    write_task(path, meta, body)
-    write_board(load_tasks())
+            write_task(path, meta, body)
+            write_board(load_tasks())
+    except RuntimeError:
+        return 1
     print(f"Created {os.path.relpath(path, PROJECT)}")
     if args.spec:
         print(f"Spec: {args.spec}")
@@ -1294,8 +1491,13 @@ def cmd_task_new(args) -> int:
 
 
 def cmd_task_list(args) -> int:
-    tasks = load_tasks()
-    write_board(tasks)
+    try:
+        with workspace_state_guard():
+            tasks = load_tasks()
+            write_board(tasks)
+    except RuntimeError as exc:
+        print(f"Cannot refresh the task board: {exc}.", file=sys.stderr)
+        return 1
     active = [task for task in tasks if task["_folder"] == "active"]
     done = [task for task in tasks if task["_folder"] == "done"]
     if args.json:
@@ -1370,6 +1572,9 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
                 f"Task {task_id} is locked by {holder.get('agent')} "
                 f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
             )
+    if find_task(task_id) != path:
+        release_lock(resource, agent=agent, force=True)
+        return False, f"Task {task_id} was removed while it was being claimed."
     meta["owner"] = agent
     meta["status"] = "in_progress"
     meta["updated"] = iso()
@@ -1476,24 +1681,68 @@ def cmd_task_release(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
-    meta, body = parse_task(path)
+    meta, _ = parse_task(path)
     task_id = str(meta.get("id"))
     resource = f"task-{task_id}"
-    if meta.get("owner") and meta.get("owner") != args.agent and not args.force:
-        print(
-            f"Task {task_id} is owned by {meta.get('owner')}. Use --force to override.",
-            file=sys.stderr,
-        )
+    try:
+        with workspace_state_guard():
+            current_path = find_task(task_id)
+            if current_path != path:
+                print(f"Task {task_id} changed before release.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(current_path)
+            if meta.get("owner") and meta.get("owner") != args.agent and not args.force:
+                print(
+                    f"Task {task_id} is owned by {meta.get('owner')}. Use --force to override.",
+                    file=sys.stderr,
+                )
+                return 1
+            meta["owner"] = None
+            meta["lock"] = None
+            if meta.get("status") == "in_progress":
+                meta["status"] = "todo"
+            meta["updated"] = iso()
+            body = body.rstrip("\n") + f"\n- {iso()} released by {args.agent}\n"
+            write_task(current_path, meta, body)
+            write_board(load_tasks())
+    except RuntimeError as exc:
+        print(f"Cannot release task {task_id}: {exc}.", file=sys.stderr)
         return 1
-    release_lock(resource, agent=args.agent, force=args.force)
-    meta["owner"] = None
-    meta["lock"] = None
-    if meta.get("status") == "in_progress":
-        meta["status"] = "todo"
-    meta["updated"] = iso()
-    body = body.rstrip("\n") + f"\n- {iso()} released by {args.agent}\n"
-    write_task(path, meta, body)
-    write_board(load_tasks())
+    return release_lock(resource, agent=args.agent, force=args.force)
+
+
+def cmd_task_review(args) -> int:
+    path = find_task(args.task_id)
+    if not path or os.path.dirname(path) != ACTIVE_DIR:
+        print(f"No active task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    try:
+        with workspace_state_guard():
+            current_path = find_task(args.task_id)
+            if current_path != path or os.path.dirname(current_path or "") != ACTIVE_DIR:
+                print(f"Task {args.task_id} changed before review.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(current_path)
+            task_id = str(meta.get("id"))
+            if meta.get("status") != "in_progress":
+                print(f"Task {task_id} must be in_progress to enter review.", file=sys.stderr)
+                return 1
+            if meta.get("owner") != args.agent:
+                print(f"Task {task_id} is not owned by {args.agent}.", file=sys.stderr)
+                return 1
+            holder = read_json(os.path.join(LOCKS_DIR, safe_name(f"task-{task_id}") + ".lock")) or {}
+            if holder.get("agent") != args.agent:
+                print(f"Task {task_id} does not have a live claim for {args.agent}.", file=sys.stderr)
+                return 1
+            meta["status"] = "review"
+            meta["updated"] = iso()
+            body = body.rstrip("\n") + f"\n- {iso()} submitted for independent review by {args.agent}\n"
+            write_task(current_path, meta, body)
+            write_board(load_tasks())
+    except RuntimeError as exc:
+        print(f"Cannot submit task {args.task_id} for review: {exc}.", file=sys.stderr)
+        return 1
+    print(f"Task {task_id} is ready for independent review. Release it before reviewer takeover.")
     return 0
 
 
@@ -1502,12 +1751,21 @@ def cmd_task_block(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
-    meta, body = parse_task(path)
-    meta["status"] = "blocked"
-    meta["updated"] = iso()
-    body = body.rstrip("\n") + f"\n- {iso()} blocked by {args.agent}: {args.reason}\n"
-    write_task(path, meta, body)
-    write_board(load_tasks())
+    try:
+        with workspace_state_guard():
+            current_path = find_task(args.task_id)
+            if current_path != path:
+                print(f"Task {args.task_id} changed before it could be blocked.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(current_path)
+            meta["status"] = "blocked"
+            meta["updated"] = iso()
+            body = body.rstrip("\n") + f"\n- {iso()} blocked by {args.agent}: {args.reason}\n"
+            write_task(current_path, meta, body)
+            write_board(load_tasks())
+    except RuntimeError as exc:
+        print(f"Cannot block task {args.task_id}: {exc}.", file=sys.stderr)
+        return 1
     print(f"Blocked {meta.get('id')}: {args.reason}")
     return 0
 
@@ -1517,12 +1775,21 @@ def cmd_task_unblock(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
-    meta, body = parse_task(path)
-    meta["status"] = "todo"
-    meta["updated"] = iso()
-    body = body.rstrip("\n") + f"\n- {iso()} unblocked by {args.agent}\n"
-    write_task(path, meta, body)
-    write_board(load_tasks())
+    try:
+        with workspace_state_guard():
+            current_path = find_task(args.task_id)
+            if current_path != path:
+                print(f"Task {args.task_id} changed before it could be unblocked.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(current_path)
+            meta["status"] = "todo"
+            meta["updated"] = iso()
+            body = body.rstrip("\n") + f"\n- {iso()} unblocked by {args.agent}\n"
+            write_task(current_path, meta, body)
+            write_board(load_tasks())
+    except RuntimeError as exc:
+        print(f"Cannot unblock task {args.task_id}: {exc}.", file=sys.stderr)
+        return 1
     print(f"Unblocked {meta.get('id')}.")
     return 0
 
@@ -1564,6 +1831,351 @@ def cmd_task_done(args) -> int:
     write_board(load_tasks())
     print(f"Done: {os.path.relpath(target, PROJECT)}")
     return 0
+
+
+def task_discard_spec_path(meta: dict, task_id: str) -> tuple[str | None, str | None]:
+    reference = str(meta.get("spec") or "").strip()
+    if not reference:
+        return None, None
+    reference = reference.replace("\\", "/")
+    if reference.startswith(".ai/") and os.path.basename(WORKSPACE) == ".ai":
+        reference = reference[4:]
+    candidate = os.path.realpath(os.path.join(WORKSPACE, reference.replace("/", os.sep)))
+    roots = [
+        os.path.realpath(os.path.join(WORKSPACE, "specs", "active")),
+        os.path.realpath(os.path.join(WORKSPACE, "specs", "done")),
+    ]
+    try:
+        inside_specs = any(os.path.commonpath([candidate, root]) == root for root in roots)
+    except ValueError:
+        inside_specs = False
+    if not inside_specs:
+        return None, f"Linked spec is outside specs/active or specs/done: {reference}"
+    if not os.path.exists(candidate):
+        # A previous interrupted discard may already have removed the spec;
+        # allow the operator to retry and finish removing the task.
+        return None, None
+    if not os.path.isfile(candidate):
+        return None, f"Linked spec is not a file: {reference}"
+    spec_meta, _ = parse_task(candidate)
+    if normalize_id(str(spec_meta.get("task") or "")) != normalize_id(task_id):
+        return None, f"Linked spec does not identify task {task_id}: {reference}"
+    return candidate, None
+
+
+def task_discard_targets(task_path: str, spec_path: str | None, task_id: str) -> list[str]:
+    targets = [
+        checkpoint_path(task_id),
+        checkpoint_sidecar(task_id),
+        handoff_marker(task_id),
+    ]
+    if os.path.isdir(CHECKPOINT_ARCHIVE):
+        archive_prefix = f"{task_id}-"
+        targets.extend(
+            os.path.join(CHECKPOINT_ARCHIVE, name)
+            for name in os.listdir(CHECKPOINT_ARCHIVE)
+            if name.startswith(archive_prefix) and name.endswith(".md")
+        )
+    if spec_path:
+        targets.append(spec_path)
+    targets.append(task_path)
+    return [target for target in targets if os.path.isfile(target)]
+
+
+def task_discard_lock_error(task_id: str, targets: list[str]) -> str | None:
+    lock_path = os.path.join(LOCKS_DIR, safe_name(f"task-{task_id}") + ".lock")
+    holder = read_json(lock_path)
+    if holder:
+        return (
+            f"Task {task_id} still has a lock held by {holder.get('agent')}. "
+            "Release it normally or run `ai recover --apply` after it is stale."
+        )
+    _, stale_after = lock_settings()
+    for lock in list_locks():
+        if lock_is_stale(lock, stale_after):
+            continue
+        resource = str(lock.get("resource") or "")
+        for target in targets:
+            aliases = {
+                os.path.relpath(target, WORKSPACE).replace(os.sep, "/"),
+                os.path.relpath(target, PROJECT).replace(os.sep, "/"),
+            }
+            try:
+                overlaps = any(resources_overlap(alias, resource) for alias in aliases)
+            except ValueError:
+                overlaps = False
+            if overlaps:
+                return (
+                    f"Task {task_id} has a related live file lock held by "
+                    f"{lock.get('agent')} ({resource}); refusing discard."
+                )
+    return None
+
+
+def cmd_task_discard(args) -> int:
+    path = find_task(args.task_id)
+    if not path:
+        print(f"No task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    meta, _ = parse_task(path)
+    task_id = normalize_id(str(meta.get("id") or args.task_id))
+    if not sys.stdin.isatty():
+        print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
+        return 1
+
+    spec_path, spec_error = task_discard_spec_path(meta, task_id)
+    if spec_error:
+        print(f"Cannot safely discard task: {spec_error}", file=sys.stderr)
+        return 1
+    targets = task_discard_targets(path, spec_path, task_id)
+    lock_error = task_discard_lock_error(task_id, targets)
+    if lock_error:
+        print(lock_error, file=sys.stderr)
+        return 1
+    _, stale_after = lock_settings()
+    for lock in list_locks():
+        if lock_is_stale(lock, stale_after):
+            continue
+        resource = str(lock.get("resource") or "")
+        overlaps = False
+        for target in targets:
+            aliases = {
+                os.path.relpath(target, WORKSPACE).replace(os.sep, "/"),
+                os.path.relpath(target, PROJECT).replace(os.sep, "/"),
+            }
+            try:
+                if any(resources_overlap(alias, resource) for alias in aliases):
+                    overlaps = True
+                    break
+            except ValueError:
+                continue
+        if overlaps:
+            print(
+                f"Task {task_id} has a related live file lock held by {lock.get('agent')} "
+                f"({resource}); refusing discard.",
+                file=sys.stderr,
+            )
+            return 1
+    print(f"This permanently discards task {task_id}: {meta.get('title')}")
+    print("It removes the task, its matching spec, and its continuation files.")
+    expected = f"discard task {task_id}"
+    try:
+        confirmation = input(f"Type '{expected}' to continue: ").strip()
+    except EOFError:
+        confirmation = ""
+    if confirmation != expected:
+        print("Confirmation did not match; no files were changed.", file=sys.stderr)
+        return 1
+
+    try:
+        with registry_mutex():
+            current_path = find_task(task_id)
+            if current_path != path:
+                print(f"Task {task_id} changed while awaiting confirmation; retry.", file=sys.stderr)
+                return 1
+            current_meta, _ = parse_task(current_path)
+            if current_meta.get("title") != meta.get("title") or current_meta.get("spec") != meta.get("spec"):
+                print(f"Task {task_id} changed while awaiting confirmation; retry.", file=sys.stderr)
+                return 1
+            current_spec, error = task_discard_spec_path(current_meta, task_id)
+            if error:
+                print(f"Cannot safely discard task: {error}", file=sys.stderr)
+                return 1
+            current_targets = task_discard_targets(current_path, current_spec, task_id)
+            lock_error = task_discard_lock_error(task_id, current_targets)
+            if lock_error:
+                print(lock_error, file=sys.stderr)
+                return 1
+            # Keep the task file until all linked state is removed, so a failed
+            # cleanup remains visible and can be retried.
+            for target in current_targets[:-1]:
+                os.remove(target)
+            os.remove(current_path)
+            write_board(load_tasks())
+    except OSError as exc:
+        print(f"Could not discard task {task_id}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Discarded task {task_id}; removed {len(current_targets)} file(s).")
+    return 0
+
+
+def workspace_reset_targets() -> list[str]:
+    targets: set[str] = set()
+    preserved_names = {".gitkeep", "TEMPLATE.md", "README.md"}
+    for directory in (ACTIVE_DIR, DONE_DIR):
+        if os.path.isdir(directory):
+            for name in os.listdir(directory):
+                path = os.path.join(directory, name)
+                if name not in preserved_names and name.endswith(".md") and os.path.isfile(path):
+                    targets.add(path)
+    for directory in (
+        os.path.join(WORKSPACE, "specs", "active"),
+        os.path.join(WORKSPACE, "specs", "done"),
+    ):
+        if os.path.isdir(directory):
+            for name in os.listdir(directory):
+                path = os.path.join(directory, name)
+                if name not in preserved_names and name.endswith(".md") and os.path.isfile(path):
+                    targets.add(path)
+    decisions_dir = os.path.join(WORKSPACE, "docs", "decisions")
+    if os.path.isdir(decisions_dir) and not os.path.islink(decisions_dir):
+        for name in os.listdir(decisions_dir):
+            path = os.path.join(decisions_dir, name)
+            if re.fullmatch(r"\d{4}-.+\.md", name) and os.path.isfile(path):
+                targets.add(path)
+    for root in (CHECKPOINT_DIR, HANDOFF_DIR, ARTIFACTS_DIR, LOGS_DIR):
+        if not os.path.isdir(root):
+            continue
+        for current, directories, files in os.walk(root, followlinks=False):
+            for name in list(directories):
+                path = os.path.join(current, name)
+                if os.path.islink(path):
+                    targets.add(path)
+                    directories.remove(name)
+            for name in files:
+                if name != ".gitkeep":
+                    targets.add(os.path.join(current, name))
+    if os.path.isfile(COUNTER_PATH):
+        targets.add(COUNTER_PATH)
+    return sorted(targets)
+
+
+def reset_lock_files() -> list[str]:
+    if not os.path.isdir(LOCKS_DIR):
+        return []
+    return sorted(
+        os.path.join(LOCKS_DIR, name)
+        for name in os.listdir(LOCKS_DIR)
+        if name.endswith(".lock")
+    )
+
+
+def reset_decisions_dir_error() -> str | None:
+    decisions_dir = os.path.join(WORKSPACE, "docs", "decisions")
+    if os.path.islink(decisions_dir):
+        return "Refusing to reset decision records through a symlinked docs/decisions directory."
+    if os.path.exists(decisions_dir) and os.path.realpath(decisions_dir) != os.path.abspath(decisions_dir):
+        return "Refusing to reset decision records outside docs/decisions."
+    return None
+
+
+def reset_target_error(targets: list[str]) -> str | None:
+    workspace = os.path.realpath(WORKSPACE)
+    allowed_roots = [
+        ACTIVE_DIR,
+        DONE_DIR,
+        os.path.join(WORKSPACE, "specs", "active"),
+        os.path.join(WORKSPACE, "specs", "done"),
+        os.path.join(WORKSPACE, "docs", "decisions"),
+        CHECKPOINT_DIR,
+        HANDOFF_DIR,
+        ARTIFACTS_DIR,
+        LOGS_DIR,
+        os.path.dirname(COUNTER_PATH),
+    ]
+    for target in targets:
+        resolved = os.path.realpath(target)
+        try:
+            contained = os.path.commonpath([resolved, workspace]) == workspace
+            in_reset_scope = any(
+                os.path.commonpath([resolved, os.path.realpath(root)]) == os.path.realpath(root)
+                for root in allowed_roots
+            )
+        except ValueError:
+            contained = False
+            in_reset_scope = False
+        if not contained or not in_reset_scope:
+            return f"Refusing to reset a path outside the approved state folders: {target}"
+        decisions_dir = os.path.join(WORKSPACE, "docs", "decisions")
+        if os.path.dirname(os.path.abspath(target)) == os.path.abspath(decisions_dir):
+            if os.path.realpath(os.path.dirname(target)) != os.path.abspath(decisions_dir):
+                return f"Refusing to reset a decision record through an unexpected directory: {target}"
+            if not re.fullmatch(r"\d{4}-.+\.md", os.path.basename(target)):
+                return f"Refusing to reset a non-ADR file in docs/decisions: {target}"
+        if not (os.path.isfile(target) or os.path.islink(target)):
+            return f"Refusing to reset a non-file path: {target}"
+    return None
+
+
+def cmd_reset(args) -> int:
+    if not args.hard:
+        print("Specify --hard to reset .ai project task, spec, decision and runtime state.", file=sys.stderr)
+        return 1
+    if not sys.stdin.isatty():
+        print("Hard reset requires an interactive terminal; no files were changed.", file=sys.stderr)
+        return 1
+    locks = reset_lock_files()
+    if locks:
+        print("Hard reset requires all locks to be released. Existing lock files:", file=sys.stderr)
+        for path in locks:
+            print(f"  {os.path.relpath(path, WORKSPACE)}", file=sys.stderr)
+        print("Resolve stale locks with `ai recover --apply`, then retry.", file=sys.stderr)
+        return 1
+    decisions_error = reset_decisions_dir_error()
+    if decisions_error:
+        print(decisions_error, file=sys.stderr)
+        return 1
+    targets = workspace_reset_targets()
+    target_error = reset_target_error(targets)
+    if target_error:
+        print(target_error, file=sys.stderr)
+        return 1
+    print("Hard reset removes task/spec/decision records, checkpoints, handoffs,")
+    print("artifacts, logs and the task counter. It keeps framework docs and Git history.")
+    print(f"Files to remove: {len(targets)}")
+    expected = "reset .ai hard"
+    try:
+        confirmation = input(f"Type '{expected}' to continue: ").strip()
+    except EOFError:
+        confirmation = ""
+    if confirmation != expected:
+        print("Confirmation did not match; no files were changed.", file=sys.stderr)
+        return 1
+
+    resource = "project"
+    agent = "operator-reset"
+    result = acquire_lock(resource, agent=agent, task=None, ttl=600)
+    if not result["ok"]:
+        holder = result["holder"] or {}
+        print(
+            f"Could not start reset; '{resource}' overlaps a lock held by "
+            f"{holder.get('agent')} ({holder.get('resource')}).",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        unexpected_locks = [path for path in reset_lock_files() if os.path.basename(path) != safe_name(resource) + ".lock"]
+        if unexpected_locks:
+            print("A lock appeared during confirmation; reset cancelled.", file=sys.stderr)
+            return 1
+        decisions_error = reset_decisions_dir_error()
+        if decisions_error:
+            print(decisions_error, file=sys.stderr)
+            return 1
+        targets = workspace_reset_targets()
+        target_error = reset_target_error(targets)
+        if target_error:
+            print(target_error, file=sys.stderr)
+            return 1
+        removed = 0
+        try:
+            for target in targets:
+                if os.path.islink(target) and os.path.isdir(target):
+                    os.rmdir(target)
+                else:
+                    os.remove(target)
+                removed += 1
+        finally:
+            # Keep the board accurate even if the operator needs to retry after
+            # a partial filesystem failure.
+            write_board(load_tasks())
+        print(f"Hard reset complete; removed {removed} file(s).")
+        return 0
+    except OSError as exc:
+        print(f"Hard reset stopped after a partial cleanup: {exc}. Run `ai reset --hard` again.", file=sys.stderr)
+        return 1
+    finally:
+        release_lock(resource, agent=agent)
 
 
 def resolve_task_id(task_id: str | None) -> str | None:
@@ -1641,36 +2253,44 @@ def cmd_checkpoint(args) -> int:
     if not task_id:
         print("No task to checkpoint. Create or claim a task first.", file=sys.stderr)
         return 1
-    path = find_task(task_id)
-    meta, body = parse_task(path)
-    if meta.get("owner") and meta.get("owner") != args.agent and not args.force:
-        print(
-            f"Task {task_id} is owned by {meta.get('owner')}. Use --force to checkpoint anyway.",
-            file=sys.stderr,
-        )
+    try:
+        with workspace_state_guard():
+            path = find_task(task_id)
+            if not path:
+                print(f"No task with id {task_id}.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(path)
+            if meta.get("owner") and meta.get("owner") != args.agent and not args.force:
+                print(
+                    f"Task {task_id} is owned by {meta.get('owner')}. Use --force to checkpoint anyway.",
+                    file=sys.stderr,
+                )
+                return 1
+            merge_existing_checkpoint(task_id, args)
+            files = [item.strip() for item in (args.files or "").split(",") if item.strip()]
+            fields = {
+                "title": meta.get("title"),
+                "objective": args.objective,
+                "status": args.status,
+                "done": args.done,
+                "in_progress": args.in_progress,
+                "next": args.next,
+                "decisions": args.decisions,
+                "do_not": args.do_not,
+                "questions": args.questions,
+                "files": files,
+                "files_text": args.files_text,
+                "verification": args.verification,
+                "status_line": meta.get("status"),
+            }
+            checkpoint = write_checkpoint(task_id, args.agent, args.reason, args.percent, fields)
+            meta["updated"] = iso()
+            reason = args.reason
+            body = body.rstrip("\n") + f"\n- {iso()} checkpoint by {args.agent} ({reason}, {args.percent or '?'}%)\n"
+            write_task(path, meta, body)
+    except RuntimeError as exc:
+        print(f"Cannot checkpoint task {task_id}: {exc}.", file=sys.stderr)
         return 1
-    merge_existing_checkpoint(task_id, args)
-    files = [item.strip() for item in (args.files or "").split(",") if item.strip()]
-    fields = {
-        "title": meta.get("title"),
-        "objective": args.objective,
-        "status": args.status,
-        "done": args.done,
-        "in_progress": args.in_progress,
-        "next": args.next,
-        "decisions": args.decisions,
-        "do_not": args.do_not,
-        "questions": args.questions,
-        "files": files,
-        "files_text": args.files_text,
-        "verification": args.verification,
-        "status_line": meta.get("status"),
-    }
-    checkpoint = write_checkpoint(task_id, args.agent, args.reason, args.percent, fields)
-    meta["updated"] = iso()
-    reason = args.reason
-    body = body.rstrip("\n") + f"\n- {iso()} checkpoint by {args.agent} ({reason}, {args.percent or '?'}%)\n"
-    write_task(path, meta, body)
     print(f"Checkpoint: {ws_rel(checkpoint)}")
     if args.next:
         print(f"Next: {args.next}")
@@ -1683,38 +2303,49 @@ def cmd_handoff(args) -> int:
     if not task_id:
         print("No task to hand off.", file=sys.stderr)
         return 1
-    path = find_task(task_id)
-    meta, body = parse_task(path)
-    merge_existing_checkpoint(task_id, args)
-    fields = {
-        "title": meta.get("title"),
-        "objective": args.objective,
-        "status": args.status,
-        "done": args.done,
-        "in_progress": args.in_progress,
-        "next": args.next,
-        "decisions": args.decisions,
-        "do_not": args.do_not,
-        "questions": args.questions,
-        "files": [item.strip() for item in (args.files or "").split(",") if item.strip()],
-        "files_text": args.files_text,
-        "verification": args.verification,
-        "status_line": meta.get("status"),
-    }
-    checkpoint = write_checkpoint(task_id, args.agent, "handoff", args.percent, fields)
-    write_json_atomic(
-        handoff_marker(task_id),
-        {
-            "task": task_id,
-            "agent": args.agent,
-            "reason": args.reason,
-            "created": iso(),
-            "checkpoint": os.path.relpath(checkpoint, WORKSPACE),
-        },
-    )
-    meta["updated"] = iso()
-    body = body.rstrip("\n") + f"\n- {iso()} handoff requested by {args.agent}: {args.reason}\n"
-    write_task(path, meta, body)
+    try:
+        with workspace_state_guard():
+            path = find_task(task_id)
+            if not path:
+                print(f"No task with id {task_id}.", file=sys.stderr)
+                return 1
+            meta, body = parse_task(path)
+            if meta.get("owner") and meta.get("owner") != args.agent:
+                print(f"Task {task_id} is owned by {meta.get('owner')}.", file=sys.stderr)
+                return 1
+            merge_existing_checkpoint(task_id, args)
+            fields = {
+                "title": meta.get("title"),
+                "objective": args.objective,
+                "status": args.status,
+                "done": args.done,
+                "in_progress": args.in_progress,
+                "next": args.next,
+                "decisions": args.decisions,
+                "do_not": args.do_not,
+                "questions": args.questions,
+                "files": [item.strip() for item in (args.files or "").split(",") if item.strip()],
+                "files_text": args.files_text,
+                "verification": args.verification,
+                "status_line": meta.get("status"),
+            }
+            checkpoint = write_checkpoint(task_id, args.agent, "handoff", args.percent, fields)
+            write_json_atomic(
+                handoff_marker(task_id),
+                {
+                    "task": task_id,
+                    "agent": args.agent,
+                    "reason": args.reason,
+                    "created": iso(),
+                    "checkpoint": os.path.relpath(checkpoint, WORKSPACE),
+                },
+            )
+            meta["updated"] = iso()
+            body = body.rstrip("\n") + f"\n- {iso()} handoff requested by {args.agent}: {args.reason}\n"
+            write_task(path, meta, body)
+    except RuntimeError as exc:
+        print(f"Cannot hand off task {task_id}: {exc}.", file=sys.stderr)
+        return 1
     print(f"Handoff marker: {ws_rel(handoff_marker(task_id))}")
     print(f"Checkpoint:     {ws_rel(checkpoint)}")
     print("\nPaste this into the next agent:\n")
@@ -1834,6 +2465,17 @@ def cmd_resume(args) -> int:
 
 
 def cmd_recover(args) -> int:
+    if not args.apply:
+        return cmd_recover_inner(args)
+    try:
+        with workspace_state_guard():
+            return cmd_recover_inner(args)
+    except RuntimeError as exc:
+        print(f"Cannot apply recovery while {exc}.", file=sys.stderr)
+        return 1
+
+
+def cmd_recover_inner(args) -> int:
     actions: list[tuple[str, str]] = []
     repairs = []
     handled_locks: set[str] = set()
@@ -1936,24 +2578,7 @@ def cmd_recover(args) -> int:
     return 0
 
 
-def cmd_git(args) -> int:
-    if args.action == "begin":
-        result = acquire_lock("@git/index", agent=args.agent, task=args.task, ttl=args.ttl)
-        if not result["ok"]:
-            holder = result["holder"] or {}
-            print(
-                f"git index is locked by {holder.get('agent')} (task {holder.get('task') or '-'}).",
-                file=sys.stderr,
-            )
-            return 1
-        print("Acquired @git/index. Stage and commit only what you own, then run `ai git end`.")
-        return 0
-    if args.action == "end":
-        return release_lock("@git/index", agent=args.agent, force=args.force)
-    state = git_state()
-    if not state.get("repo"):
-        print("Not a git repository; nothing to verify.")
-        return 0
+def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
     locks = [
         lock for lock in list_locks()
         if not lock_is_stale(lock, lock_settings()[1])
@@ -1972,6 +2597,321 @@ def cmd_git(args) -> int:
                 continue
         if not covered:
             uncovered.append(path)
+    return uncovered, locks
+
+
+def cmd_git_setup(args) -> int:
+    state = git_state()
+    if not state.get("repo"):
+        print("Not a git repository. Run `git init` first.", file=sys.stderr)
+        return 1
+    config = git_config()
+    template = git_template_path()
+    if not os.path.isfile(template):
+        print(f"Commit template not found: {os.path.relpath(template, PROJECT)}", file=sys.stderr)
+        return 1
+    code, _, err = run_git(["config", "--local", "commit.template", template])
+    if code != 0:
+        print(f"Could not set commit.template: {err}", file=sys.stderr)
+        return 1
+    created = False
+    if not branch_exists(config["integration"]):
+        base = config["production"] if branch_exists(config["production"]) else state.get("branch")
+        if not base or base == "detached":
+            print(
+                f"Cannot create '{config['integration']}': no base branch. "
+                f"Create '{config['production']}' or pass a base with git directly.",
+                file=sys.stderr,
+            )
+            return 1
+        code, _, err = run_git(["branch", config["integration"], base])
+        if code != 0:
+            print(f"Could not create '{config['integration']}': {err}", file=sys.stderr)
+            return 1
+        created = True
+    if args.json:
+        print(json.dumps({
+            "repo": True,
+            "commitTemplate": os.path.relpath(template, PROJECT).replace(os.sep, "/"),
+            "integration": config["integration"],
+            "production": config["production"],
+            "createdIntegration": created,
+        }, indent=2))
+        return 0
+    print(f"commit.template = {os.path.relpath(template, PROJECT)}")
+    print(f"integration branch: {config['integration']}" + (" (created)" if created else " (exists)"))
+    print(f"production branch: {config['production']}")
+    print("Next: ai task claim <id> --agent <name>, then ai git start ...")
+    return 0
+
+
+def cmd_git_start(args) -> int:
+    path = find_task(args.task)
+    if not path:
+        print(f"No task with id {args.task}.", file=sys.stderr)
+        return 1
+    if os.path.dirname(path) != ACTIVE_DIR:
+        print("The task is already in done/. Start a branch before finishing it.", file=sys.stderr)
+        return 1
+    meta, body = parse_task(path)
+    task_id = str(meta.get("id"))
+    owner_error = task_owner_error(meta, args.agent, args.force)
+    if owner_error:
+        print(owner_error, file=sys.stderr)
+        return 1
+    state = git_state()
+    if not state.get("repo"):
+        print("Not a git repository.", file=sys.stderr)
+        return 1
+    if not git_clean():
+        print("Working tree is dirty. Commit or stash before starting a task branch.", file=sys.stderr)
+        return 1
+    config = git_config()
+    branch_type = args.type
+    if branch_type not in config["branchTypes"]:
+        print(
+            f"Unknown branch type '{branch_type}'. Use one of: {', '.join(config['branchTypes'])}.",
+            file=sys.stderr,
+        )
+        return 1
+    if not branch_exists(config["integration"]):
+        print(f"Integration branch '{config['integration']}' is missing. Run `ai git setup`.", file=sys.stderr)
+        return 1
+    base = args.base or (
+        config["production"] if branch_type == "hotfix" else config["integration"]
+    )
+    if not branch_exists(base):
+        print(f"Base branch '{base}' does not exist.", file=sys.stderr)
+        return 1
+    branch = task_branch_name(meta, branch_type)
+    ok, owned, error = acquire_git_guard(args.agent, task_id)
+    if not ok:
+        print(error, file=sys.stderr)
+        return 1
+    try:
+        current = git_state().get("branch")
+        if branch_exists(branch):
+            if current != branch:
+                code, _, err = run_git(["checkout", branch])
+                if code != 0:
+                    print(f"Could not switch to {branch}: {err}", file=sys.stderr)
+                    return 1
+            action = "switched to"
+        else:
+            code, _, err = run_git(["checkout", "-b", branch, base])
+            if code != 0:
+                print(f"Could not create {branch}: {err}", file=sys.stderr)
+                return 1
+            action = "created"
+        meta["branch"] = branch
+        meta["updated"] = iso()
+        body = body.rstrip("\n") + f"\n- {iso()} {action} branch {branch} from {base} by {args.agent}\n"
+        write_task(path, meta, body)
+        write_board(load_tasks())
+    finally:
+        release_git_guard(owned, args.agent)
+    if args.json:
+        print(json.dumps({"task": task_id, "branch": branch, "base": base, "action": action}, indent=2))
+    else:
+        print(f"{action.capitalize()} {branch} from {base}.")
+        print(f"Task {task_id} now points at that branch. Commit only files you own.")
+    return 0
+
+
+def cmd_git_commit(args) -> int:
+    path = find_task(args.task)
+    if not path:
+        print(f"No task with id {args.task}.", file=sys.stderr)
+        return 1
+    if os.path.dirname(path) != ACTIVE_DIR:
+        print("The task is already in done/; no commit is needed.", file=sys.stderr)
+        return 1
+    meta, body = parse_task(path)
+    task_id = str(meta.get("id"))
+    owner_error = task_owner_error(meta, args.agent, args.force)
+    if owner_error:
+        print(owner_error, file=sys.stderr)
+        return 1
+    branch = str(meta.get("branch") or "")
+    if not branch:
+        print(f"Task {task_id} has no branch. Run `ai git start --task {task_id} --agent {args.agent}`.", file=sys.stderr)
+        return 1
+    current = git_state().get("branch")
+    if current != branch:
+        print(f"Current branch is {current}, but task {task_id} uses {branch}.", file=sys.stderr)
+        return 1
+    if args.type not in COMMIT_TYPES:
+        print(f"Unknown commit type '{args.type}'. Use one of: {', '.join(COMMIT_TYPES)}.", file=sys.stderr)
+        return 1
+    message = " ".join(args.message.split())
+    if not message:
+        print("Commit message is empty.", file=sys.stderr)
+        return 1
+    scope = (args.scope or "").strip()
+    if scope and not re.fullmatch(r"[a-z0-9_.-]+", scope):
+        print("Scope must be lowercase letters, digits, dot, dash or underscore.", file=sys.stderr)
+        return 1
+    subject = f"{args.type}({scope}): {message}" if scope else f"{args.type}: {message}"
+    state = git_state()
+    if not state.get("staged") and not args.allow_empty:
+        print("Nothing is staged. Stage only the files you own, then retry.", file=sys.stderr)
+        return 1
+    if args.verify:
+        uncovered, _ = uncovered_staged(state)
+        if uncovered:
+            print("Refusing commit; staged paths have no held file lock:", file=sys.stderr)
+            for item in uncovered:
+                print(f"  {item}", file=sys.stderr)
+            return 1
+    ok, owned, error = acquire_git_guard(args.agent, task_id)
+    if not ok:
+        print(error, file=sys.stderr)
+        return 1
+    try:
+        trailers = f"Task: {task_id}\nAgent: {args.agent}"
+        body_text = (args.body.strip() + "\n\n" + trailers) if args.body else trailers
+        commit_args = ["commit", "-m", subject, "-m", body_text]
+        if args.allow_empty:
+            commit_args.append("--allow-empty")
+        code, _, err = run_git(commit_args)
+        if code != 0:
+            print(f"git commit failed: {err}", file=sys.stderr)
+            return 1
+        _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
+        meta["updated"] = iso()
+        body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
+        write_task(path, meta, body)
+        write_board(load_tasks())
+        amended = commit_task_metadata(path, "", amend=True)
+        if amended:
+            short = amended
+    finally:
+        release_git_guard(owned, args.agent)
+    if args.json:
+        print(json.dumps({"task": task_id, "branch": branch, "commit": short, "subject": subject}, indent=2))
+    else:
+        print(f"{short} {subject}")
+    return 0
+
+
+def cmd_git_finish(args) -> int:
+    path = find_task(args.task)
+    if not path:
+        print(f"No task with id {args.task}.", file=sys.stderr)
+        return 1
+    meta, body = parse_task(path)
+    task_id = str(meta.get("id"))
+    branch = str(meta.get("branch") or "")
+    if not branch:
+        print(f"Task {task_id} has no branch to merge.", file=sys.stderr)
+        return 1
+    status = str(meta.get("status") or "")
+    if status not in ("review", "done") and not args.force:
+        print(
+            f"Task {task_id} is {status or 'unknown'}; move it to review after a separate "
+            "verification, or use --force.",
+            file=sys.stderr,
+        )
+        return 1
+    state = git_state()
+    if state.get("dirty"):
+        print("Working tree is dirty. Commit or stash before merging.", file=sys.stderr)
+        return 1
+    if not branch_exists(branch):
+        print(f"Task branch '{branch}' does not exist.", file=sys.stderr)
+        return 1
+    config = git_config()
+    integration = config["integration"]
+    if not branch_exists(integration):
+        print(f"Integration branch '{integration}' is missing. Run `ai git setup`.", file=sys.stderr)
+        return 1
+    ok, owned, error = acquire_git_guard(args.agent, task_id)
+    if not ok:
+        print(error, file=sys.stderr)
+        return 1
+    try:
+        check = subprocess.run(
+            [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict"],
+            cwd=PROJECT,
+        )
+        if check.returncode != 0:
+            print("ai check --strict failed; refusing to merge.", file=sys.stderr)
+            return 1
+        current = git_state().get("branch")
+        if current != branch:
+            code, _, err = run_git(["checkout", branch])
+            if code != 0:
+                print(f"Could not switch to {branch}: {err}", file=sys.stderr)
+                return 1
+        code, _, err = run_git(["checkout", integration])
+        if code != 0:
+            print(f"Could not switch to {integration}: {err}", file=sys.stderr)
+            return 1
+        merge_message = f"merge: {branch} ({task_id})"
+        code, _, err = run_git(["merge", "--no-ff", branch, "-m", merge_message])
+        if code != 0:
+            run_git(["merge", "--abort"])
+            print(f"Merge failed and was aborted: {err}", file=sys.stderr)
+            return 1
+        _, merged_head, _ = run_git(["rev-parse", "--short", "HEAD"])
+        deleted = False
+        if config["deleteAfterMerge"]:
+            code, _, err = run_git(["branch", "-d", branch])
+            if code == 0:
+                deleted = True
+            else:
+                print(f"WARN  merged, but could not delete {branch}: {err}", file=sys.stderr)
+            meta["branch"] = None
+        meta["merged_into"] = integration
+        meta["merged_at"] = iso()
+        meta["updated"] = iso()
+        body = body.rstrip("\n") + f"\n- {iso()} merged {branch} into {integration} by {args.agent}\n"
+        write_task(path, meta, body)
+        write_board(load_tasks())
+        commit_task_metadata(path, f"chore(task): record merge {task_id}")
+    finally:
+        release_git_guard(owned, args.agent)
+    if args.json:
+        print(json.dumps({
+            "task": task_id,
+            "branch": branch,
+            "integration": integration,
+            "mergeCommit": merged_head,
+            "branchDeleted": deleted,
+        }, indent=2))
+    else:
+        print(f"Merged {branch} into {integration} ({merged_head}).")
+        print("Branch deleted." if deleted else "Branch kept.")
+    return 0
+
+
+def cmd_git(args) -> int:
+    if args.action == "setup":
+        return cmd_git_setup(args)
+    if args.action == "start":
+        return cmd_git_start(args)
+    if args.action == "commit":
+        return cmd_git_commit(args)
+    if args.action == "finish":
+        return cmd_git_finish(args)
+    if args.action == "begin":
+        result = acquire_lock("@git/index", agent=args.agent, task=args.task, ttl=args.ttl)
+        if not result["ok"]:
+            holder = result["holder"] or {}
+            print(
+                f"git index is locked by {holder.get('agent')} (task {holder.get('task') or '-'}).",
+                file=sys.stderr,
+            )
+            return 1
+        print("Acquired @git/index. Stage and commit only what you own, then run `ai git end`.")
+        return 0
+    if args.action == "end":
+        return release_lock("@git/index", agent=args.agent, force=args.force)
+    state = git_state()
+    if not state.get("repo"):
+        print("Not a git repository; nothing to verify.")
+        return 0
+    uncovered, locks = uncovered_staged(state)
     if args.json:
         print(json.dumps({"staged": state.get("staged", []), "uncovered": uncovered, "locks": locks}, indent=2))
     else:
@@ -2165,14 +3105,15 @@ CAPABILITIES = {
         "doctor": "workspace health; --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
         "status": "tasks, locks, checkpoints, handoffs; --json",
-        "task": "new | list | show | ready | next | claim | release | done | block | unblock",
+        "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
+        "task": "new | list | show | ready | next | claim | release | review | done | discard | block | unblock",
         "lock": "acquire | release | heartbeat | status",
         "checkpoint": "save resumable context",
         "resume": "print a compact resume brief with drift",
         "brief": "print a paste-ready brief for an external chat AI",
         "handoff": "write a marker and checkpoint for another agent",
         "recover": "detect or repair inconsistent state; --apply, --json",
-        "git": "begin | end | verify the shared git index",
+        "git": "setup | start | commit | finish | begin | end | verify",
         "artifact": "put | list | clean",
         "clean": "remove stale locks and logs",
         "capabilities": "this contract",
@@ -2225,6 +3166,17 @@ def cmd_lock(args) -> int:
 
 
 def cmd_artifact(args) -> int:
+    if args.action in ("put", "clean"):
+        try:
+            with workspace_state_guard():
+                return cmd_artifact_inner(args)
+        except RuntimeError as exc:
+            print(f"Cannot update artifacts: {exc}.", file=sys.stderr)
+            return 1
+    return cmd_artifact_inner(args)
+
+
+def cmd_artifact_inner(args) -> int:
     ensure_dirs()
     manifest = read_json(MANIFEST_PATH) or []
     if args.action == "put":
@@ -2285,22 +3237,27 @@ def cmd_artifact(args) -> int:
 
 def cmd_clean(args) -> int:
     removed = 0
-    if args.stale_locks:
-        _, stale_after = lock_settings()
-        for lock in list_locks():
-            if lock_is_stale(lock, stale_after):
-                try:
-                    os.remove(os.path.join(LOCKS_DIR, lock["_file"]))
-                    removed += 1
-                    print(f"Removed stale lock: {lock.get('resource')}")
-                except OSError:
-                    pass
-    if args.logs:
-        for name in os.listdir(LOGS_DIR):
-            path = os.path.join(LOGS_DIR, name)
-            if os.path.isfile(path) and name != ".gitkeep":
-                os.remove(path)
-                removed += 1
+    try:
+        with workspace_state_guard():
+            if args.stale_locks:
+                _, stale_after = lock_settings()
+                for lock in list_locks():
+                    if lock_is_stale(lock, stale_after):
+                        try:
+                            os.remove(os.path.join(LOCKS_DIR, lock["_file"]))
+                            removed += 1
+                            print(f"Removed stale lock: {lock.get('resource')}")
+                        except OSError:
+                            pass
+            if args.logs:
+                for name in os.listdir(LOGS_DIR):
+                    path = os.path.join(LOGS_DIR, name)
+                    if os.path.isfile(path) and name != ".gitkeep":
+                        os.remove(path)
+                        removed += 1
+    except RuntimeError as exc:
+        print(f"Cannot clean workspace state: {exc}.", file=sys.stderr)
+        return 1
     print(f"Cleaned {removed} item(s).")
     return 0
 
@@ -2391,11 +3348,22 @@ def build_parser() -> argparse.ArgumentParser:
     task_release.add_argument("--force", action="store_true")
     task_release.set_defaults(func=cmd_task_release)
 
+    task_review = task_sub.add_parser("review", help="submit an owned task for independent review")
+    task_review.add_argument("task_id")
+    task_review.add_argument("--agent", required=True)
+    task_review.set_defaults(func=cmd_task_review)
+
     task_done = task_sub.add_parser("done", help="mark a task done and archive it")
     task_done.add_argument("task_id")
     task_done.add_argument("--agent", required=True)
     task_done.add_argument("--force", action="store_true")
     task_done.set_defaults(func=cmd_task_done)
+
+    task_discard = task_sub.add_parser(
+        "discard", help="permanently remove one unwanted task (interactive operator action)"
+    )
+    task_discard.add_argument("task_id")
+    task_discard.set_defaults(func=cmd_task_discard)
 
     task_block = task_sub.add_parser("block", help="mark a task blocked")
     task_block.add_argument("task_id")
@@ -2476,8 +3444,37 @@ def build_parser() -> argparse.ArgumentParser:
     recover.add_argument("--json", action="store_true")
     recover.set_defaults(func=cmd_recover)
 
-    git = sub.add_parser("git", help="coordinate the shared git index")
+    git = sub.add_parser("git", help="Gitflow branches, commits and guarded merges")
     git_sub = git.add_subparsers(dest="action", required=True)
+    git_setup = git_sub.add_parser("setup", help="install the commit template and integration branch")
+    git_setup.add_argument("--json", action="store_true")
+    git_setup.set_defaults(func=cmd_git)
+    git_start = git_sub.add_parser("start", help="create or switch to a task branch")
+    git_start.add_argument("--task", required=True)
+    git_start.add_argument("--agent", required=True)
+    git_start.add_argument("--type", default="feature")
+    git_start.add_argument("--base", default=None)
+    git_start.add_argument("--force", action="store_true")
+    git_start.add_argument("--json", action="store_true")
+    git_start.set_defaults(func=cmd_git)
+    git_commit = git_sub.add_parser("commit", help="commit staged files with a Conventional Commit message")
+    git_commit.add_argument("--task", required=True)
+    git_commit.add_argument("--agent", required=True)
+    git_commit.add_argument("--type", default="feat", choices=COMMIT_TYPES)
+    git_commit.add_argument("--scope", default=None)
+    git_commit.add_argument("--message", required=True)
+    git_commit.add_argument("--body", default="")
+    git_commit.add_argument("--allow-empty", action="store_true")
+    git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
+    git_commit.add_argument("--force", action="store_true")
+    git_commit.add_argument("--json", action="store_true")
+    git_commit.set_defaults(func=cmd_git)
+    git_finish = git_sub.add_parser("finish", help="check, no-ff merge the task branch, and clean up")
+    git_finish.add_argument("--task", required=True)
+    git_finish.add_argument("--agent", required=True)
+    git_finish.add_argument("--force", action="store_true")
+    git_finish.add_argument("--json", action="store_true")
+    git_finish.set_defaults(func=cmd_git)
     git_begin = git_sub.add_parser("begin", help="take the @git/index lock")
     git_begin.add_argument("--agent", required=True)
     git_begin.add_argument("--task", default=None)
@@ -2516,6 +3513,10 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument("--stale-locks", action="store_true")
     clean.add_argument("--logs", action="store_true")
     clean.set_defaults(func=cmd_clean)
+
+    reset = sub.add_parser("reset", help="reset .ai operational state (interactive operator action)")
+    reset.add_argument("--hard", action="store_true", help="remove task/spec/decision/runtime state after confirmation")
+    reset.set_defaults(func=cmd_reset)
 
     version = sub.add_parser("version", help="print the workspace version")
     version.set_defaults(func=cmd_version)

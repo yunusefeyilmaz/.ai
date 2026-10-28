@@ -13,6 +13,24 @@
     "reviewer",
     "qa"
   ],
+  "orchestration": {
+    "maxParallel": 3
+  },
+  "git": {
+    "integrationBranch": "develop",
+    "productionBranch": "main",
+    "branchTypes": [
+      "feature",
+      "fix",
+      "chore",
+      "docs",
+      "refactor",
+      "hotfix"
+    ],
+    "commitTemplate": "templates/git/commit-template.txt",
+    "merge": "no-ff",
+    "deleteAfterMerge": true
+  },
   "locks": {
     "defaultTtlSeconds": 1800,
     "staleAfterSeconds": 3600,

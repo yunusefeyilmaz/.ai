@@ -27,7 +27,7 @@ recovery much cheaper.
 | Shape | What you do | Result |
 |-------|-------------|--------|
 | **Template** | Copy this repository's contents into the project root | Works immediately; root `AGENTS.md` is the entry point |
-| **Subfolder** | Clone into `.ai/` and run `ai adopt` once | Root pointer files are committed; later clones need nothing |
+| **Subfolder** | Clone into `.ai/` and run `ai adopt` | `.ai/` and local root pointers are ignored; each clone runs adopt |
 
 The subfolder shape is the common one:
 
@@ -37,8 +37,10 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 ```
 
 `adopt` writes a managed pointer block into `AGENTS.md`, `CLAUDE.md`,
-`.cursor/rules/ai-workspace.mdc` and `.github/copilot-instructions.md`. Commit
-those four files and the install is finished. `adopt --check` is suitable for CI;
+`.cursor/rules/ai-workspace.mdc` and `.github/copilot-instructions.md`, then adds
+those paths and `.ai/` to the host project's `.gitignore`. It creates
+`.gitignore` if needed and appends only missing rules. Each clone runs `adopt`
+locally. `adopt --check` verifies local pointers and ignore rules;
 `adopt --print` emits a bootstrap prompt for tools that cannot read files.
 
 Python is optional. Without it, the same protocol is followed by editing the
@@ -50,16 +52,28 @@ Markdown and JSON files directly.
 ai doctor                                  # is the workspace intact?
 ai task new "Export invoices as CSV"       # creates tasks/active/0001-...
 ai task claim 0001 --agent implementer     # takes the task lease
-ai lock acquire src/billing --agent implementer --task 0001
-# ... edit, test ...
+ai git setup                               # once per clone
+ai git start --task 0001 --agent implementer --type feature
+# ... edit the task's files ...
+git add <files-you-own>
+ai git verify --strict
+ai git commit --task 0001 --agent implementer --type feat --message "add CSV export"
 ai checkpoint 0001 --agent implementer --percent 70 --next "write the CSV writer"
 ai check --fast                            # iteration gate
-ai check                                   # the real gate
-ai task done 0001 --agent implementer      # archives the task, frees the lease
+ai check --strict                          # required before review
+ai task review 0001 --agent implementer    # records review state
+ai task release 0001 --agent implementer   # reviewer takes over
+ai git finish --task 0001 --agent reviewer # guarded no-ff merge
+ai task done 0001 --agent reviewer         # archives after verification
 ```
 
 If the session ends before `done`, run `ai handoff`; a fresh session starts with
 `ai resume` and a drift report. The full command surface is in `GUIDE.md`.
+
+Git work follows a local Gitflow loop: task branches start from `develop`
+(hotfixes from `main`), commits include task and agent trailers, and reviewed
+branches merge back with a guarded no-ff merge. See [`docs/git-workflow.md`](docs/git-workflow.md)
+for setup, branch naming and the full review flow.
 
 ## How the pieces fit
 
@@ -80,8 +94,9 @@ your-project/
     └── runtime/         leases, checkpoints, handoffs, artifacts, logs
 ```
 
-The split matters: `.ai/` is agent territory, the rest is product territory. The
-only thing an agent should write outside `.ai/` is product code or product docs.
+The split matters: `.ai/` is agent territory, the rest is product territory.
+`ai adopt` is the explicit operator action that creates ignored local pointers
+and ignore rules at the project root.
 
 ## Work states
 
@@ -151,8 +166,8 @@ Adapters do not restate rules; they point a tool at `.ai/AGENTS.md`.
 | Codex | `AGENTS.md` |
 | Other | Paste `adapters/generic/README.md` into the session |
 
-`ai adopt` generates the first four. Manual instructions remain in
-`adapters/`.
+`ai adopt` generates the first four locally and adds them to `.gitignore`.
+Manual instructions remain in `adapters/`.
 
 ## Chat-only assistants
 

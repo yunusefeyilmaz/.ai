@@ -250,7 +250,7 @@ with a complete brief for a stranger, then `.ai/scripts/ai handoff <id> --agent
 
 ## Checklist before starting a fleet
 
-- [ ] Root adapters committed (`ai adopt --check` passes).
+- [ ] Root adapters and ignore rules created locally (`ai adopt --check` passes).
 - [ ] `ai doctor --strict` green on a clean checkout.
 - [ ] Each task has acceptance criteria and a known file surface.
 - [ ] Dependencies encoded with `depends_on`.

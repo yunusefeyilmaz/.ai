@@ -27,14 +27,19 @@ Then:
    `.ai/scripts/ai lock acquire <path> --agent <AGENT_NAME> --task <id>`
 5. Implement only the acceptance criteria. Add or update tests. Keep every
    AI-generated note inside .ai/.
-6. Run `.ai/scripts/ai check --fast` while iterating.
-7. Save context at milestones:
+6. For Git work, run `.ai/scripts/ai git setup` once per clone, start the task
+   branch with `.ai/scripts/ai git start`, then stage only owned files and run
+   `.ai/scripts/ai git verify --strict` before committing with `.ai/scripts/ai git commit`.
+   Follow `.ai/docs/git-workflow.md`.
+7. Run `.ai/scripts/ai check --fast` while iterating.
+8. Save context at milestones:
    `.ai/scripts/ai checkpoint <id> --agent <AGENT_NAME> --next "<next step>"`
-8. Before finishing, run `.ai/scripts/ai check --strict` and paste the result
+9. Before finishing, run `.ai/scripts/ai check --strict` and paste the result
    into the task log.
-9. Release your file leases. If the mode and evidence allow it, finish with
-   `.ai/scripts/ai task done <id> --agent <AGENT_NAME>`; otherwise set the task
-   to review for a different session.
+10. Release your file leases. For review, run `.ai/scripts/ai task review <id>
+    --agent <AGENT_NAME>` followed by `.ai/scripts/ai task release <id> --agent
+    <AGENT_NAME>`. A different session reviews and merges. Only mark the task
+    done after verification and merge.
 
 Hard rules:
 - Never claim or edit a task owned by another agent.

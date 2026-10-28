@@ -50,10 +50,14 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 | `.cursor/rules/ai-workspace.mdc` | Cursor |
 | `.github/copilot-instructions.md` | GitHub Copilot |
 
-Commit them once. Every later clone is then self-wiring. Useful variants:
+It also creates or updates the host project's `.gitignore` with `.ai/`, these
+four pointer files, and the optional generated AI workflow. The pointer files
+are local and ignored, so each clone runs `ai adopt` for its own setup.
+
+Useful variants:
 
 ```sh
-ai adopt --check     # non-zero if a pointer is missing (CI guard)
+ai adopt --check     # non-zero if a pointer or ignore rule is missing
 ai adopt --print     # bootstrap prompt for a chat-only tool
 ai adopt --ci        # add .github/workflows/ai-check.yml as well
 ```
@@ -131,9 +135,11 @@ ai task ready [--json]                 # claimable: todo, deps done, no live lea
 ai task next --agent <name> [--json]   # atomic claim of the best ready task
 ai task claim <id> --agent <name> [--force]
 ai task release <id> --agent <name> [--force]
+ai task review <id> --agent <name>
 ai task block <id> --agent <name> --reason "<why>"
 ai task unblock <id> --agent <name>
 ai task done <id> --agent <name> [--force]
+ai task discard <id>              # interactive operator action; permanent
 ```
 
 Claim rules:
@@ -143,6 +149,12 @@ Claim rules:
 - `--force` overrides both; record why in the task log.
 - Re-claiming with the same agent name refreshes the lease instead of failing.
 - `done` archives the file and makes it immutable.
+- `discard` is reserved for a human operator. It requires a terminal and the
+  exact phrase `discard task <id>`, refuses any task lock, and removes only that
+  task, its matching linked spec, and its checkpoint/handoff files. It does not
+  delete code, branches, or commits. The CLI can require an interactive
+  confirmation, but it cannot authenticate that the caller is a human; agents
+  may invoke it only when the user directly requests the discard.
 
 ### Leases
 
@@ -183,14 +195,23 @@ erased.
 ### Git coordination
 
 ```sh
+ai git setup
+ai git start --task <id> --agent <name> --type <branch-type>
+ai git commit --task <id> --agent <name> --type <commit-type> --message "<subject>"
+ai task review <id> --agent <name>
+ai task release <id> --agent <name>
+ai git finish --task <id> --agent <reviewer>
 ai git begin  --agent <name> --task <id> [--ttl 300]
 ai git end    --agent <name> [--force]
 ai git verify [--strict] [--json]
 ```
 
-Use `begin` immediately before staging and `end` immediately after committing.
-`verify` checks that every staged path is covered by a held file lease. Better
-than a global index lease: give each parallel agent its own `git worktree`.
+Run setup once per clone. Each task gets its own branch, and the implementer
+submits it for review before releasing the task claim. A different reviewer
+runs `ai git finish`, which checks the tree and workspace, then merges with
+`--no-ff`. `verify` checks that every staged path is covered by a held file
+lease. Use `begin` and `end` only when multiple sessions share one index; separate
+worktrees avoid that contention. See `docs/git-workflow.md` for the full loop.
 
 ### Artifacts and repair
 
@@ -200,7 +221,18 @@ ai artifact list [--json]
 ai artifact clean --all
 ai recover [--apply] [--json]
 ai clean [--stale-locks] [--logs]
+ai reset --hard              # interactive reset of project task/spec/decision/runtime state
 ```
+
+`ai reset --hard` is an operator action for returning the workspace ledger to
+its clean template baseline. It requires no lock files and the exact terminal
+phrase `reset .ai hard`. It clears active/done task and spec records, numbered
+ADRs, checkpoints, handoffs, quarantined artifacts, logs and the task counter,
+then regenerates an empty board. It preserves decision-folder scaffolding
+(`README.md`, `TEMPLATE.md`, `.gitkeep`), framework docs, configuration, templates,
+adapters and the host repository's commits and branches. State-changing CLI
+commands are serialized against the reset. Agents must only run it when the
+user explicitly asks for a reset.
 
 `recover` is safe to run at any time; without `--apply` it only reports.
 

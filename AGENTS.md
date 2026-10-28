@@ -34,6 +34,12 @@ state lives under `.ai/`. The project outside it is product territory.
 11. **Never bypass a live lock.** Do not delete lock files. Wait for TTL,
     heartbeat if you are the owner, or run `ai recover --apply` for structural
     leftovers.
+12. **Do not discard tasks.** `ai task discard` is a permanent, interactive
+    operator action; agents may invoke it only when the user explicitly directs
+    the discard.
+13. **Do not hard reset the workspace.** `ai reset --hard` clears task/spec and
+    runtime state; agents may invoke it only when the user explicitly requests
+    a reset.
 
 ## Start of session
 
@@ -74,6 +80,7 @@ ai task ready
 ai task next --agent <name>
 ai task claim <id> --agent <name>
 ai task release <id> --agent <name>
+ai task review <id> --agent <name>
 ai task done <id> --agent <name>
 ai task block <id> --agent <name> --reason "<why>"
 ai task unblock <id> --agent <name>
@@ -85,9 +92,16 @@ ai resume <id>
 ai recover [--apply]
 ai git begin --agent <name> --task <id>
 ai git end --agent <name>
+ai git setup
+ai git start --task <id> --agent <name> --type <type>
+ai git commit --task <id> --agent <name> --type <type> --message "<subject>"
+ai git finish --task <id> --agent <name>
 ai artifact put <path> --reason "<why>"
 ai check
 ```
+
+For branch naming, commit trailers, and reviewer merge rules, follow
+`docs/git-workflow.md`.
 
 If `ai` is unavailable, follow the same protocol by editing files directly. The
 state machine and lock file format are documented; do not invent a shortcut.

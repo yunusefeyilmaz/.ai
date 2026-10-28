@@ -12,8 +12,10 @@ where the source of truth is. Rules are never duplicated here.
 | `generic/` | Anything else | paste `generic/README.md` |
 
 `ai adopt` writes the four root files automatically with a managed block
-(`<!-- ai-workspace:start --> ... <!-- ai-workspace:end -->`). `ai adopt --check`
-reports missing ones. The adapters below remain the manual fallback.
+(`<!-- ai-workspace:start --> ... <!-- ai-workspace:end -->`) and adds them plus
+`.ai/` to the host project's `.gitignore`. These are local files; each clone
+runs `ai adopt` again. `ai adopt --check` reports missing pointers or ignore
+rules. The adapters below remain the manual fallback.
 
 ## Adding an adapter
 

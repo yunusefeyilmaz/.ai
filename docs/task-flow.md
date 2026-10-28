@@ -17,12 +17,26 @@ todo ──claim──> in_progress ──handoff──> review ──verify─�
 |--------|---------|--------|
 | `todo` | Ready, unclaimed. | author |
 | `in_progress` | An agent owns it and holds `task-<id>`. | `ai task claim` |
-| `review` | Implementation done; independent review needed. | implementer |
+| `review` | Implementation done; independent review needed. | `ai task review` |
 | `blocked` | Waiting on a human or another task; reason in the log. | owner |
 | `done` | Archived to `tasks/done/`; lock released. | `ai task done` |
 
 `done` tasks are immutable. If behavior must change after `done`, create a new
 task and link the old one under `## Notes`.
+
+An operator can permanently remove an unwanted task with `ai task discard
+<id>`. This requires an interactive terminal, an exact typed confirmation, and
+no task lock. It removes only the task, its matching linked spec, and its
+checkpoint/handoff state; it does not delete code, commits, or branches. Agents
+must not run this command unless the user explicitly requests the discard.
+
+To clear the whole workspace ledger and runtime state, an operator can run
+`ai reset --hard`. It requires all lock files to be gone and the exact
+interactive phrase `reset .ai hard`. It preserves the framework, configuration,
+host Git history and branches. It removes project task/spec records and numbered
+ADRs (`NNNN-*.md`) while preserving `docs/decisions/README.md`, `TEMPLATE.md`,
+`.gitkeep` and unrelated files. State-changing CLI commands serialize against
+the reset. Agents must not run it without an explicit user request.
 
 ## Front matter
 
@@ -96,8 +110,9 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 - **Blocked:** `ai task block 0001 --agent implementer --reason "needs API key"`.
   Unblock with `ai task unblock 0001 --agent <name>`.
-- **Review:** set `status: review`, release the task lock, and leave the diff and
-  the spec path in the log. The reviewer must be a different session.
+- **Review:** the owner runs `ai task review <id> --agent <name>` and then
+  `ai task release <id> --agent <name>`. This preserves `review` while freeing
+  the claim for a different session. Leave the diff and spec path in the log.
 - **Context limit:** `ai handoff 0001 --agent implementer --reason "context
   limit"`. The marker and checkpoint let a fresh session run `ai resume 0001`.
 

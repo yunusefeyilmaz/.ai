@@ -1,0 +1,16 @@
+<type>(<scope>): <imperative subject>
+
+Why:
+- 
+
+What:
+- 
+
+Task: 0001
+Agent: <name>
+Check: ai check --strict -> 0 errors, 0 warnings
+
+# type: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
+# subject: imperative, lower case, no trailing period, 72 chars max
+# stage only files you own; run `ai git verify --strict`
+# keep the Task, Agent and Check trailers; reviewers and `ai check` rely on them
