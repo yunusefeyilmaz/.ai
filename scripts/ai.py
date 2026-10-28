@@ -604,7 +604,7 @@ def git_config() -> dict:
     ]
     return {
         "integration": str(config.get("integrationBranch") or "develop"),
-        "production": str(config.get("productionBranch") or "main"),
+        "production": str(config.get("productionBranch") or "master"),
         "branchTypes": [str(item) for item in branch_types],
         "template": str(config.get("commitTemplate") or "templates/git/commit-template.txt"),
         "merge": str(config.get("merge") or "no-ff"),
