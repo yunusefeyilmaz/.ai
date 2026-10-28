@@ -1,13 +1,13 @@
 ---
 id: 0003
 title: "Fix Gitflow bootstrap for root and unborn repositories"
-status: in_progress
-owner: codex
+status: review
+owner: null
 priority: high
 spec: specs/active/0003-gitflow-bootstrap.md
 created: 2026-10-28T16:08:49Z
-updated: 2026-10-28T16:14:29Z
-lock: task-0003
+updated: 2026-10-28T16:15:48Z
+lock: null
 branch: fix/0003-gitflow-bootstrap
 depends_on: null
 ---
@@ -50,3 +50,6 @@ then started this task branch directly because the CLI setup defect prevented
 - Verification: `ai git setup` succeeded; `ai check --strict` -> 0 errors, 0 warnings.
 - Independent review: PASS; unborn-branch flow reviewed statically, not exercised.
 - 2026-10-28T16:14:29Z committed: fix(gitflow): handle unborn Gitflow bootstrap
+- 2026-10-28T16:15:37Z submitted for independent review by codex
+- 2026-10-28T16:15:37Z released by codex
+- 2026-10-28T16:15:48Z committed: chore(task): record review release state
