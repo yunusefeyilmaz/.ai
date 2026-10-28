@@ -83,7 +83,9 @@ for setup, branch naming and the full review flow.
 
 When `.ai` itself is a standalone Git checkout, setup uses that checkout as the
 project root. When `.ai` is adopted inside a host project, setup uses the host
-root. Unborn branch names are not treated as commit-backed Gitflow bases.
+root. New repositories start on the configured production branch regardless
+of Git's default branch name; unborn branch names are not treated as
+commit-backed Gitflow bases.
 
 ## How the pieces fit
 
