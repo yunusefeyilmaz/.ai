@@ -24,10 +24,10 @@ recovery much cheaper.
 
 ## Pick an install shape
 
-| Shape | What you do | Result |
-|-------|-------------|--------|
-| **Template** | Copy this repository's contents into the project root | Works immediately; root `AGENTS.md` is the entry point |
-| **Subfolder** | Clone into `.ai/` and run `ai adopt` | `.ai/` and local root pointers are ignored; each clone runs adopt |
+| Shape         | What you do                                           | Result                                                            |
+| ------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| **Template**  | Copy this repository's contents into the project root | Works immediately; root `AGENTS.md` is the entry point            |
+| **Subfolder** | Clone into `.ai/` and run `ai adopt`                  | `.ai/` and local root pointers are ignored; each clone runs adopt |
 
 The subfolder shape is the common one:
 
@@ -74,7 +74,7 @@ Every file-changing task must follow the local Gitflow loop unless the user
 explicitly asks not to use Git. `ai git setup` initializes Git if needed and
 creates a baseline for the branches. With no existing commit, it previews all
 non-ignored project files and asks before creating the initial commit. Start
-from a task branch on `develop` (hotfixes from `main`), use
+from a task branch on `develop` (hotfixes from `master`), use
 task/agent commit trailers, and have a separate reviewer merge with guarded
 no-ff. Agents must start the task branch before editing. Read-only work needs no
 branch. Ask approval if Git rejects the checkout's ownership. See
@@ -170,13 +170,13 @@ project root. The watch list and the rest of the configuration live in
 
 Adapters do not restate rules; they point a tool at `.ai/AGENTS.md`.
 
-| Tool | Root file |
-|------|-----------|
-| Claude Code | `CLAUDE.md` |
-| Cursor | `.cursor/rules/ai-workspace.mdc` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Codex | `AGENTS.md` |
-| Other | Paste `adapters/generic/README.md` into the session |
+| Tool           | Root file                                           |
+| -------------- | --------------------------------------------------- |
+| Claude Code    | `CLAUDE.md`                                         |
+| Cursor         | `.cursor/rules/ai-workspace.mdc`                    |
+| GitHub Copilot | `.github/copilot-instructions.md`                   |
+| Codex          | `AGENTS.md`                                         |
+| Other          | Paste `adapters/generic/README.md` into the session |
 
 `ai adopt` generates the first four locally and adds them to `.gitignore`.
 Manual instructions remain in `adapters/`.
