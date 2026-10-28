@@ -1,13 +1,13 @@
 ---
 id: 0001
 title: "Make Gitflow setup choose a valid commit-backed base"
-status: in_progress
-owner: codex
+status: review
+owner: null
 priority: high
 spec: specs/active/0001-gitflow-valid-base.md
 created: 2026-10-28T16:22:18Z
-updated: 2026-10-28T16:24:55Z
-lock: task-0001
+updated: 2026-10-28T16:25:03Z
+lock: null
 branch: fix/0001-gitflow-valid-base
 depends_on: null
 ---
@@ -50,3 +50,6 @@ from `develop` before editing implementation code.
 - Verification: `ai git setup` succeeded; `ai check --strict` -> 0 errors, 0 warnings.
 - Independent review: PASS; invalid unborn-base path reviewed statically, no tests run.
 - 2026-10-28T16:24:55Z committed: fix(gitflow): start production on configured branch
+- 2026-10-28T16:24:57Z submitted for independent review by codex
+- 2026-10-28T16:24:58Z released by codex
+- 2026-10-28T16:25:03Z committed: chore(task): record review release state
