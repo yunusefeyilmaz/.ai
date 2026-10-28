@@ -18,14 +18,14 @@ run `git init`. Ask the user to approve adding only this checkout to Git's
 `safe.directory`, then retry setup. Never use a wildcard trust entry.
 
 ```text
-main ─────────────────────────────●──────────────● (production / hotfix)
+master ─────────────────────────────●──────────────● (production / hotfix)
         \                        /              /
 develop  ●────●──────●────●──────●──────────────   (integration)
           \  /      \  /
    feature/0001   fix/0002                         (one task per branch)
 ```
 
-- `productionBranch` (default `main`) holds released code.
+- `productionBranch` (default `master`) holds released code.
 - `integrationBranch` (default `develop`) collects reviewed work.
 - Every task gets one branch from integration: `feature/`, `fix/`, `chore/`,
   `docs/`, `refactor/`.
@@ -38,7 +38,7 @@ Configure it in `config/workspace.json`:
 ```json
 "git": {
   "integrationBranch": "develop",
-  "productionBranch": "main",
+  "productionBranch": "master",
   "branchTypes": ["feature", "fix", "chore", "docs", "refactor", "hotfix"],
   "commitTemplate": "templates/git/commit-template.txt",
   "merge": "no-ff",
@@ -163,7 +163,7 @@ merges are done (`deleteAfterMerge: false` for hotfix repositories).
 
 ## What agents must not do
 
-- Do not commit directly on `main`, `develop`, or another task's branch.
+- Do not commit directly on `master`, `develop`, or another task's branch.
 - Do not use `git commit --amend` on a commit you did not create in this session.
 - Do not force-push, rebase shared branches, or delete live locks to unblock
   yourself.

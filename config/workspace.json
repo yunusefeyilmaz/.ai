@@ -18,7 +18,7 @@
   },
   "git": {
     "integrationBranch": "develop",
-    "productionBranch": "main",
+    "productionBranch": "master",
     "branchTypes": [
       "feature",
       "fix",
