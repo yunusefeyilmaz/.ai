@@ -6,10 +6,12 @@ owner: null
 priority: high
 spec: specs/active/0001-gitflow-valid-base.md
 created: 2026-10-28T16:22:18Z
-updated: 2026-10-28T16:25:03Z
+updated: 2026-10-28T16:25:21Z
 lock: null
-branch: fix/0001-gitflow-valid-base
+branch: null
 depends_on: null
+merged_into: develop
+merged_at: 2026-10-28T16:25:21Z
 ---
 
 # 0001 - Make Gitflow setup choose a valid commit-backed base
@@ -53,3 +55,4 @@ from `develop` before editing implementation code.
 - 2026-10-28T16:24:57Z submitted for independent review by codex
 - 2026-10-28T16:24:58Z released by codex
 - 2026-10-28T16:25:03Z committed: chore(task): record review release state
+- 2026-10-28T16:25:21Z merged fix/0001-gitflow-valid-base into develop by reviewer
