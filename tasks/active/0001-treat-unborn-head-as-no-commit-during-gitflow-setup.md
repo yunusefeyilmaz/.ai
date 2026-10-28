@@ -1,13 +1,13 @@
 ---
 id: 0001
 title: "Treat unborn HEAD as no commit during Gitflow setup"
-status: in_progress
-owner: codex
+status: review
+owner: null
 priority: high
 spec: specs/active/0001-unborn-head-detection.md
 created: 2026-10-28T16:34:03Z
-updated: 2026-10-28T16:36:07Z
-lock: task-0001
+updated: 2026-10-28T16:36:15Z
+lock: null
 branch: fix/0001-unborn-head-detection
 depends_on: null
 ---
@@ -44,3 +44,6 @@ started directly from `develop` before editing implementation code.
 - Verification: `ai git setup` succeeded in committed repository; `ai check --strict` -> 0 errors, 0 warnings.
 - Independent review: PASS; unborn `HEAD` no longer resolves to a base. No isolated unborn-repository test was run.
 - 2026-10-28T16:36:07Z committed: fix(git-state): ignore unresolved unborn HEAD
+- 2026-10-28T16:36:11Z submitted for independent review by codex
+- 2026-10-28T16:36:11Z released by codex
+- 2026-10-28T16:36:15Z committed: chore(task): record review release state
