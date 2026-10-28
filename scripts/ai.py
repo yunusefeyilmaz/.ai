@@ -621,8 +621,17 @@ def git_template_path() -> str:
 
 def branch_exists(name: str) -> bool:
     # A symbolic unborn branch is not a usable Gitflow base.
-    code, _, _ = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{name}^{{commit}}"])
+    return git_commit_id(f"refs/heads/{name}") is not None
+
+
+def branch_ref_exists(name: str) -> bool:
+    code, _, _ = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{name}"])
     return code == 0
+
+
+def git_commit_id(revision: str) -> str | None:
+    code, commit, _ = run_git(["rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}"])
+    return commit if code == 0 and commit else None
 
 
 def git_clean() -> bool:
@@ -2733,11 +2742,17 @@ def cmd_git_setup(args) -> int:
 
     initialized = False
     if not state.get("repo"):
-        code, _, err = run_git(["init"])
+        production = git_config()["production"]
+        code, _, err = run_git(["init", f"--initial-branch={production}"])
+        if code != 0 and any(
+            marker in err.lower()
+            for marker in ("unknown option", "unrecognized option", "unknown switch")
+        ):
+            code, _, err = run_git(["init"])
         if code != 0:
             print(f"Could not initialize Git in {PROJECT}: {err}", file=sys.stderr)
             return 1
-        code, _, err = run_git(["symbolic-ref", "HEAD", f"refs/heads/{git_config()['production']}"])
+        code, _, err = run_git(["symbolic-ref", "HEAD", f"refs/heads/{production}"])
         if code != 0:
             print(f"Could not select the production branch: {err}", file=sys.stderr)
             return 1
@@ -2763,6 +2778,13 @@ def cmd_git_setup(args) -> int:
     created_production = False
     created_integration = False
     created_baseline = False
+    if branch_ref_exists(config["production"]) and not branch_exists(config["production"]):
+        print(
+            f"Production branch '{config['production']}' exists but does not resolve to a commit. "
+            "Repair that ref manually before rerunning setup.",
+            file=sys.stderr,
+        )
+        return 1
     if not state.get("head"):
         refs_code, refs_output, refs_err = run_git([
             "for-each-ref", "--format=%(refname:short)", "refs/heads",
@@ -2770,21 +2792,22 @@ def cmd_git_setup(args) -> int:
         if refs_code != 0:
             print(f"Could not inspect local Git branches: {refs_err}", file=sys.stderr)
             return 1
-        refs = []
+        refs: list[tuple[str, str]] = []
         for line in refs_output.splitlines():
             candidate = line.strip()
             if not candidate:
                 continue
-            valid_code, _, _ = run_git([
-                "rev-parse", "--verify", "--quiet", f"refs/heads/{candidate}^{{commit}}",
-            ])
-            if valid_code == 0:
-                refs.append(candidate)
+            commit = git_commit_id(f"refs/heads/{candidate}")
+            if commit:
+                refs.append((candidate, commit))
         if branch_exists(config["production"]):
             pass
         elif refs:
-            base = state.get("branch") if state.get("branch") in refs else refs[0]
-            code, _, err = run_git(["branch", config["production"], base])
+            current_ref = f"refs/heads/{state.get('branch')}"
+            base_commit = next(
+                (commit for ref, commit in refs if ref == current_ref), refs[0][1],
+            )
+            code, _, err = run_git(["branch", config["production"], base_commit])
             if code != 0:
                 print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
                 return 1
@@ -2813,16 +2836,34 @@ def cmd_git_setup(args) -> int:
             print("Gitflow setup could not establish a committed production base.", file=sys.stderr)
             return 1
     elif not branch_exists(config["production"]):
-        base = state.get("branch")
-        if not base or base == "detached":
-            base = "HEAD"
-        code, _, err = run_git(["branch", config["production"], base])
+        base_commit = state.get("head") or git_commit_id("HEAD")
+        if not base_commit:
+            print("Cannot create the production branch: current HEAD has no commit.", file=sys.stderr)
+            return 1
+        code, _, err = run_git(["branch", config["production"], base_commit])
         if code != 0:
             print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
             return 1
         created_production = True
     if not branch_exists(config["integration"]):
-        code, _, err = run_git(["branch", config["integration"], config["production"]])
+        if branch_ref_exists(config["integration"]):
+            print(
+                f"Integration branch '{config['integration']}' exists but does not resolve to a commit. "
+                "Repair that ref manually before rerunning setup.",
+                file=sys.stderr,
+            )
+            return 1
+        production_commit = git_commit_id(f"refs/heads/{config['production']}")
+        if not production_commit:
+            print(
+                f"Cannot create integration branch '{config['integration']}': "
+                f"production branch '{config['production']}' has no commit.",
+                file=sys.stderr,
+            )
+            return 1
+        code, _, err = run_git([
+            "branch", config["integration"], production_commit,
+        ])
         if code != 0:
             print(f"Could not create integration branch '{config['integration']}': {err}", file=sys.stderr)
             return 1
