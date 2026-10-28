@@ -572,8 +572,10 @@ def git_state() -> dict:
     if branch_code != 0 or not branch:
         _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
     state["branch"] = branch if branch and branch != "HEAD" else "detached"
-    _, head, _ = run_git(["rev-parse", "HEAD"])
-    state["head"] = head or None
+    head_code, head, _ = run_git([
+        "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
+    ])
+    state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
     _, status, _ = run_git(["status", "--porcelain"])
     for line in status.splitlines():
         if len(line) < 3:
