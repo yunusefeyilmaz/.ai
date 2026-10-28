@@ -6,12 +6,16 @@ local Gitflow loop:
 
 ## When this workflow is required
 
-Every task that changes repository files in a Git repository must use this
-workflow. A task claim alone does not authorize editing: initialize Gitflow if
-needed, claim the task, and successfully start its task branch before the first
-edit. If `ai git start` fails, stop before changing files and report the reason.
-Read-only tasks do not need a branch. If the workspace is not inside a Git
-repository, use the task workflow without Git commands.
+Every task that changes files must use this workflow unless the user explicitly
+asks not to use Git. Run `ai git setup` before file-changing work; it initializes
+Git if `.git` is absent and creates the configured branches if needed. Then
+claim the task and successfully start its task branch before the first edit. If
+`ai git start` fails, stop before changing files and report the reason. Read-only
+tasks do not need a branch.
+
+If Git reports dubious ownership, do not treat the folder as non-Git and do not
+run `git init`. Ask the user to approve adding only this checkout to Git's
+`safe.directory`, then retry setup. Never use a wildcard trust entry.
 
 ```text
 main ─────────────────────────────●──────────────● (production / hotfix)
@@ -42,17 +46,20 @@ Configure it in `config/workspace.json`:
 }
 ```
 
-## One-time setup
+## Setup before file-changing tasks
 
 ```sh
 ai git setup
 ```
 
 This sets the local `commit.template` to
-`templates/git/commit-template.txt` and creates the integration branch from
-production (or from the current branch) when it is missing. It is idempotent.
-Run it when first using this workspace in a clone. If setup status is unknown,
-rerun it before the next file-changing task.
+`templates/git/commit-template.txt` and creates the configured production and
+integration branches when missing. If no Git repository exists, it initializes
+one. If a repository has no commits, setup previews the non-ignored project
+files and asks for an exact interactive confirmation before creating the
+initial production commit. Non-interactive setup and declined confirmation do
+not stage or commit project files. Setup is idempotent; run it when first using
+this workspace in a clone, and rerun it if setup status is unknown.
 
 The template is also a contract:
 

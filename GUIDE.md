@@ -206,10 +206,14 @@ ai git end    --agent <name> [--force]
 ai git verify [--strict] [--json]
 ```
 
-In a Git repository, every file-changing task must use this flow. Run setup once
-per clone, claim the task, then start its task branch before editing; stop if
-branch creation fails. Read-only tasks need no branch, and non-Git folders skip
-Gitflow. The implementer submits the committed task for review before releasing
+Every file-changing task must use this flow unless the user explicitly asks not
+to use Git. Setup initializes Git and creates the base branches when missing.
+If no commit exists, it previews the non-ignored project files and asks for
+confirmation before the initial commit; non-interactive setup does not stage or
+commit them. Claim the task, then start its task branch before editing; stop if setup or branch creation
+fails. Read-only tasks need no branch. If Git reports dubious ownership, request
+approval to trust only this checkout. The implementer submits
+the committed task for review before releasing
 the claim. A different reviewer runs `ai git finish`, which checks the tree and
 workspace, then merges with `--no-ff`. `verify` checks that every staged path is
 covered by a held file lease. Use `begin` and `end` only when multiple sessions

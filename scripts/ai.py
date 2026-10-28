@@ -23,7 +23,7 @@ import sys
 import tempfile
 import time
 
-VERSION = "0.3.0"
+VERSION = "0.3.2"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -509,11 +509,14 @@ def load_tasks() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def run_git(args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
+def run_git(
+    args: list[str], cwd: str | None = None, input_text: str | None = None
+) -> tuple[int, str, str]:
     try:
         result = subprocess.run(
             ["git"] + args,
             cwd=cwd or PROJECT,
+            input=input_text,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -525,12 +528,15 @@ def run_git(args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
 
 
 def git_state() -> dict:
-    state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": []}
-    code, top, _ = run_git(["rev-parse", "--show-toplevel"])
+    state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
+    code, top, err = run_git(["rev-parse", "--show-toplevel"])
     if code != 0 or not top:
+        state["error"] = err or None
         return state
     state["repo"] = True
-    _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    branch_code, branch, _ = run_git(["symbolic-ref", "--short", "HEAD"])
+    if branch_code != 0 or not branch:
+        _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
     state["branch"] = branch if branch and branch != "HEAD" else "detached"
     _, head, _ = run_git(["rev-parse", "HEAD"])
     state["head"] = head or None
@@ -958,20 +964,23 @@ ROOT_BLOCK = """<!-- ai-workspace:start -->
 This project uses the `.ai` engineering workspace. Task state, specs, locks,
 checkpoints, logs and scratch artifacts live under `.ai/` and nowhere else.
 
-Before any file-changing task in this Git repository, use Gitflow:
+Before any file-changing task, use Gitflow unless the user explicitly asks not
+to use Git:
 1. Read `.ai/AGENTS.md`, `.ai/GUIDE.md`, `.ai/docs/task-flow.md` and
    `.ai/docs/git-workflow.md`.
-2. Create or claim one task. Run `.ai/scripts/ai git setup` if this clone has
-   not been set up; it is safe to rerun.
-3. After claiming and before editing any file, successfully run
+2. Run `.ai/scripts/ai git setup`. It initializes Git if needed and, when the
+   repo has no commits, previews non-ignored files and asks before the initial
+   commit. If Git reports dubious ownership, ask the user
+   to approve trusting only this exact checkout; never use a wildcard entry.
+3. Create or claim one task, then successfully run
    `.ai/scripts/ai git start --task <id> --agent <name> --type <type>`. If it
    fails, stop before editing and report the blocker.
 4. Stage only owned paths, run `.ai/scripts/ai git verify --strict`, then commit
    with `.ai/scripts/ai git commit`. Submit the task for review; a different
    reviewer runs `.ai/scripts/ai git finish` before the task is marked done.
 
-Read-only tasks do not need a branch. If this folder is not a Git repository,
-continue with the task workflow and skip Gitflow.
+Read-only tasks do not need a branch. Do not skip Gitflow just because `.git`
+is absent; setup initializes the repository.
 
 Checkpoint before the context window fills. Verify with
 `.ai/scripts/ai check`; "done" requires its output.
@@ -985,14 +994,17 @@ BOOTSTRAP_PROMPT = """This project uses the .ai engineering workspace.
 1. Read .ai/AGENTS.md, .ai/GUIDE.md, .ai/docs/task-flow.md,
    .ai/docs/multi-agent.md and .ai/docs/git-workflow.md.
 2. Run `.ai/scripts/ai adopt` once so every AI tool in this project finds the workspace.
-3. Run `.ai/scripts/ai doctor`. In a Git repository, run `.ai/scripts/ai git setup`
-   once in this clone. For every file-changing task, claim it and successfully
-   run `.ai/scripts/ai git start` before editing; then follow the commit and
-   independent review flow in `.ai/docs/git-workflow.md`.
+3. Run `.ai/scripts/ai doctor`. Before file-changing work, run
+   `.ai/scripts/ai git setup` once in this clone; it initializes Git when
+   needed. Then claim a task and successfully run `.ai/scripts/ai git start`
+   before editing; follow the commit and independent review flow in
+   `.ai/docs/git-workflow.md`.
 
-Read-only tasks need no branch; skip Gitflow only outside a Git repository. All
-AI state stays under .ai/. Claim a task before editing, checkpoint before your
-context fills, and never call work done without `.ai/scripts/ai check`.
+Read-only tasks need no branch. Skip Gitflow only when the user explicitly asks
+not to use Git. If Git reports dubious ownership, ask approval to trust only
+this exact checkout. All AI state stays under .ai/. Claim a task before editing,
+checkpoint before your context fills, and never call work done without
+`.ai/scripts/ai check`.
 """
 
 
@@ -2617,11 +2629,88 @@ def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
     return uncovered, locks
 
 
+def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
+    code, listed, err = run_git(["ls-files", "--cached", "--others", "--exclude-standard"])
+    if code != 0:
+        print(f"Could not list files for the initial Git baseline: {err}", file=sys.stderr)
+        return False, 1
+    files = [line for line in listed.splitlines() if line]
+    if args.json:
+        print(json.dumps({
+            "repo": True,
+            "baselineConfirmationRequired": True,
+            "production": production,
+            "files": files,
+        }, indent=2))
+        return False, 2
+    if not sys.stdin.isatty():
+        print(
+            "Initial Git baseline requires interactive confirmation. Rerun `ai git setup` "
+            "in a terminal to review the file list and confirm.",
+            file=sys.stderr,
+        )
+        return False, 1
+    print("Gitflow needs an initial production commit so task branches can start cleanly.")
+    print("The following non-ignored project files will be included:")
+    for path in files:
+        print(f"  {path}")
+    if not files:
+        print("  (no files; an empty baseline commit will be created)")
+    expected = "commit project baseline"
+    try:
+        confirmation = input(f"Type '{expected}' to continue: ").strip()
+    except EOFError:
+        confirmation = ""
+    if confirmation != expected:
+        print("Confirmation did not match; no project files were staged or committed.", file=sys.stderr)
+        return False, 1
+    code, _, err = run_git(["add", "-A"])
+    if code != 0:
+        print(f"Could not stage the initial project baseline: {err}", file=sys.stderr)
+        return False, 1
+    code, _, err = run_git(["commit", "--allow-empty", "-m", "chore: initialize repository"])
+    if code != 0:
+        print(
+            "Could not create the initial baseline commit. Configure Git author "
+            f"identity if needed, then rerun setup: {err}", file=sys.stderr,
+        )
+        return False, 1
+    return True, 0
+
+
 def cmd_git_setup(args) -> int:
     state = git_state()
+    if not state.get("repo") and state.get("error"):
+        error = str(state["error"])
+        if "dubious ownership" in error.lower():
+            project_path = os.path.abspath(PROJECT).replace("\\", "/")
+            print(
+                "Git found this repository but refused it because its ownership is untrusted. "
+                "Ask the user to approve this exact checkout with `git config --global "
+                f"--add safe.directory \"{project_path}\"`, then rerun `ai git setup`. "
+                "Do not use a wildcard safe.directory entry.",
+                file=sys.stderr,
+            )
+            return 1
+        if "not a git repository" not in error.lower():
+            print(f"Could not inspect the project Git repository: {error}", file=sys.stderr)
+            return 1
+
+    initialized = False
     if not state.get("repo"):
-        print("Not a git repository. Run `git init` first.", file=sys.stderr)
-        return 1
+        code, _, err = run_git(["init"])
+        if code != 0:
+            print(f"Could not initialize Git in {PROJECT}: {err}", file=sys.stderr)
+            return 1
+        code, _, err = run_git(["symbolic-ref", "HEAD", f"refs/heads/{git_config()['production']}"])
+        if code != 0:
+            print(f"Could not select the production branch: {err}", file=sys.stderr)
+            return 1
+        initialized = True
+        state = git_state()
+        if not state.get("repo"):
+            print(f"Git initialization did not produce a readable repository: {state.get('error') or 'unknown error'}", file=sys.stderr)
+            return 1
     config = git_config()
     template = git_template_path()
     if not os.path.isfile(template):
@@ -2631,33 +2720,84 @@ def cmd_git_setup(args) -> int:
     if code != 0:
         print(f"Could not set commit.template: {err}", file=sys.stderr)
         return 1
-    created = False
-    if not branch_exists(config["integration"]):
-        base = config["production"] if branch_exists(config["production"]) else state.get("branch")
+    created_production = False
+    created_integration = False
+    created_baseline = False
+    if not state.get("head"):
+        refs_code, refs_output, refs_err = run_git([
+            "for-each-ref", "--format=%(refname:short)", "refs/heads",
+        ])
+        if refs_code != 0:
+            print(f"Could not inspect local Git branches: {refs_err}", file=sys.stderr)
+            return 1
+        refs = [line for line in refs_output.splitlines() if line]
+        if branch_exists(config["production"]):
+            pass
+        elif refs:
+            base = state.get("branch") if state.get("branch") in refs else refs[0]
+            code, _, err = run_git(["branch", config["production"], base])
+            if code != 0:
+                print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
+                return 1
+            created_production = True
+        else:
+            code, _, err = run_git(["symbolic-ref", "HEAD", f"refs/heads/{config['production']}"])
+            if code != 0:
+                print(f"Could not select production branch '{config['production']}': {err}", file=sys.stderr)
+                return 1
+            completed, result = confirm_initial_baseline(args, config["production"])
+            if not completed:
+                return result
+            created_baseline = True
+            created_production = True
+        if not branch_exists(config["production"]):
+            print(f"Production branch '{config['production']}' is still missing.", file=sys.stderr)
+            return 1
+        state = git_state()
+        if not state.get("head"):
+            code, _, err = run_git(["symbolic-ref", "HEAD", f"refs/heads/{config['production']}"])
+            if code != 0:
+                print(f"Could not select production branch '{config['production']}': {err}", file=sys.stderr)
+                return 1
+            state = git_state()
+        if not state.get("head"):
+            print("Gitflow setup could not establish a committed production base.", file=sys.stderr)
+            return 1
+    elif not branch_exists(config["production"]):
+        base = state.get("branch")
         if not base or base == "detached":
-            print(
-                f"Cannot create '{config['integration']}': no base branch. "
-                f"Create '{config['production']}' or pass a base with git directly.",
-                file=sys.stderr,
-            )
-            return 1
-        code, _, err = run_git(["branch", config["integration"], base])
+            base = "HEAD"
+        code, _, err = run_git(["branch", config["production"], base])
         if code != 0:
-            print(f"Could not create '{config['integration']}': {err}", file=sys.stderr)
+            print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
             return 1
-        created = True
+        created_production = True
+    if not branch_exists(config["integration"]):
+        code, _, err = run_git(["branch", config["integration"], config["production"]])
+        if code != 0:
+            print(f"Could not create integration branch '{config['integration']}': {err}", file=sys.stderr)
+            return 1
+        created_integration = True
     if args.json:
         print(json.dumps({
             "repo": True,
             "commitTemplate": os.path.relpath(template, PROJECT).replace(os.sep, "/"),
             "integration": config["integration"],
             "production": config["production"],
-            "createdIntegration": created,
+            "initializedRepository": initialized,
+            "createdBaseline": created_baseline,
+            "createdProduction": created_production,
+            "createdIntegration": created_integration,
         }, indent=2))
         return 0
     print(f"commit.template = {os.path.relpath(template, PROJECT)}")
-    print(f"integration branch: {config['integration']}" + (" (created)" if created else " (exists)"))
-    print(f"production branch: {config['production']}")
+    if initialized:
+        print("Git repository: initialized")
+    if created_baseline:
+        print(f"production branch: {config['production']} (created with the confirmed baseline)")
+    else:
+        print(f"production branch: {config['production']}" + (" (created)" if created_production else " (exists)"))
+    print(f"integration branch: {config['integration']}" + (" (created)" if created_integration else " (exists)"))
     print("Next: ai task claim <id> --agent <name>, then ai git start ...")
     return 0
 
@@ -3004,8 +3144,8 @@ def cmd_brief(args) -> int:
         "5. Work is done only when `ai check` is green and its output is recorded.",
         "6. Checkpoint at milestones and before the context window fills.",
         f"7. Record lasting decisions as an ADR under {ws_prefix()}docs/decisions/.",
-        "8. In a Git repository, every file-changing task must use Gitflow. Run `ai git setup` if needed, then `ai git start` after claim and before editing; stop if it fails.",
-        "9. Commit with `ai git commit`; a different reviewer must merge with `ai git finish` before the task is marked done. Read-only tasks need no branch; skip Gitflow only outside Git.",
+        "8. Every file-changing task must use Gitflow unless the user explicitly says not to use Git. Run `ai git setup`; it initializes Git and asks before an initial commit.",
+        "9. After claim, run `ai git start` before editing; stop if setup or branch creation fails. Commit with `ai git commit`; a different reviewer must merge with `ai git finish` before done. Read-only work needs no branch.",
         "",
     ]
 
@@ -3465,7 +3605,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     git = sub.add_parser("git", help="Gitflow branches, commits and guarded merges")
     git_sub = git.add_subparsers(dest="action", required=True)
-    git_setup = git_sub.add_parser("setup", help="install the commit template and integration branch")
+    git_setup = git_sub.add_parser("setup", help="initialize Gitflow branches and commit template")
     git_setup.add_argument("--json", action="store_true")
     git_setup.set_defaults(func=cmd_git)
     git_start = git_sub.add_parser("start", help="create or switch to a task branch")

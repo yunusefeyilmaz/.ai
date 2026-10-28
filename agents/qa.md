@@ -18,9 +18,9 @@ evidence. QA owns the last mile before `done`.
 3. Exercise the behavior the tests do not cover (manual or targeted scenarios).
 4. Build a criterion-to-evidence table in the task.
 5. Flag anything that passes tests but fails the intent.
-6. In a Git repository, confirm the implementer's task branch has been merged
-   with `ai git finish` by a different reviewer before marking it done. Then
-   mark the task done with `ai task done <id> --agent qa`.
+6. Confirm the implementer's task branch has been merged with `ai git finish`
+   by a different reviewer before marking it done. Then mark the task done with
+   `ai task done <id> --agent qa`.
 
 ## Outputs
 

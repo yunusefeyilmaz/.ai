@@ -9,9 +9,10 @@ Give the agent this at the start of a session:
 ```
 This project uses the .ai engineering workspace.
 Read .ai/AGENTS.md and .ai/docs/git-workflow.md before doing anything.
-For every file-changing task in a Git repository, claim a task and start its
-branch with .ai/scripts/ai git start before editing. Run setup if needed. Stop
-if branch creation fails. Read-only work and non-Git folders are exempt.
+For every file-changing task, run .ai/scripts/ai git setup if needed (it
+initializes Git if absent), claim the task and start its branch with
+.ai/scripts/ai git start before editing. Stop if setup or branch creation fails.
+Read-only work needs no branch. Ask approval if Git reports dubious ownership.
 Follow .ai/docs/task-flow.md.
 Verify with .ai/scripts/ai check. Do not claim "done" without its output.
 Keep all AI-generated files inside .ai/.

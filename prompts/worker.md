@@ -24,12 +24,13 @@ Then:
    same session.
 3. Read the claimed task with `.ai/scripts/ai task show <id>` and read its spec.
    If the spec is missing for a behavior change, stop and report it.
-4. In a Git repository, Gitflow is mandatory for every file-changing task. Run
-   `.ai/scripts/ai git setup` if this clone has not been set up (safe to rerun), then start the
-   claimed task branch with `.ai/scripts/ai git start --task <id> --agent
-   <AGENT_NAME> --type <type>` before editing any file. Stop and report the
-   blocker if branch creation fails. Read-only tasks do not need a branch; skip
-   Gitflow only outside a Git repository.
+4. Gitflow is mandatory for every file-changing task unless the user explicitly
+   asks not to use Git. Run `.ai/scripts/ai git setup` if this clone is not set
+   up; it initializes Git if needed and is safe to rerun. Then start the claimed
+   task branch with `.ai/scripts/ai git start --task <id> --agent <AGENT_NAME>
+   --type <type>` before editing any file. Stop and report if setup or branch
+   creation fails. Read-only tasks do not need a branch. If Git reports dubious
+   ownership, ask approval to trust only this checkout.
 5. Before editing shared paths, take leases:
    `.ai/scripts/ai lock acquire <path> --agent <AGENT_NAME> --task <id>`
 6. Implement only the acceptance criteria. Add or update tests. Keep every

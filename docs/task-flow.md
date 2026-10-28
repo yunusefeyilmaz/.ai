@@ -99,11 +99,13 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 ### 3. Work
 
-- In a Git repository, Gitflow is required for every task that changes files.
-  Run `ai git setup` if this clone is not configured, then successfully run
-  `ai git start --task <id> --agent <name> --type <type>` after claiming and
-  before the first edit. Stop if branch creation fails. Read-only tasks need no
-  branch; non-Git folders skip these commands. See `docs/git-workflow.md`.
+- Gitflow is required for every task that changes files unless the user
+  explicitly asks not to use Git. Run `ai git setup` before file-changing work;
+  it initializes Git and its base branches when missing. After claiming, run
+  `ai git start --task <id> --agent <name> --type <type>` before the first edit.
+  Stop if setup or branch creation fails. Read-only tasks need no branch. If Git
+  reports dubious ownership, ask the user to approve trusting only this exact
+  checkout. See `docs/git-workflow.md`.
 - Read the spec, if one exists.
 - Acquire locks for any shared subsystem before editing it.
 - Keep notes in the task body, never in the project tree.

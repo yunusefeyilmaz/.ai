@@ -10,10 +10,11 @@ Create `CLAUDE.md` at the project root:
 This project uses the .ai engineering workspace.
 
 Read `.ai/AGENTS.md` first. It is the only signpost you need.
-For every file-changing task in a Git repository, claim the task and
-successfully start its branch with `.ai/scripts/ai git start` before editing.
-Run `git setup` if needed and stop if branch creation fails. Read-only tasks and
-non-Git folders are exempt. Follow `.ai/docs/git-workflow.md` and
+For every file-changing task, run `.ai/scripts/ai git setup` if needed; it
+initializes Git when absent. Claim the task and successfully start its branch
+with `.ai/scripts/ai git start` before editing. Stop if setup or branch creation
+fails. Read-only tasks need no branch. If Git reports dubious ownership, ask
+approval to trust only this checkout. Follow `.ai/docs/git-workflow.md` and
 `.ai/docs/task-flow.md`.
 Verification: `.ai/scripts/ai check`.
 

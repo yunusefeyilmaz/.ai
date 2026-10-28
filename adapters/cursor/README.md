@@ -12,10 +12,11 @@ alwaysApply: true
 
 This project uses the .ai engineering workspace.
 Read .ai/AGENTS.md, .ai/docs/task-flow.md and .ai/docs/git-workflow.md first.
-For every file-changing task in a Git repository, claim a task and start its
-branch with `.ai/scripts/ai git start` before editing; run `git setup` if needed
-and stop if branch creation fails. Read-only work and non-Git folders are
-exempt. Follow `.ai/docs/git-workflow.md` and verify with `.ai/scripts/ai check`.
+For every file-changing task, run `git setup` if needed (it initializes Git if
+absent), claim the task and start its branch with `.ai/scripts/ai git start`
+before editing. Stop if setup or branch creation fails. Read-only work needs no
+branch. Ask approval if Git reports dubious ownership. Follow the workflow and
+verify with `.ai/scripts/ai check`.
 Keep all AI-generated files inside .ai/.
 ```
 

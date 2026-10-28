@@ -9,9 +9,10 @@ Create `.github/copilot-instructions.md` at the project root:
 
 This project uses the .ai engineering workspace.
 Read `.ai/AGENTS.md` and `.ai/docs/git-workflow.md` first. For every
-file-changing task in a Git repository, claim a task and successfully run
-`.ai/scripts/ai git start` before editing; run `git setup` if needed and stop if
-branch creation fails. Read-only tasks and non-Git folders are exempt.
+file-changing task, run `.ai/scripts/ai git setup` if needed (it initializes
+Git if absent), claim the task and successfully run `.ai/scripts/ai git start`
+before editing. Stop if setup or branch creation fails. Read-only tasks need no
+branch. Ask approval if Git reports dubious ownership.
 Follow `.ai/docs/task-flow.md`; verify with `.ai/scripts/ai check`.
 All AI-generated files belong inside `.ai/`.
 ```

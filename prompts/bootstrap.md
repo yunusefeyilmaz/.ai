@@ -41,9 +41,10 @@ ai doctor
 ai check
 ```
 
-If this project is a Git repository, run `ai git setup` once in this clone
-before starting its first file-changing task. Each task then starts its own
-branch with `ai git start` after claim and before editing; see
+Run `ai git setup` once in this clone before its first file-changing task; it
+initializes Git and creates the base branches when needed. Each task then starts
+its own branch with `ai git start` after claim and before editing. If Git
+reports dubious ownership, ask approval to trust only this checkout; see
 `docs/git-workflow.md`.
 
 Then tell the human: the mode, the verification command, and how to start the
