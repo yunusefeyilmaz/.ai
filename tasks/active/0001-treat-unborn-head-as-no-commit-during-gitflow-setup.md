@@ -6,10 +6,12 @@ owner: null
 priority: high
 spec: specs/active/0001-unborn-head-detection.md
 created: 2026-10-28T16:34:03Z
-updated: 2026-10-28T16:36:15Z
+updated: 2026-10-28T16:36:33Z
 lock: null
-branch: fix/0001-unborn-head-detection
+branch: null
 depends_on: null
+merged_into: develop
+merged_at: 2026-10-28T16:36:33Z
 ---
 
 # 0001 - Treat unborn HEAD as no commit during Gitflow setup
@@ -47,3 +49,4 @@ started directly from `develop` before editing implementation code.
 - 2026-10-28T16:36:11Z submitted for independent review by codex
 - 2026-10-28T16:36:11Z released by codex
 - 2026-10-28T16:36:15Z committed: chore(task): record review release state
+- 2026-10-28T16:36:33Z merged fix/0001-unborn-head-detection into develop by reviewer
