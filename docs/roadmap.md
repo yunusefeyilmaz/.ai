@@ -6,12 +6,10 @@ third, extras last. Every item names the observable result, not the feature.
 
 | Order | Task | Priority | Success signal |
 |-------|------|----------|----------------|
-| 1 | `0001` one-command start | P0 | A new developer reaches a claimed task in one command. |
-| 2 | `0002` actionable diagnostics | P0 | Every finding names a safe repair; `--fix` leaves no guesswork. |
-| 3 | `0003` reliability suite | P0 | Concurrency, expiry and recovery are proven by automated tests. |
-| 4 | `0004` metrics ledger | P1 | Workflow claims are backed by numbers from real tasks. |
-| 5 | `0005` adapter contract | P1 | A new agent or CI provider plugs in without touching the core. |
-| 6 | `0006` visibility board | P2 | A blocked session explains itself without reading logs. |
+| 1 | `0003` reliability suite | P0 | Concurrency, expiry and recovery are proven by automated tests. |
+| 2 | `0004` metrics ledger | P1 | Workflow claims are backed by numbers from real tasks. |
+| 3 | `0005` adapter contract | P1 | A new agent or CI provider plugs in without touching the core. |
+| 4 | `0006` visibility board | P2 | A blocked session explains itself without reading logs. |
 
 ## Guardrails
 
