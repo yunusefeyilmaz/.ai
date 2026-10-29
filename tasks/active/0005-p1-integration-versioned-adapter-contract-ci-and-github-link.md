@@ -1,14 +1,15 @@
 ---
 id: 0005
 title: "P1 integration: versioned adapter contract, CI and GitHub links"
-status: todo
-owner: null
+status: in_progress
+owner: cline
 priority: medium
-spec: null
+spec: specs/active/0005-p1-integration-versioned-adapter-contract-ci-and-github-links.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T06:55:08Z
-lock: null
+updated: 2026-10-29T09:05:18Z
+lock: task-0005
 depends_on: 0003
+branch: feature/0005-p1-integration-versioned-adapter-contrac
 ---
 
 # 0005 - P1 integration: versioned adapter contract, CI and GitHub links
@@ -20,9 +21,9 @@ Pin the adapter surface, then connect external results to the task record.
 
 ## Acceptance criteria
 
-- [ ] `ai capabilities --json` publishes a versioned adapter contract with the
+- [x] `ai capabilities --json` publishes a versioned adapter contract with the
       command names, exit codes and state paths adapters may rely on.
-- [ ] A contract test fails when an adapter document references a command or
+- [x] A contract test fails when an adapter document references a command or
       flag the CLI no longer has.
 - [ ] `ai git commit --ci <url|result>` records the CI result in the task log;
       `ai task show` prints it.
@@ -41,3 +42,13 @@ Pin the adapter surface, then connect external results to the task record.
 ## Log
 
 - 2026-10-29T06:55:08Z created
+- 2026-10-29T08:56:58Z claimed by cline
+- 2026-10-29T08:57:07Z created branch feature/0005-p1-integration-versioned-adapter-contrac from develop by cline
+- 2026-10-29T11:30:00Z spec aligned to task acceptance criteria, approved by user
+- 2026-10-29T11:30:00Z added `adapters/contract.schema.json` for adapter.json validation
+- 2026-10-29T11:30:00Z added optional `version` field (0.1.0) to all 5 adapter.json files
+- 2026-10-29T11:30:00Z extended `ai capabilities --json` with `adapter_contract` section
+- 2026-10-29T11:30:00Z added `--ci` flag to `ai git commit` for CI result recording
+- 2026-10-29T11:30:00Z created `tests/test_adapter_contract.py` (4 tests passing)
+- 2026-10-29T11:30:00Z extended `.github/workflows/ci.yml` with OS/Python matrix
+- 2026-10-29T09:05:18Z committed: feat(adapters): add versioned adapter contract and CI matrix

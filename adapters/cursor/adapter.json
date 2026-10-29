@@ -2,5 +2,6 @@
   "tool": "cursor",
   "entry": ".cursor/rules/ai-workspace.mdc",
   "autoload": [".cursor/rules/ai-workspace.mdc"],
-  "supports": ["auto-load", "fresh-chat"]
+  "supports": ["auto-load", "fresh-chat"],
+  "version": "0.1.0"
 }

@@ -3765,6 +3765,8 @@ def cmd_git_commit(args) -> int:
         _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
+        if args.ci:
+            body += f"- {iso()} CI: {args.ci}\n"
         write_task(path, meta, body)
         write_board(load_tasks())
         amended = commit_task_metadata(path, "", amend=True)
@@ -4121,7 +4123,18 @@ CAPABILITIES = {
 
 
 def cmd_capabilities(args) -> int:
-    print(json.dumps(CAPABILITIES, indent=2))
+    payload = dict(CAPABILITIES)
+    payload["adapter_contract"] = {
+        "schema_version": "0.1.0",
+        "schema_path": "adapters/contract.schema.json",
+        "adapter_dir": "adapters/",
+        "state_paths": [
+            "runtime/state/",
+            "tasks/",
+            "specs/",
+        ],
+    }
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -4483,6 +4496,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
     git_commit.add_argument("--force", action="store_true")
     git_commit.add_argument("--json", action="store_true")
+    git_commit.add_argument("--ci", default=None, help="record CI result URL or identifier in task log")
     git_commit.set_defaults(func=cmd_git)
     git_finish = git_sub.add_parser("finish", help="check, no-ff merge the task branch, and clean up")
     git_finish.add_argument("--task", required=True)
@@ -4505,6 +4519,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_verify.set_defaults(func=cmd_git)
 
     capabilities = sub.add_parser("capabilities", help="print the machine-readable CLI contract")
+    capabilities.add_argument("--json", action="store_true")
     capabilities.set_defaults(func=cmd_capabilities)
 
     artifact = sub.add_parser("artifact", help="quarantine AI scratch files")
