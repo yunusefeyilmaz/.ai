@@ -1,13 +1,13 @@
 ---
 id: 0005
 title: "P1 integration: versioned adapter contract, CI and GitHub links"
-status: in_progress
-owner: buffy
+status: review
+owner: null
 priority: medium
 spec: specs/active/0005-p1-integration-versioned-adapter-contract-ci-and-github-links.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T13:49:23Z
-lock: task-0005
+updated: 2026-10-29T13:51:10Z
+lock: null
 depends_on: 0003
 branch: feature/0005-p1-integration-versioned-adapter-contrac
 ---
@@ -72,3 +72,5 @@ Pin the adapter surface, then connect external results to the task record.
 - 2026-10-29T13:46:00Z review finding (nit, accepted): `ai task show` selects log lines that contain `CI:`, so a prose line containing it would also be listed; the log format is `- <ts> CI: <result>`, left as-is
 - 2026-10-29T13:47:08Z claimed by buffy
 - 2026-10-29T13:49:23Z committed: test(adapters): make adapter contract tests hermetic and cover --ci
+- 2026-10-29T13:51:02Z submitted for independent review by buffy
+- 2026-10-29T13:51:10Z released by buffy
