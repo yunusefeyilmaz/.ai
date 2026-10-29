@@ -1,13 +1,13 @@
 ---
 id: 0008
 title: "P0 diagnostics: keep doctor read-only and report each problem once"
-status: in_progress
-owner: implementer
+status: review
+owner: null
 priority: high
 spec: specs/active/0008-p0-diagnostics-keep-doctor-read-only-and-report-each-problem.md
 created: 2026-10-29T07:53:49Z
-updated: 2026-10-29T07:58:38Z
-lock: task-0008
+updated: 2026-10-29T07:58:45Z
+lock: null
 depends_on: 0002
 branch: fix/0008-p0-diagnostics-keep-doctor-read-only-and
 ---
@@ -57,3 +57,6 @@ Spec: `specs/active/0008-p0-diagnostics-keep-doctor-read-only-and-report-each-pr
 - 2026-10-29T07:53:50Z created branch fix/0008-p0-diagnostics-keep-doctor-read-only-and from develop by implementer
 - 2026-10-29T07:58:19Z implementation ready: `python -m unittest discover -s tests -q` -> 24 tests OK; `ai check --strict` -> 0 errors, 0 warnings
 - 2026-10-29T07:58:38Z committed: fix(doctor): keep diagnostics read-only and deduplicate findings
+- 2026-10-29T07:58:43Z submitted for independent review by implementer
+- 2026-10-29T07:58:43Z released by implementer
+- 2026-10-29T07:58:45Z committed: chore: record review-ready state for 0008
