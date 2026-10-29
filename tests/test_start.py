@@ -171,6 +171,60 @@ class TaskSpecTest(WorkspaceCase):
         self.assertEqual(custom.read_text(encoding="utf-8"), "# Custom\n\nkeep me\n")
 
 
+class FirstRunLoopTest(WorkspaceCase):
+    def test_started_task_can_open_its_branch(self) -> None:
+        workspace = self.make_workspace()
+        payload = self.start(workspace, "--agent", "newcomer")
+
+        result = run(
+            workspace, "git", "start", "--task", payload["task"]["id"],
+            "--agent", "newcomer", "--type", "feature",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(workspace), capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        self.assertTrue(branch.startswith("feature/0001-"), branch)
+
+    def test_product_changes_still_block_the_branch(self) -> None:
+        workspace = self.make_workspace()
+        payload = self.start(workspace, "--agent", "newcomer")
+        (workspace / "src").mkdir()
+        (workspace / "src" / "app.py").write_text("pass\n", encoding="utf-8")
+
+        result = run(
+            workspace, "git", "start", "--task", payload["task"]["id"],
+            "--agent", "newcomer", "--type", "feature",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("product changes", result.stderr)
+
+    def test_done_only_ledger_creates_a_new_task(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        created = run(workspace, "task", "new", "Seed")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        archived = run(workspace, "task", "done", "0001", "--agent", "seed")
+        self.assertEqual(archived.returncode, 0, archived.stderr)
+
+        payload = self.start(workspace, "--agent", "newcomer")
+
+        self.assertTrue(payload["created"])
+        self.assertEqual(payload["task"]["id"], "0002")
+        self.assertEqual(payload["task"]["owner"], "newcomer")
+
+    def test_first_staged_path_is_not_truncated(self) -> None:
+        workspace = self.make_workspace()
+        (workspace / "README.md").write_text("# changed\n", encoding="utf-8")
+        git(workspace, "add", "README.md")
+        lease = run(workspace, "lock", "acquire", "README.md", "--agent", "me")
+        self.assertEqual(lease.returncode, 0, lease.stderr)
+
+        result = run(workspace, "git", "verify", "--strict")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("All staged paths", result.stdout)
+
+
 class LiteCheckpointTest(WorkspaceCase):
     def test_lite_does_not_warn_on_a_fresh_claim(self) -> None:
         workspace = self.make_workspace(mode="lite")

@@ -568,6 +568,22 @@ def run_git(
         return 127, "", "git is not available"
 
 
+def run_git_stdout(args: list[str]) -> str:
+    """Git stdout without stripping: porcelain's first column is meaningful."""
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=PROJECT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, ValueError):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
 def git_state() -> dict:
     state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
     code, top, err = run_git(["rev-parse", "--show-toplevel"])
@@ -583,8 +599,7 @@ def git_state() -> dict:
         "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
     ])
     state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
-    _, status, _ = run_git(["status", "--porcelain"])
-    for line in status.splitlines():
+    for line in run_git_stdout(["status", "--porcelain"]).splitlines():
         if len(line) < 3:
             continue
         code_part = line[:2]
@@ -643,8 +658,27 @@ def git_commit_id(revision: str) -> str | None:
     return commit if code == 0 and commit else None
 
 
-def git_clean() -> bool:
-    return not git_state().get("dirty")
+def is_workspace_ledger_path(path: str) -> bool:
+    """True for tasks/ and specs/ files: coordination state, not product code."""
+    try:
+        absolute = os.path.realpath(os.path.join(PROJECT, path))
+    except OSError:
+        return False
+    for folder in (os.path.join(WORKSPACE, "tasks"), os.path.join(WORKSPACE, "specs")):
+        root = os.path.realpath(folder)
+        try:
+            if os.path.commonpath([absolute, root]) == root:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def git_clean(ignore_ledger: bool = False) -> bool:
+    dirty = git_state().get("dirty") or []
+    if ignore_ledger:
+        dirty = [path for path in dirty if not is_workspace_ledger_path(path)]
+    return not dirty
 
 
 def task_branch_name(meta: dict, branch_type: str) -> str:
@@ -1556,16 +1590,16 @@ def cmd_start(args) -> int:
         tasks = load_tasks()
     except OSError:
         tasks = []
-    if not tasks and args.demo:
+    active_tasks = [task for task in tasks if task["_folder"] == "active"]
+    if not active_tasks and args.demo:
         try:
             created = create_task("Try the workspace")
         except RuntimeError:
             created = None
-        tasks = load_tasks() if created else tasks
+        if created:
+            active_tasks = [task for task in load_tasks() if task["_folder"] == "active"]
 
-    target = None
-    if tasks:
-        target = next((task for task in tasks if task["_folder"] == "active"), tasks[0])
+    target = active_tasks[0] if active_tasks else None
 
     claimed = False
     claim_error = None
@@ -3179,8 +3213,12 @@ def cmd_git_start(args) -> int:
     if not state.get("repo"):
         print("Not a git repository.", file=sys.stderr)
         return 1
-    if not git_clean():
-        print("Working tree is dirty. Commit or stash before starting a task branch.", file=sys.stderr)
+    if not git_clean(ignore_ledger=True):
+        print(
+            "Working tree has product changes. Commit or stash them before "
+            "starting a task branch (only tasks/ and specs/ may stay uncommitted).",
+            file=sys.stderr,
+        )
         return 1
     config = git_config()
     branch_type = args.type

@@ -225,7 +225,8 @@ If no commit exists, it previews the non-ignored project files and asks for
 confirmation before the initial commit; non-interactive setup does not stage or
 commit them. Claim the task, then start its task branch before editing; stop if setup or branch creation
 fails. Read-only tasks need no branch. If Git reports dubious ownership, request
-approval to trust only this checkout. The implementer submits
+approval to trust only this checkout. Uncommitted `tasks/` and `specs/` files do
+not block `ai git start`; product changes do. The implementer submits
 the committed task for review before releasing
 the claim. A different reviewer runs `ai git finish`, which checks the tree and
 workspace, then merges with `--no-ff`. `verify` checks that every staged path is
