@@ -1,13 +1,13 @@
 ---
 id: 0005
 title: "P1 integration: versioned adapter contract, CI and GitHub links"
-status: in_progress
-owner: cline
+status: review
+owner: null
 priority: medium
 spec: specs/active/0005-p1-integration-versioned-adapter-contract-ci-and-github-links.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T09:05:18Z
-lock: task-0005
+updated: 2026-10-29T09:06:57Z
+lock: null
 depends_on: 0003
 branch: feature/0005-p1-integration-versioned-adapter-contrac
 ---
@@ -52,3 +52,5 @@ Pin the adapter surface, then connect external results to the task record.
 - 2026-10-29T11:30:00Z created `tests/test_adapter_contract.py` (4 tests passing)
 - 2026-10-29T11:30:00Z extended `.github/workflows/ci.yml` with OS/Python matrix
 - 2026-10-29T09:05:18Z committed: feat(adapters): add versioned adapter contract and CI matrix
+- 2026-10-29T09:06:55Z submitted for independent review by cline
+- 2026-10-29T09:06:57Z released by cline
