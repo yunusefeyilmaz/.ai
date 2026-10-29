@@ -1,13 +1,13 @@
 ---
 id: 0003
 title: "P0 reliability: concurrency, lease and recovery test suite"
-status: in_progress
-owner: codex
+status: review
+owner: null
 priority: high
 spec: specs/active/0003-p0-reliability-concurrency-lease-and-recovery-test-suite.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T08:12:32Z
-lock: task-0003
+updated: 2026-10-29T08:12:54Z
+lock: null
 depends_on: 0002
 branch: chore/0003-p0-reliability-concurrency-lease-and-rec
 ---
@@ -58,3 +58,6 @@ Spec and plan approved by user on 2026-10-29.
 - 2026-10-29 implementation ready: `ai check --fast` -> 32 tests passed in 46.3 seconds; 0 errors, 0 warnings.
 - 2026-10-29T08:12:12Z committed: chore(task): archive completed task 0008
 - 2026-10-29T08:12:32Z committed: test(reliability): cover lease recovery and guarded git failures
+- 2026-10-29T08:12:42Z submitted for independent review by codex
+- 2026-10-29T08:12:42Z released by codex
+- 2026-10-29T08:12:54Z committed: chore(task): record review handoff for 0003
