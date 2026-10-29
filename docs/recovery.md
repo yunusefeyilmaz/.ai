@@ -107,7 +107,8 @@ A crash, a partial copy or a bad merge can remove runtime directories or
 
 It never rewrites an invalid config, removes a lock, edits a task or spec, or
 touches Git. Everything else stays as a finding and the command exits 1. Use
-`--json` to get `fixes` and the remaining `findings`.
+`--json` to get `fixes` and the remaining `findings`. Without `--fix`, `doctor`
+and `check` only read; a missing tree stays missing until you repair it.
 
 ## Inconsistent state and `ai recover`
 

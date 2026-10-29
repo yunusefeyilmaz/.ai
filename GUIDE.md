@@ -143,6 +143,9 @@ rewrites an invalid config, removes a lock, edits task or spec files, or touches
 Git. Anything left over is still a finding, and the command exits 1; `--json`
 returns `fixes` plus the remaining `check.findings`.
 
+Without `--fix`, `doctor` and `check` only read: a missing runtime tree stays
+missing until you repair it on purpose.
+
 `--strict` promotes warnings to failures. CI runs `doctor --strict` and
 `check --strict`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.

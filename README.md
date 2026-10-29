@@ -135,8 +135,9 @@ ai doctor --fix
 `--fix` recreates missing runtime state, writes `config/workspace.json` when it
 is absent, and wires missing subfolder adapters and ignore rules. It never
 rewrites an invalid config, removes a lock, edits task or spec files, or touches
-Git. Anything it cannot repair stays as a finding and the command exits 1;
-`--json` returns `fixes` and the remaining `findings`.
+Git. Without `--fix`, `doctor` and `check` only read. Anything they cannot
+repair stays as a finding and the command exits 1; `--json` returns `fixes` and
+the remaining `findings`.
 
 ## Work states
 
