@@ -1,14 +1,15 @@
 ---
 id: 0003
 title: "P0 reliability: concurrency, lease and recovery test suite"
-status: todo
+status: review
 owner: null
 priority: high
-spec: null
+spec: specs/active/0003-p0-reliability-concurrency-lease-and-recovery-test-suite.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T06:55:08Z
+updated: 2026-10-29T08:12:54Z
 lock: null
 depends_on: 0002
+branch: chore/0003-p0-reliability-concurrency-lease-and-rec
 ---
 
 # 0003 - P0 reliability: concurrency, lease and recovery test suite
@@ -47,6 +48,16 @@ old parser, and `test_product_changes_still_block_the_branch` uses a
 non-idempotent `mkdir` that would break if the checkout gains a top-level
 `src/`. Fold both fixes into this task.
 
+Spec and plan approved by user on 2026-10-29.
+
 ## Log
 
 - 2026-10-29T06:55:08Z created
+- 2026-10-29T08:06:28Z claimed by codex
+- 2026-10-29T08:06:45Z created branch chore/0003-p0-reliability-concurrency-lease-and-rec from develop by codex
+- 2026-10-29 implementation ready: `ai check --fast` -> 32 tests passed in 46.3 seconds; 0 errors, 0 warnings.
+- 2026-10-29T08:12:12Z committed: chore(task): archive completed task 0008
+- 2026-10-29T08:12:32Z committed: test(reliability): cover lease recovery and guarded git failures
+- 2026-10-29T08:12:42Z submitted for independent review by codex
+- 2026-10-29T08:12:42Z released by codex
+- 2026-10-29T08:12:54Z committed: chore(task): record review handoff for 0003

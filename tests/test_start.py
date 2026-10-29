@@ -190,7 +190,7 @@ class FirstRunLoopTest(WorkspaceCase):
     def test_product_changes_still_block_the_branch(self) -> None:
         workspace = self.make_workspace()
         payload = self.start(workspace, "--agent", "newcomer")
-        (workspace / "src").mkdir()
+        (workspace / "src").mkdir(exist_ok=True)
         (workspace / "src" / "app.py").write_text("pass\n", encoding="utf-8")
 
         result = run(
@@ -213,16 +213,19 @@ class FirstRunLoopTest(WorkspaceCase):
         self.assertEqual(payload["task"]["id"], "0002")
         self.assertEqual(payload["task"]["owner"], "newcomer")
 
-    def test_first_staged_path_is_not_truncated(self) -> None:
+    def test_first_porcelain_entry_keeps_tasks_board_path(self) -> None:
         workspace = self.make_workspace()
-        (workspace / "README.md").write_text("# changed\n", encoding="utf-8")
-        git(workspace, "add", "README.md")
-        lease = run(workspace, "lock", "acquire", "README.md", "--agent", "me")
-        self.assertEqual(lease.returncode, 0, lease.stderr)
+        started = run(workspace, "start", "--agent", "me")
+        self.assertEqual(started.returncode, 0, started.stderr + started.stdout)
 
-        result = run(workspace, "git", "verify", "--strict")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("All staged paths", result.stdout)
+        # This is a tracked, worktree-only edit. Its porcelain record begins
+        # with a space; trimming command output used to turn the path into
+        # `asks/BOARD.md`, making git start treat ledger state as product code.
+        (workspace / "tasks" / "BOARD.md").write_text("# changed\n", encoding="utf-8")
+        result = run(
+            workspace, "git", "start", "--task", "0001", "--agent", "me", "--type", "feature",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
 
 class LiteCheckpointTest(WorkspaceCase):
