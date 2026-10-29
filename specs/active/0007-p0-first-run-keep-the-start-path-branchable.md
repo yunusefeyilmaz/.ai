@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: shipped
 task: 0007
 approved_by: null
 approved_on: null
@@ -42,17 +42,17 @@ check can therefore report a covered path as uncovered.
 
 ## Acceptance criteria
 
-- [ ] Fresh workspace: `ai start --agent me`, then `ai git start --task <id>
+- [x] Fresh workspace: `ai start --agent me`, then `ai git start --task <id>
       --agent me --type feature` creates the branch and exits 0 while the task
       and spec are still uncommitted.
-- [ ] The same sequence exits 1 with a clear message when `src/app.py` is
+- [x] The same sequence exits 1 with a clear message when `src/app.py` is
       untracked.
-- [ ] A ledger holding only a done task yields a new active task with the next
+- [x] A ledger holding only a done task yields a new active task with the next
       id, claimed by the requested agent, and exit 0.
-- [ ] An active task makes `start` reuse it and create nothing.
-- [ ] With `README.md` staged as the first porcelain entry and leased,
+- [x] An active task makes `start` reuse it and create nothing.
+- [x] With `README.md` staged as the first porcelain entry and leased,
       `ai git verify --strict` reports every staged path covered.
-- [ ] The suite covers these cases; `ai check --strict` is green.
+- [x] The suite covers these cases; `ai check --strict` is green.
 
 ## Out of scope
 
@@ -63,4 +63,11 @@ check can therefore report a covered path as uncovered.
 
 ## Status
 
-In progress. Implementation and tests on the task branch.
+Shipped. Independently verified by `reviewer` on 2026-10-29:
+`ai doctor --strict` 0 errors / 0 warnings, `ai check --strict` 0 errors /
+0 warnings, and `python -m unittest discover -s tests -v` passed 17/17. Each
+acceptance criterion was re-run in scratch copies of the checkout. The parser
+fix was also checked directly: the first porcelain entry `" M tasks/BOARD.md"`
+yields `tasks/BOARD.md` on this branch and `asks/BOARD.md` on `develop`.
+`ai git commit`, `ai git finish`, `ai recover` and the lite checkpoint rule were
+smoke-tested without regression.

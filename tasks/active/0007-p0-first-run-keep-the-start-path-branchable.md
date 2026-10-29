@@ -6,7 +6,7 @@ owner: null
 priority: high
 spec: specs/active/0007-p0-first-run-keep-the-start-path-branchable.md
 created: 2026-10-29T07:17:08Z
-updated: 2026-10-29T07:20:59Z
+updated: 2026-10-29T07:27:18Z
 lock: null
 depends_on: 0001
 branch: feature/0007-p0-first-run-keep-the-start-path-brancha
@@ -25,15 +25,15 @@ entry, which can hide a staged path from `ai git verify`.
 
 ## Acceptance criteria
 
-- [ ] After `ai start --agent <name>`, `ai git start` for that task succeeds even
+- [x] After `ai start --agent <name>`, `ai git start` for that task succeeds even
       though the task and spec are still uncommitted.
-- [ ] `ai git start` still refuses when a product file is modified or untracked.
-- [ ] With only done tasks, `ai start --agent <name>` creates the next task,
+- [x] `ai git start` still refuses when a product file is modified or untracked.
+- [x] With only done tasks, `ai start --agent <name>` creates the next task,
       claims it, and never targets the archived one.
-- [ ] With an active task present, `ai start` creates nothing.
-- [ ] `ai git verify --strict` sees the first staged path in full and reports it
+- [x] With an active task present, `ai start` creates nothing.
+- [x] `ai git verify --strict` sees the first staged path in full and reports it
       covered by a lease.
-- [ ] The suite covers the four scenarios and `ai check --strict` is green.
+- [x] The suite covers the four scenarios and `ai check --strict` is green.
 
 ## Plan
 
@@ -56,3 +56,5 @@ Spec: `specs/active/0007-p0-first-run-keep-the-start-path-branchable.md`
 - 2026-10-29T07:20:57Z submitted for independent review by implementer
 - 2026-10-29T07:20:58Z released by implementer
 - 2026-10-29T07:20:59Z committed: chore: record review-ready state for 0007
+- 2026-10-29T07:26:57Z reviewed by reviewer: PASS. `ai doctor --strict` -> 0 errors, 0 warnings; `ai check --strict` -> 0 errors, 0 warnings; `python -m unittest discover -s tests -v` -> 17 tests OK; scratch-copy checks passed for `ai start` + uncommitted ledger branch, product-change refusal, done-only ledger, active-task reuse, and first porcelain entry; `ai git commit`/`ai git finish`/`ai recover` and the lite checkpoint rule showed no regression.
+- 2026-10-29T07:27:18Z committed: docs: record independent review evidence for 0007
