@@ -6,10 +6,12 @@ owner: null
 priority: high
 spec: specs/active/0003-p0-reliability-concurrency-lease-and-recovery-test-suite.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T08:12:54Z
+updated: 2026-10-29T08:14:44Z
 lock: null
 depends_on: 0002
-branch: chore/0003-p0-reliability-concurrency-lease-and-rec
+branch: null
+merged_into: develop
+merged_at: 2026-10-29T08:14:44Z
 ---
 
 # 0003 - P0 reliability: concurrency, lease and recovery test suite
@@ -61,3 +63,4 @@ Spec and plan approved by user on 2026-10-29.
 - 2026-10-29T08:12:42Z submitted for independent review by codex
 - 2026-10-29T08:12:42Z released by codex
 - 2026-10-29T08:12:54Z committed: chore(task): record review handoff for 0003
+- 2026-10-29T08:14:44Z merged chore/0003-p0-reliability-concurrency-lease-and-rec into develop by reviewer
