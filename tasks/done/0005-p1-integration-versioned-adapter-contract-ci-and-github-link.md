@@ -1,12 +1,12 @@
 ---
 id: 0005
 title: "P1 integration: versioned adapter contract, CI and GitHub links"
-status: review
+status: done
 owner: null
 priority: medium
 spec: specs/active/0005-p1-integration-versioned-adapter-contract-ci-and-github-links.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T13:52:35Z
+updated: 2026-10-29T13:52:45Z
 lock: null
 depends_on: 0003
 branch: null
@@ -77,3 +77,4 @@ Pin the adapter surface, then connect external results to the task record.
 - 2026-10-29T13:51:02Z submitted for independent review by buffy
 - 2026-10-29T13:51:10Z released by buffy
 - 2026-10-29T13:52:35Z merged feature/0005-p1-integration-versioned-adapter-contrac into develop by buffy
+- 2026-10-29T13:52:45Z marked done by buffy
