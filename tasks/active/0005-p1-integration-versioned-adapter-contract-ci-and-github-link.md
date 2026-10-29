@@ -2,11 +2,11 @@
 id: 0005
 title: "P1 integration: versioned adapter contract, CI and GitHub links"
 status: in_progress
-owner: implementer
+owner: buffy
 priority: medium
 spec: specs/active/0005-p1-integration-versioned-adapter-contract-ci-and-github-links.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T11:57:56Z
+updated: 2026-10-29T13:49:23Z
 lock: task-0005
 depends_on: 0003
 branch: feature/0005-p1-integration-versioned-adapter-contrac
@@ -43,6 +43,9 @@ Pin the adapter surface, then connect external results to the task record.
 - Adapter docs command validation covered in `tests/test_adapter_contract.py`.
 - `ai task show` formats CI results.
 - `link_task_github` and `ai task link` provide tokenless local GitHub issue/PR linking.
+- Review by buffy on a separate session read the spec and the diff against
+  `develop` and ran the suite; findings are recorded in the log. In lite mode
+  the reviewer fixed the two test findings on this branch before the merge.
 
 ## Log
 
@@ -62,3 +65,10 @@ Pin the adapter surface, then connect external results to the task record.
 - 2026-10-29T11:40:36Z claimed by implementer
 - 2026-10-29T11:51:00Z completed CI result formatting in task show, GitHub link helpers, and adapter command contract tests
 - 2026-10-29T11:57:56Z committed: feat(adapters): format CI results in task show, add GitHub helpers and adapter doc tests
+- 2026-10-29T13:45:00Z stale leases from the implementer session cleaned with `ai clean --stale-locks`; task reclaimed by buffy to finish review and merge
+- 2026-10-29T13:46:00Z review (buffy): spec read, diff read, `python -m unittest discover -s tests` 45 tests OK; acceptance criteria 1-2 checked against `ai capabilities --json` and `tests/test_adapter_contract.py`
+- 2026-10-29T13:46:00Z review finding (blocker, fixed): `test_task_show_prints_ci_results` read the live ledger's task 0005, so it would fail after `ai reset --hard` clears `tasks/`; the test now builds its own temporary workspace
+- 2026-10-29T13:46:00Z review finding (should-fix, fixed): no test exercised `ai git commit --ci`; added `test_git_commit_records_ci_result`
+- 2026-10-29T13:46:00Z review finding (nit, accepted): `ai task show` selects log lines that contain `CI:`, so a prose line containing it would also be listed; the log format is `- <ts> CI: <result>`, left as-is
+- 2026-10-29T13:47:08Z claimed by buffy
+- 2026-10-29T13:49:23Z committed: test(adapters): make adapter contract tests hermetic and cover --ci

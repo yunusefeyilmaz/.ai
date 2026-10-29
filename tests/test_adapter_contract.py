@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
 
 
 def run(workspace: Path, *args: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
-    env = dict(__import__("os").environ)
+    env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
@@ -25,6 +29,12 @@ def run(workspace: Path, *args: str, timeout: int = 20) -> subprocess.CompletedP
         errors="replace",
         env=env,
         timeout=timeout,
+    )
+
+
+def git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=workspace, check=True, capture_output=True, text=True, timeout=15
     )
 
 
@@ -78,6 +88,37 @@ def validate_adapter_doc(text: str, valid_commands: set[str]) -> list[str]:
 
 
 class AdapterContractTest(unittest.TestCase):
+    def make_workspace(self, *, with_git: bool = False) -> Path:
+        temp = Path(tempfile.mkdtemp(prefix="ai-adapter-"))
+        self.addCleanup(shutil.rmtree, temp, True)
+        workspace = temp / "project"
+        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
+            folder = workspace / relative
+            shutil.rmtree(folder, ignore_errors=True)
+            folder.mkdir(parents=True)
+        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
+            shutil.rmtree(workspace / relative, ignore_errors=True)
+        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
+
+        config_path = workspace / "config" / "workspace.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["checks"] = []
+        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        if with_git:
+            git(workspace, "init", "-q", "--initial-branch=develop")
+            git(workspace, "config", "user.name", "Adapter Test")
+            git(workspace, "config", "user.email", "adapter@example.test")
+            git(workspace, "add", "-A")
+            git(workspace, "commit", "-qm", "test baseline")
+            git(workspace, "branch", "master")
+        return workspace
+
+    def check_ok(self, workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        result = run(workspace, *args)
+        self.assertEqual(result.returncode, 0, f"{' '.join(args)}: {result.stderr}{result.stdout}")
+        return result
+
     def test_adapter_json_files_have_required_fields(self) -> None:
         """Every adapters/*/adapter.json must have required fields."""
         adapters_dir = ROOT / "adapters"
@@ -152,22 +193,49 @@ class AdapterContractTest(unittest.TestCase):
         self.assertIn("referenced unknown command 'ai nonexistent_cmd'", errors)
 
     def test_task_show_prints_ci_results(self) -> None:
-        """ai task show prints CI result lines from task log."""
-        result = run(ROOT, "task", "show", "0005")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        # Verify show output works cleanly
-        self.assertIn("File:", result.stdout)
-        self.assertIn("title:", result.stdout)
+        """ai task show prints CI result lines recorded in the task log."""
+        workspace = self.make_workspace()
+        task_file = workspace / "tasks" / "active" / "0001-ci-result.md"
+        task_file.write_text(
+            "---\nid: 0001\ntitle: CI result probe\nstatus: todo\nowner: null\n"
+            "priority: low\nspec: null\ncreated: 2026-10-29T00:00:00Z\n"
+            "updated: 2026-10-29T00:00:00Z\nlock: null\ndepends_on: []\nbranch: null\n---\n\n"
+            "# 0001 - CI result probe\n\n## Log\n\n"
+            "- 2026-10-29T01:00:00Z CI: https://ci.example/run/7 passed\n",
+            encoding="utf-8",
+        )
+        shown = self.check_ok(workspace, "task", "show", "0001")
+        self.assertIn("CI results:", shown.stdout)
+        self.assertIn("https://ci.example/run/7 passed", shown.stdout)
 
-        json_result = run(ROOT, "task", "show", "0005", "--json")
-        self.assertEqual(json_result.returncode, 0, json_result.stderr)
-        payload = json.loads(json_result.stdout)
-        self.assertIn("meta", payload)
-        self.assertIn("body", payload)
+        payload = json.loads(self.check_ok(workspace, "task", "show", "0001", "--json").stdout)
+        self.assertEqual(len(payload["ci_results"]), 1)
+        self.assertIn("CI: https://ci.example/run/7 passed", payload["ci_results"][0])
+
+    def test_git_commit_records_ci_result(self) -> None:
+        """ai git commit --ci appends the CI result to the task log."""
+        workspace = self.make_workspace(with_git=True)
+        self.check_ok(workspace, "task", "new", "CI recording", "--no-spec")
+        self.check_ok(workspace, "task", "claim", "0001", "--agent", "alice")
+        self.check_ok(
+            workspace, "git", "start", "--task", "0001", "--agent", "alice", "--type", "feature",
+        )
+        (workspace / "sample.txt").write_text("change\n", encoding="utf-8")
+        git(workspace, "add", "sample.txt")
+        self.check_ok(
+            workspace, "git", "commit", "--task", "0001", "--agent", "alice",
+            "--type", "test", "--message", "add sample file",
+            "--ci", "https://ci.example/run/8 passed",
+        )
+
+        task_file = next((workspace / "tasks" / "active").glob("0001-*.md"))
+        self.assertIn("CI: https://ci.example/run/8 passed", task_file.read_text(encoding="utf-8"))
+        shown = self.check_ok(workspace, "task", "show", "0001")
+        self.assertIn("CI results:", shown.stdout)
+        self.assertIn("https://ci.example/run/8 passed", shown.stdout)
 
     def test_task_link_github(self) -> None:
         """link_task_github helper links GitHub issue and PR without external tokens."""
-        import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
             task_file = Path(tmpdir) / "0999-test.md"
             task_file.write_text(
