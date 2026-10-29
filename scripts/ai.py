@@ -389,6 +389,12 @@ def acquire_lock(
                 other = read_json(other_path)
                 if not isinstance(other, dict):
                     continue
+                other_resource = str(other.get("resource") or "")
+                # Task claims protect task metadata ownership. They are a
+                # separate namespace from file leases and must not conflict
+                # with broad resources such as `project`.
+                if resource.startswith("task-") or other_resource.startswith("task-"):
+                    continue
                 if lock_is_stale(other, stale_after):
                     if force:
                         try:
@@ -397,7 +403,7 @@ def acquire_lock(
                             pass
                     continue
                 try:
-                    overlaps = resources_overlap(resource, other.get("resource", ""))
+                    overlaps = resources_overlap(resource, other_resource)
                 except ValueError:
                     overlaps = False
                 if not overlaps:

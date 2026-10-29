@@ -6,7 +6,7 @@ owner: codex
 priority: high
 spec: specs/active/0003-p0-reliability-concurrency-lease-and-recovery-test-suite.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T08:12:12Z
+updated: 2026-10-29T08:12:32Z
 lock: task-0003
 depends_on: 0002
 branch: chore/0003-p0-reliability-concurrency-lease-and-rec
@@ -55,4 +55,6 @@ Spec and plan approved by user on 2026-10-29.
 - 2026-10-29T06:55:08Z created
 - 2026-10-29T08:06:28Z claimed by codex
 - 2026-10-29T08:06:45Z created branch chore/0003-p0-reliability-concurrency-lease-and-rec from develop by codex
+- 2026-10-29 implementation ready: `ai check --fast` -> 32 tests passed in 46.3 seconds; 0 errors, 0 warnings.
 - 2026-10-29T08:12:12Z committed: chore(task): archive completed task 0008
+- 2026-10-29T08:12:32Z committed: test(reliability): cover lease recovery and guarded git failures
