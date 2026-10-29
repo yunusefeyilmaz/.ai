@@ -1,13 +1,13 @@
 ---
 id: 0007
 title: "P0 first-run: keep the start path branchable"
-status: in_progress
-owner: implementer
+status: review
+owner: null
 priority: high
 spec: specs/active/0007-p0-first-run-keep-the-start-path-branchable.md
 created: 2026-10-29T07:17:08Z
-updated: 2026-10-29T07:20:53Z
-lock: task-0007
+updated: 2026-10-29T07:20:59Z
+lock: null
 depends_on: 0001
 branch: feature/0007-p0-first-run-keep-the-start-path-brancha
 ---
@@ -53,3 +53,6 @@ Spec: `specs/active/0007-p0-first-run-keep-the-start-path-branchable.md`
 - 2026-10-29T07:17:08Z claimed by implementer
 - 2026-10-29T07:17:25Z created branch feature/0007-p0-first-run-keep-the-start-path-brancha from develop by implementer
 - 2026-10-29T07:20:53Z committed: fix(onboarding): keep the first-run loop branchable
+- 2026-10-29T07:20:57Z submitted for independent review by implementer
+- 2026-10-29T07:20:58Z released by implementer
+- 2026-10-29T07:20:59Z committed: chore: record review-ready state for 0007
