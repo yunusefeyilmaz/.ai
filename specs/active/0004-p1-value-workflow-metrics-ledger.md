@@ -38,8 +38,9 @@ time, review time, retries, lock contention, resumes, and activity by agent.
 ### Preserved
 
 - Existing command results and state transitions remain unchanged.
-- Missing or empty event ledgers produce zero-valued metrics without creating
-  files when running `ai metrics`.
+- Missing or empty event ledgers produce zero-valued counts and null medians
+  (there are no duration samples) without creating files when running
+  `ai metrics`.
 - The event ledger is operational data and may be cleared by the existing hard
   reset; no external service or dependency is introduced.
 
@@ -53,7 +54,8 @@ time, review time, retries, lock contention, resumes, and activity by agent.
 - [ ] `ai metrics --json` reports completed count, median creation-to-done and
       review-to-merge durations, refusal count, retries, resumes, and counts by
       agent; `--since` filters the reported period correctly.
-- [ ] Reading metrics with no ledger is read-only and reports zero counts.
+- [ ] Reading metrics with no ledger is read-only, reports zero counts, and
+      returns null for duration medians with no samples.
 - [ ] A local lifecycle test asserts event records and exact reported values;
       the test is included in the fast `ai check` suite.
 - [ ] `ai check --strict` passes.
@@ -66,4 +68,5 @@ time, review time, retries, lock contention, resumes, and activity by agent.
 
 ## Status
 
-Approved by user on 2026-10-29. Implementation is ready for independent review.
+Approved by user on 2026-10-29. Clarified that empty duration medians are null;
+implementation is ready for independent review.

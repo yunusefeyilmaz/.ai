@@ -1,13 +1,13 @@
 ---
 id: 0004
 title: "P1 value: workflow metrics ledger"
-status: review
-owner: null
+status: in_progress
+owner: codex
 priority: medium
 spec: specs/active/0004-p1-value-workflow-metrics-ledger.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T08:25:31Z
-lock: null
+updated: 2026-10-29T08:28:06Z
+lock: task-0004
 depends_on: 0003
 branch: feature/0004-p1-value-workflow-metrics-ledger
 ---
@@ -48,7 +48,10 @@ Spec and plan approved by user on 2026-10-29.
 - 2026-10-29T08:15:04Z claimed by codex
 - 2026-10-29T08:15:05Z created branch feature/0004-p1-value-workflow-metrics-ledger from develop by codex
 - 2026-10-29 implementation ready: `ai check --strict` -> 35 tests passed in 51.9 seconds; 0 errors, 0 warnings.
+- 2026-10-29 spec wording clarified after review: zero counts, null duration medians when no samples.
 - 2026-10-29T08:25:22Z committed: feat(metrics): record local workflow metrics
 - 2026-10-29T08:25:29Z submitted for independent review by codex
 - 2026-10-29T08:25:29Z released by codex
 - 2026-10-29T08:25:31Z committed: chore(task): record 0004 review handoff
+- 2026-10-29T08:27:57Z claimed by codex
+- 2026-10-29T08:28:06Z committed: docs(metrics): clarify empty metrics samples
