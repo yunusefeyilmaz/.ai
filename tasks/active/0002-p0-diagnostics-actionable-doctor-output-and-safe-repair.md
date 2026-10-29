@@ -6,10 +6,12 @@ owner: null
 priority: high
 spec: specs/active/0002-actionable-diagnostics.md
 created: 2026-10-29T06:55:07Z
-updated: 2026-10-29T07:49:54Z
+updated: 2026-10-29T07:50:40Z
 lock: null
 depends_on: 0001
-branch: feature/0002-p0-diagnostics-actionable-doctor-output
+branch: null
+merged_into: develop
+merged_at: 2026-10-29T07:50:40Z
 ---
 
 # 0002 - P0 diagnostics: actionable doctor output and safe repair
@@ -56,3 +58,4 @@ Spec: `specs/active/0002-actionable-diagnostics.md`
 - 2026-10-29T07:44:00Z committed: chore: record review-ready state for 0002
 - 2026-10-29T07:49:27Z reviewed by reviewer: PASS. Commands: `ai doctor --strict` -> 0 errors, 0 warnings; `ai check --strict` -> 0 errors, 0 warnings (23 tests); `python -m unittest discover -s tests -v` -> 23 tests OK (Python 3.9.10 and 3.10.6); scratch-copy checks for criteria 1-6 plus the safe-repair audit passed.
 - 2026-10-29T07:49:54Z committed: docs: record independent review evidence for 0002
+- 2026-10-29T07:50:40Z merged feature/0002-p0-diagnostics-actionable-doctor-output into develop by reviewer
