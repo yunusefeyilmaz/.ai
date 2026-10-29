@@ -2,6 +2,18 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.5.1] - 2026-10-29
+
+### Fixed
+
+- `ai doctor` and `ai check` no longer create runtime directories while
+  diagnosing; only `--fix` writes. A missing state tree now stays visible until
+  it is repaired on purpose.
+- A missing `config/workspace.json` produces one finding with the
+  `ai doctor --fix` hint instead of a duplicate `git checkout` hint.
+- Missing framework files in a subfolder install are hinted as a restore from
+  the `.ai` copy rather than a host-repository checkout that cannot work.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added

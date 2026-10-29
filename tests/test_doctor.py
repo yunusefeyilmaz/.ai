@@ -55,8 +55,11 @@ class DoctorRepairTest(WorkspaceCase):
         finding = finding_with(payload, "missing required path: runtime")
         self.assertEqual(finding["level"], "error")
         self.assertIn("ai doctor --fix", finding["hint"])
+        self.assertFalse(
+            (workspace / "runtime").exists(),
+            "plain doctor must not create runtime state",
+        )
 
-        shutil.rmtree(workspace / "runtime")
         fixed = run(workspace, "doctor", "--fix", "--json")
         payload = parse_json(self, fixed)
 
@@ -84,8 +87,13 @@ class DoctorRepairTest(WorkspaceCase):
         (workspace / "config" / "workspace.json").unlink()
         before = run(workspace, "doctor", "--json")
         self.assertEqual(before.returncode, 1, before.stdout)
-        finding = finding_with(parse_json(self, before), "config/workspace.json is missing")
-        self.assertIn("ai doctor --fix", finding["hint"])
+        payload = parse_json(self, before)
+        findings = [
+            finding for finding in payload["check"]["findings"]
+            if "config/workspace.json" in finding["message"]
+        ]
+        self.assertEqual(len(findings), 1, findings)
+        self.assertEqual(findings[0]["hint"], "ai doctor --fix")
 
         fixed = run(workspace, "doctor", "--fix", "--json")
         payload = parse_json(self, fixed)
@@ -179,10 +187,23 @@ class SubfolderDoctorTest(unittest.TestCase):
 
         self.assertEqual(fixed.returncode, 0, fixed.stderr + fixed.stdout)
         self.assertEqual(payload["check"]["findings"], [])
-        self.assertTrue((project / "AGENTS.md").is_file())
+        self.assertTrue((project / ".gitignore").is_file())
         self.assertIn("ai-workspace:start", (project / "AGENTS.md").read_text(encoding="utf-8"))
         self.assertIn(".ai/", (project / ".gitignore").read_text(encoding="utf-8"))
         self.assertTrue(any(item.startswith("wired AGENTS.md") for item in payload["fixes"]))
+
+    def test_missing_framework_file_hints_at_the_workspace_copy(self) -> None:
+        project = self.make_subfolder()
+        workspace = project / ".ai"
+        (workspace / "docs" / "architecture.md").unlink()
+
+        result = run(workspace, "doctor", "--json")
+        payload = parse_json(self, result)
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        finding = finding_with(payload, "missing required path: docs/architecture.md")
+        self.assertIn("workspace", finding["hint"])
+        self.assertNotIn("git checkout", finding["hint"])
 
 
 if __name__ == "__main__":

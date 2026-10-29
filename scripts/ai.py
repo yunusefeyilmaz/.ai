@@ -25,7 +25,7 @@ import tempfile
 import time
 from typing import NamedTuple
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -471,8 +471,11 @@ def heartbeat_lock(resource: str, agent: str | None = None) -> int:
     return 0
 
 
-def list_locks() -> list[dict]:
-    ensure_dirs()
+def list_locks(ensure: bool = True) -> list[dict]:
+    if ensure:
+        ensure_dirs()
+    if not os.path.isdir(LOCKS_DIR):
+        return []
     items = []
     for name in sorted(os.listdir(LOCKS_DIR)):
         if not name.endswith(".lock"):
@@ -815,8 +818,11 @@ def handoff_marker(task_id: str) -> str:
     return os.path.join(HANDOFF_DIR, normalize_id(str(task_id)) + ".json")
 
 
-def list_handoff_markers() -> list[dict]:
-    ensure_dirs()
+def list_handoff_markers(ensure: bool = True) -> list[dict]:
+    if ensure:
+        ensure_dirs()
+    if not os.path.isdir(HANDOFF_DIR):
+        return []
     items = []
     for name in sorted(os.listdir(HANDOFF_DIR)):
         if not name.endswith(".json"):
@@ -1008,7 +1014,7 @@ def write_board(tasks: list[dict]) -> None:
         lines.append("## Recently done")
         lines.append("")
         for task in sorted(done, key=lambda item: str(item.get("updated") or ""), reverse=True)[:20]:
-            lines.append(f"- {task.get('id', '?')} — {task.get('title', '?')} ({task.get('updated', '?')})")
+            lines.append(f"- {task.get('id', '?')} â€” {task.get('title', '?')} ({task.get('updated', '?')})")
         lines.append("")
     write_text_atomic(os.path.join(WORKSPACE, "tasks", "BOARD.md"), "\n".join(lines))
 
@@ -1329,8 +1335,17 @@ def apply_safe_fixes() -> list[str]:
 def collect_checks() -> list[Finding]:
     problems: list[Finding] = []
     for rel in REQUIRED_PATHS:
+        # The config loader below owns this one: it knows whether the file is
+        # absent (safe to recreate) or corrupt (never overwrite).
+        if rel == "config/workspace.json":
+            continue
         if not os.path.exists(os.path.join(WORKSPACE, rel)):
-            hint = "ai doctor --fix" if rel.startswith("runtime") else f"git checkout -- {rel}"
+            if rel.startswith("runtime"):
+                hint = "ai doctor --fix"
+            elif workspace_shape() == "subfolder":
+                hint = f"restore {rel} from the .ai workspace copy"
+            else:
+                hint = f"git checkout -- {rel}"
             problems.append(Finding("error", f"missing required path: {rel}", hint))
     try:
         config = load_config()
@@ -1365,7 +1380,7 @@ def collect_checks() -> list[Finding]:
                     )
                 )
 
-    locks = list_locks()
+    locks = list_locks(ensure=False)
     lock_by_task = {}
     for lock in locks:
         resource = str(lock.get("resource") or "")
@@ -1530,7 +1545,7 @@ def collect_checks() -> list[Finding]:
                 )
             )
 
-    for marker in list_handoff_markers():
+    for marker in list_handoff_markers(ensure=False):
         task_id = str(marker.get("task") or "")
         hint = f"ai checkpoint {task_id} --agent {marker.get('agent')} --next \"<step>\""
         data = read_checkpoint(task_id)
