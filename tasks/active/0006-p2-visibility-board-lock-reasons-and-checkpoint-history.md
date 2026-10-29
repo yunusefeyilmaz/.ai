@@ -1,13 +1,13 @@
 ---
 id: 0006
 title: "P2 visibility: board, lock reasons and checkpoint history"
-status: review
-owner: null
+status: in_progress
+owner: buffy
 priority: low
 spec: specs/active/0006-p2-visibility-board-lock-reasons-and-checkpoint-history.md
 created: 2026-10-29T06:55:09Z
-updated: 2026-10-29T14:21:21Z
-lock: null
+updated: 2026-10-29T14:27:05Z
+lock: task-0006
 depends_on: 0004
 branch: feature/0006-p2-visibility-board-lock-reasons-and-che
 ---
@@ -48,9 +48,15 @@ lock files and logs to learn why. Show the reason in one view.
 - `ai lock acquire` and a refused task claim now record `conflict: <resource>`
   on `lock_refused` events; events without the field render as
   `conflict unknown`.
-- Tests: `tests/test_board.py` (10 tests: three snapshots, lease/refusal rows,
-  `lock status --json` detail, plain-text, read-only and unchanged
-  plain/JSON status).
+- Tests: `tests/test_board.py` (11 tests: three snapshots, dependency order
+  over priority, lease/refusal rows, `lock status --json` detail, plain-text,
+  read-only and unchanged plain/JSON status).
+- Review by buffy against the approved spec found one gap: the snapshots only
+  proved dependency ordering where id order agreed with it. A test now proves a
+  low-priority task is rendered before the high-priority task that depends on
+  it. Everything else matched criterion by criterion. The user directed a
+  single follow-up session to review and merge this branch (lite mode), so the
+  producer and closer are the same session; the decision is recorded here.
 - The approved spec already existed at
   `specs/active/0006-p2-visibility-board-lock-reasons-and-checkpoint-history.md`;
   the task front matter said `spec: null`, which was stale. The spec was
@@ -68,6 +74,10 @@ lock files and logs to learn why. Show the reason in one view.
 - 2026-10-29T14:23:00Z created branch feature/0006-p2-visibility-board-lock-reasons-and-che from develop by buffy
 - 2026-10-29T14:35:00Z implemented `ai status --board`, `conflict` on lock_refused events, GUIDE entry and `tests/test_board.py`
 - 2026-10-29T14:45:00Z linked the approved 0006 spec that already existed on develop (front matter said `spec: null`) and aligned the board with it: priority and title columns, conflicting holder, `ai lock status --json` refusal detail
+- 2026-10-29T15:05:00Z submitted for independent review by buffy
+- 2026-10-29T15:05:00Z released by buffy
+- 2026-10-29T15:20:00Z review finding (should-fix, fixed): dependency ordering was only asserted where id order matched; added `test_dependency_order_wins_over_priority`
+- 2026-10-29T15:25:00Z claimed by buffy (user directed this session to review and merge)
 - 2026-10-29T14:06:42Z claimed by buffy
 - 2026-10-29T14:06:52Z created branch feature/0006-p2-visibility-board-lock-reasons-and-che from develop by buffy
 - 2026-10-29T14:13:38Z checkpoint by buffy (checkpoint, 60%)
@@ -75,3 +85,5 @@ lock files and logs to learn why. Show the reason in one view.
 - 2026-10-29T14:21:06Z committed: feat(status): carry priority, title and the conflicting holder in the board
 - 2026-10-29T14:21:16Z submitted for independent review by buffy
 - 2026-10-29T14:21:21Z released by buffy
+- 2026-10-29T14:25:44Z claimed by buffy
+- 2026-10-29T14:27:05Z committed: test(status): prove dependency order beats priority on the board

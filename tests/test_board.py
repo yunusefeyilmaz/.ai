@@ -182,6 +182,18 @@ class BoardSnapshotTest(BoardCase):
         )
 
 
+    def test_dependency_order_wins_over_priority(self) -> None:
+        """A dependency appears before the higher-priority task that needs it."""
+        workspace = self.make_workspace()
+        self.write_task(workspace, "0001", title="Foundation", priority="low")
+        self.write_task(workspace, "0002", title="Dependent", priority="high", depends_on="0001")
+
+        result = self.check_ok(workspace, "status", "--board")
+        block = result.stdout.split("Tasks\n", 1)[1].split("\nLeases", 1)[0]
+        rows = [line for line in block.splitlines() if line.strip()][1:]
+        self.assertEqual([row.split()[0] for row in rows], ["0001", "0002"])
+
+
 class BoardLeaseTest(BoardCase):
     def test_leases_show_ttl_and_remaining_time(self) -> None:
         workspace = self.make_workspace()
