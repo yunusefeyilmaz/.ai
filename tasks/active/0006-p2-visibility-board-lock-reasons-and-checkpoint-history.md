@@ -1,13 +1,13 @@
 ---
 id: 0006
 title: "P2 visibility: board, lock reasons and checkpoint history"
-status: in_progress
-owner: cline
+status: todo
+owner: null
 priority: low
 spec: null
 created: 2026-10-29T06:55:09Z
-updated: 2026-10-29T09:08:15Z
-lock: task-0006
+updated: 2026-10-29T13:59:08Z
+lock: null
 depends_on: 0004
 ---
 
