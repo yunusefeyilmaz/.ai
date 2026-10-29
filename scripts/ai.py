@@ -26,7 +26,7 @@ import tempfile
 import time
 from typing import NamedTuple
 
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)

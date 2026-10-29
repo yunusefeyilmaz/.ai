@@ -2,6 +2,43 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.6.0] - 2026-10-29
+
+### Added
+
+- `ai status --board`: a read-only one-screen view. Active tasks are listed in
+  dependency order with id, status, owner, priority, checkpoint age, waiting
+  reason and title, followed by every lease with its TTL, remaining seconds and
+  `held`/`stale` state, and the last five refused leases.
+- A refused lease names its conflict: `ai lock acquire` and a refused task claim
+  record `conflict` and `conflict_agent` on the `lock_refused` event.
+  `ai lock status --json` adds `state`, `remaining_seconds` and the matching
+  `refusals` to each lease. Events written before this release render as
+  `conflict unknown`.
+- Versioned adapter contract: `adapters/contract.schema.json` fixes the shape
+  of every `adapters/*/adapter.json`, each adapter may carry a semver
+  `version` (absent means `0.1.0`), and `ai capabilities --json` publishes
+  `adapter_contract` with the contract version, schema path and the state paths
+  adapters may rely on.
+- `tests/test_adapter_contract.py`: every adapter is validated against the
+  schema, and adapter documents may only reference commands the CLI publishes.
+- `ai git commit --ci <url|result>` records the CI result in the task log and
+  `ai task show` prints the recorded CI results.
+- `ai task link --issue <url> --pr <url>` links a GitHub issue and pull request
+  from a task record. It writes only to the task file and needs no token.
+- `.github/workflows/ci.yml` now runs on Ubuntu, macOS and Windows with Python
+  3.8 and 3.11.
+- `tests/test_board.py`: snapshot coverage for empty, single-task, blocked and
+  dependency-ordered boards, plus lease detail, read-only and plain-text
+  guarantees.
+
+### Changed
+
+- `ai status` keeps its previous output in every respect; `--board` is additive
+  and `--json` is unchanged.
+- `ai check --strict` stays the single verification gate; reliability tests for
+  concurrent leases, lease takeover and guarded Git failures run inside it.
+
 ## [0.5.2] - 2026-10-29
 
 ### Added
