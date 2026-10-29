@@ -30,6 +30,9 @@ and keeps later changes from breaking them.
 - [ ] Every test builds its own temporary workspace, runs the real CLI, needs no
       network and finishes in under 60 seconds.
 - [ ] `ai check --fast` runs the suite; failures name the scenario.
+- [ ] The porcelain first-entry regression test fails against the old parser
+      (`tasks/BOARD.md` must not become `asks/BOARD.md`); a test that also passes
+      on the broken base does not count.
 
 ## Plan
 
@@ -38,6 +41,11 @@ and keeps later changes from breaking them.
 3. Register the suite as a fast check.
 
 ## Notes
+
+Known gaps from the 0007 review: the staged-path parser test does not fail on the
+old parser, and `test_product_changes_still_block_the_branch` uses a
+non-idempotent `mkdir` that would break if the checkout gains a top-level
+`src/`. Fold both fixes into this task.
 
 ## Log
 
