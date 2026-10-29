@@ -1,12 +1,12 @@
 ---
 id: 0006
 title: "P2 visibility: board, lock reasons and checkpoint history"
-status: review
+status: done
 owner: null
 priority: low
 spec: specs/active/0006-p2-visibility-board-lock-reasons-and-checkpoint-history.md
 created: 2026-10-29T06:55:09Z
-updated: 2026-10-29T14:28:50Z
+updated: 2026-10-29T14:28:55Z
 lock: null
 depends_on: 0004
 branch: null
@@ -92,3 +92,4 @@ lock files and logs to learn why. Show the reason in one view.
 - 2026-10-29T14:27:22Z submitted for independent review by buffy
 - 2026-10-29T14:27:22Z released by buffy
 - 2026-10-29T14:28:50Z merged feature/0006-p2-visibility-board-lock-reasons-and-che into develop by buffy
+- 2026-10-29T14:28:55Z marked done by buffy
