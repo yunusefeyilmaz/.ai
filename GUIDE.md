@@ -103,7 +103,9 @@ checkpoint, about ownership that disagrees with leases, and about tasks whose
 folder and status diverge.
 
 If `ai start` reports `ai git setup`, run it once, confirm the baseline snapshot,
-then rerun `ai start --agent implementer`.
+then rerun `ai start --agent implementer`. If `ai doctor` reports broken
+workspace state, run `ai doctor --fix`; it repairs only missing, regenerable
+files and names anything it cannot fix.
 
 ## Command surface
 
@@ -124,11 +126,22 @@ Without a commit it only prints `ai git setup`; it never prompts or force-claims
 ### Workspace health
 
 ```sh
-ai doctor [--strict] [--json]
+ai doctor [--fix] [--strict] [--json]
 ai check [--fast] [--strict] [--json] [--no-commands]
 ai status [--json]
 ai capabilities
 ```
+
+Every `ai doctor` finding prints `fix: <command>` when a safe repair is known.
+`--json` keeps `ok`/`errors`/`warnings` and adds `findings` with their hints.
+
+`ai doctor --fix` performs only repairs that cannot lose data: it recreates
+missing runtime directories and keep files, writes `config/workspace.json` when
+it is absent, and in a subfolder install writes the missing root adapter
+pointers and `.gitignore` rules. Each change is reported as `FIXED`. It never
+rewrites an invalid config, removes a lock, edits task or spec files, or touches
+Git. Anything left over is still a finding, and the command exits 1; `--json`
+returns `fixes` plus the remaining `check.findings`.
 
 `--strict` promotes warnings to failures. CI runs `doctor --strict` and
 `check --strict`. `--fast` runs only checks marked fast in

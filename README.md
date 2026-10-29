@@ -123,6 +123,21 @@ The split matters: `.ai/` is agent territory, the rest is product territory.
 `ai adopt` is the explicit operator action that creates ignored local pointers
 and ignore rules at the project root.
 
+## When something breaks
+
+`ai doctor` prints a `fix:` line under every finding it knows how to repair.
+When the workspace is missing regenerable state, let it do the safe part:
+
+```sh
+ai doctor --fix
+```
+
+`--fix` recreates missing runtime state, writes `config/workspace.json` when it
+is absent, and wires missing subfolder adapters and ignore rules. It never
+rewrites an invalid config, removes a lock, edits task or spec files, or touches
+Git. Anything it cannot repair stays as a finding and the command exits 1;
+`--json` returns `fixes` and the remaining `findings`.
+
 ## Work states
 
 A task moves `todo -> in_progress -> review -> done`, and can be `blocked` at any

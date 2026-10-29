@@ -2,6 +2,28 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- `ai doctor --fix`: repairs only missing, regenerable state - runtime
+  directories and keep files, an absent `config/workspace.json`, and missing
+  subfolder adapter pointers and ignore rules. Each change is reported as
+  `FIXED`; task, spec, lock and Git data are never touched.
+- Every diagnostic carries a repair hint. Human output prints `fix: <command>`;
+  `--json` adds a `findings` array of `{level, message, hint}` and a `fixes`
+  array. With `--fix` the exit code is 0 only when nothing remains.
+- Subfolder installs now report missing root adapter pointers and ignore rules,
+  so the repair is visible before an agent fails to find the workspace.
+- `tests/test_doctor.py`: regression coverage for hinted findings, safe repair,
+  corrupt config, orphan locks and subfolder wiring.
+
+### Changed
+
+- `ai doctor --json` keeps `ok`, `errors` and `warnings` and adds structured
+  findings, so existing scripts keep working.
+- `ai init` shares its placeholder logic with `--fix`; behavior is unchanged.
+
 ## [0.4.0] - 2026-10-29
 
 ### Added
