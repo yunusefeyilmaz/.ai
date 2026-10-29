@@ -2,5 +2,6 @@
   "tool": "claude-code",
   "entry": "CLAUDE.md",
   "autoload": ["CLAUDE.md"],
-  "supports": ["auto-load", "subagents", "hooks", "permissions"]
+  "supports": ["auto-load", "subagents", "hooks", "permissions"],
+  "version": "0.1.0"
 }

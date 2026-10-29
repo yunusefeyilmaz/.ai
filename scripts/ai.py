@@ -2312,12 +2312,24 @@ def cmd_task_show(args) -> int:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
     meta, body = parse_task(path)
+    ci_results = [
+        line.strip().lstrip("- ")
+        for line in body.splitlines()
+        if "CI:" in line
+    ]
     if args.json:
-        print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
+        payload = {"meta": meta, "body": body}
+        if ci_results:
+            payload["ci_results"] = ci_results
+        print(json.dumps(payload, indent=2, default=str))
         return 0
     print(f"File: {os.path.relpath(path, PROJECT)}")
     for key, value in meta.items():
         print(f"{key}: {value}")
+    if ci_results:
+        print("\nCI results:")
+        for r in ci_results:
+            print(f"  {r}")
     print()
     print(body)
     return 0
@@ -2801,6 +2813,63 @@ def cmd_task_discard(args) -> int:
         print(f"Could not discard task {task_id}: {exc}", file=sys.stderr)
         return 1
     print(f"Discarded task {task_id}; removed {len(current_targets)} file(s).")
+    return 0
+
+
+def link_task_github(
+    path: str,
+    issue: str | None = None,
+    pr: str | None = None,
+    agent: str | None = None,
+) -> tuple[dict, str]:
+    """Helper to link a GitHub issue and pull request from a task record without external tokens."""
+    meta, body = parse_task(path)
+    links = []
+    if issue:
+        meta["github_issue"] = str(issue).strip()
+        links.append(f"issue: {issue}")
+    if pr:
+        meta["github_pr"] = str(pr).strip()
+        links.append(f"pr: {pr}")
+    if not links:
+        return meta, body
+
+    if issue and pr:
+        note_line = f"GitHub: {issue} / {pr}"
+    elif issue:
+        note_line = f"GitHub issue: {issue}"
+    else:
+        note_line = f"GitHub PR: {pr}"
+
+    notes_match = re.search(r"(## Notes\s*\n)", body)
+    if notes_match:
+        idx = notes_match.end()
+        body = body[:idx] + f"- {note_line}\n" + body[idx:]
+    else:
+        body = body.rstrip() + f"\n\n## Notes\n\n- {note_line}\n"
+
+    meta["updated"] = iso()
+    log_entry = f"- {iso()} linked GitHub {', '.join(links)}"
+    if agent:
+        log_entry += f" by {agent}"
+    body = body.rstrip() + f"\n{log_entry}\n"
+    write_task(path, meta, body)
+    return meta, body
+
+
+def cmd_task_link(args) -> int:
+    path = find_task(args.task_id)
+    if not path:
+        print(f"No task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    if not args.issue and not args.pr:
+        print("Specify at least --issue or --pr.", file=sys.stderr)
+        return 1
+    meta, body = link_task_github(path, issue=args.issue, pr=args.pr, agent=args.agent)
+    if args.json:
+        print(json.dumps({"ok": True, "meta": meta, "task": args.task_id}, indent=2, default=str))
+        return 0
+    print(f"Linked task {args.task_id} to GitHub: issue={args.issue}, pr={args.pr}")
     return 0
 
 
@@ -3765,6 +3834,8 @@ def cmd_git_commit(args) -> int:
         _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
+        if args.ci:
+            body += f"- {iso()} CI: {args.ci}\n"
         write_task(path, meta, body)
         write_board(load_tasks())
         amended = commit_task_metadata(path, "", amend=True)
@@ -4097,7 +4168,7 @@ CAPABILITIES = {
         "status": "tasks, locks, checkpoints, handoffs; --json",
         "metrics": "summarize local workflow events; --since, --json",
         "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
-        "task": "new | list | show | ready | next | claim | release | review | done | discard | block | unblock",
+        "task": "new | list | show | link | ready | next | claim | release | review | done | discard | block | unblock",
         "lock": "acquire | release | heartbeat | status",
         "checkpoint": "save resumable context",
         "resume": "print a compact resume brief with drift",
@@ -4121,7 +4192,18 @@ CAPABILITIES = {
 
 
 def cmd_capabilities(args) -> int:
-    print(json.dumps(CAPABILITIES, indent=2))
+    payload = dict(CAPABILITIES)
+    payload["adapter_contract"] = {
+        "schema_version": "0.1.0",
+        "schema_path": "adapters/contract.schema.json",
+        "adapter_dir": "adapters/",
+        "state_paths": [
+            "runtime/state/",
+            "tasks/",
+            "specs/",
+        ],
+    }
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -4342,6 +4424,14 @@ def build_parser() -> argparse.ArgumentParser:
     task_show.add_argument("--json", action="store_true")
     task_show.set_defaults(func=cmd_task_show)
 
+    task_link = task_sub.add_parser("link", help="link GitHub issue and/or PR to task")
+    task_link.add_argument("task_id")
+    task_link.add_argument("--issue", default=None, help="GitHub issue URL or number")
+    task_link.add_argument("--pr", default=None, help="GitHub pull request URL or number")
+    task_link.add_argument("--agent", default=None)
+    task_link.add_argument("--json", action="store_true")
+    task_link.set_defaults(func=cmd_task_link)
+
     task_ready = task_sub.add_parser("ready", help="list claimable tasks whose dependencies are done")
     task_ready.add_argument("--json", action="store_true")
     task_ready.set_defaults(func=cmd_task_ready)
@@ -4483,6 +4573,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
     git_commit.add_argument("--force", action="store_true")
     git_commit.add_argument("--json", action="store_true")
+    git_commit.add_argument("--ci", default=None, help="record CI result URL or identifier in task log")
     git_commit.set_defaults(func=cmd_git)
     git_finish = git_sub.add_parser("finish", help="check, no-ff merge the task branch, and clean up")
     git_finish.add_argument("--task", required=True)
@@ -4505,6 +4596,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_verify.set_defaults(func=cmd_git)
 
     capabilities = sub.add_parser("capabilities", help="print the machine-readable CLI contract")
+    capabilities.add_argument("--json", action="store_true")
     capabilities.set_defaults(func=cmd_capabilities)
 
     artifact = sub.add_parser("artifact", help="quarantine AI scratch files")

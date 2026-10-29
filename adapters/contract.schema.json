@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Adapter contract schema",
+  "description": "Required shape of adapters/<tool>/adapter.json files",
+  "type": "object",
+  "required": ["tool", "entry", "autoload", "supports"],
+  "properties": {
+    "tool": {
+      "type": "string",
+      "description": "Unique tool identifier (e.g. claude-code, codex, cursor)"
+    },
+    "entry": {
+      "description": "Path to the wiring file in the host project",
+      "oneOf": [
+        {"type": "string"},
+        {"type": "null"}
+      ]
+    },
+    "autoload": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Entry points auto-loaded by the tool"
+    },
+    "supports": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Capabilities the adapter supports"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "Optional semver version of the adapter contract"
+    }
+  },
+  "additionalProperties": false
+}

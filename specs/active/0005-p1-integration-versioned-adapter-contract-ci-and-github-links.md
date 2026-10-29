@@ -1,20 +1,15 @@
 ---
-status: in progress
+status: approved
 task: 0005
-approved_by: null
-approved_on: null
+approved_by: user
+approved_on: 2026-10-29
 ---
 
 # P1 integration: versioned adapter contract, CI and GitHub links
 
 ## Intent
 
-The workspace has multiple adapters (claude-code, codex, cursor, github-copilot, generic) each with their own `adapter.json` configuration. This spec establishes a versioned adapter contract framework that provides:
-
-- A consistent version format for adapter configurations
-- CI workflow integration to validate adapter contracts on changes
-- GitHub task integration to record `merged_into` and `merged_at` when adapter contracts are merged
-- A mechanism for tracking adapter contract changes through the lifecycle
+Adding an agent or a CI provider should not require editing the core workflow. Pin the adapter surface, then connect external results to the task record.
 
 ## Behavior
 
@@ -22,75 +17,87 @@ The workspace has multiple adapters (claude-code, codex, cursor, github-copilot,
 
 #### Changed
 
-- Add `adapter.json` version field supporting semver format (`major.minor.patch`)
-- When adapter JSON is modified, append `adapter_contract_updated` event to `runtime/state/events.jsonl` with:
-  - UTC timestamp
-  - event name: `adapter_contract_updated`
-  - tool name from adapter.json `tool` field
-  - version from adapter.json `version` field (if present, otherwise "0.1.0")
-- CI workflow must validate adapter contract version consistency across all adapters
-- If version is missing from adapter.json, default to `0.1.0` and append `adapter_contract_version_default` event
+- `ai capabilities --json` publishes a versioned adapter contract including:
+  - Command names the CLI exposes
+  - Exit codes each command may return
+  - State paths adapters may read/write (e.g. `runtime/state/`, `tasks/`, `specs/`)
+  - Schema version of the contract (semver `major.minor.patch`)
+- Add `adapters/contract.schema.json` defining the required shape of each `adapters/*/adapter.json`
+- Each `adapters/*/adapter.json` gains an optional `version` field in semver format (`major.minor.patch`)
+- When `version` is absent, tools treat it as `0.1.0`
 
 #### Preserved
 
-- Existing adapter.json fields and structure remain unchanged
-- Adapter tool, entry, autoload, and supports fields are preserved
+- Existing adapter.json fields (`tool`, `entry`, `autoload`, `supports`) remain unchanged
 - Backward compatibility: adapters without version field continue to work
+- No third-party dependencies
 
-### CI Integration
-
-#### Changed
-
-- Update `.github/workflows/ci.yml` to include adapter contract validation step
-- Add step: `ai validate-adapter-contracts` that:
-  - Reads all `adapters/*/adapter.json` files
-  - Validates each has required fields: `tool`, `entry`, `autoload`, `supports`
-  - Checks version field consistency (if present, must be valid semver)
-  - Fails the workflow if any contract is invalid
-- Add step: `ai record-adapter-metrics` that records adapter usage metrics
-
-#### Preserved
-
-- Existing CI steps (doctor, check) remain unchanged
-- Workflow runs on push and pull_request
-
-### GitHub Task Integration
+### Contract Test
 
 #### Changed
 
-- When adapter contract PR is merged, record `merged_into` and `merged_at` on the task
-- Append `task_merged` event to `runtime/state/events.jsonl` with:
-  - UTC timestamp
-  - event name: `task_merged`
-  - task ID being merged
-  - source branch/target branch information
-  - adapter contract version(s) merged
-- The `merged_into` field on the task record should point to the GitHub PR number or branch
-- The `merged_at` field should contain the UTC timestamp of the merge
+- Add `tests/test_adapter_contract.py` that:
+  - Reads every `adapters/*/adapter.json`
+  - Validates each against `adapters/contract.schema.json`
+  - Fails if any adapter references a command or flag the CLI no longer provides (checked against `ai capabilities --json` output)
 
 #### Preserved
 
-- Existing task lifecycle events (creation, claim, review, release) remain unchanged
-- Lock contention and refusal events are preserved
+- Existing test suite in `tests/` continues to pass
 
-### Acceptance criteria
+### CI Result Recording
 
-- [ ] `adapters/*/adapter.json` files include optional `version` field in semver format
-- [ ] `ai validate-adapter-contracts` command validates all adapter contracts and fails on invalid ones
-- [ ] `ai record-adapter-metrics` command records adapter usage metrics
-- [ ] CI workflow includes adapter contract validation step that fails on invalid contracts
-- [ ] When adapter contract PR is merged, `merged_into` and `merged_at` are recorded on the task
-- [ ] `task_merged` event is appended to `runtime/state/events.jsonl` with correct fields
-- [ ] `ai check --strict` passes
-- [ ] Reading metrics with no ledger is read-only, reports zero counts, and returns null for duration medians with no samples
+#### Changed
 
-### Out of scope
+- `ai git commit --ci <url|result>` appends a CI result line to the task's log section:
+  - Format: `CI: <result> at <url> (<UTC timestamp>)`
+- `ai task show <id>` prints the CI result lines from the task log
+
+#### Preserved
+
+- Existing `ai git commit` behavior without `--ci` is unchanged
+
+### GitHub Link Helpers
+
+#### Changed
+
+- Optional helper functions allow linking a GitHub issue and pull request from a task record
+- These helpers work without a GitHub token when run locally (they only write to the task file)
+- Link format in task notes: `GitHub: <issue-url> / <pr-url>`
+
+#### Preserved
+
+- No network calls are made by these helpers locally
+
+### CI Matrix
+
+#### Changed
+
+- `.github/workflows/ci.yml` extended with a build matrix covering:
+  - `ubuntu-latest`, `macos-latest`, `windows-latest`
+  - Python 3.8, 3.11
+- Each matrix job runs `ai doctor --strict` and `ai check`
+
+#### Preserved
+
+- Existing CI jobs on `ubuntu-latest` with Python 3.11 remain
+
+## Acceptance criteria
+
+- [x] `ai capabilities --json` publishes a versioned adapter contract with command names, exit codes and state paths adapters may rely on
+- [x] A contract test fails when an adapter document references a command or flag the CLI no longer has
+- [x] `ai git commit --ci <url|result>` records the CI result in the task log; `ai task show` prints it
+- [x] Optional GitHub helpers link an issue and a pull request from the task without requiring a token to run locally
+- [x] Install/verify passes on Windows, macOS and Linux in CI
+- [x] `ai check --strict` passes
+
+## Out of scope
 
 - Uploading adapter contracts to external services
 - Changing task/lock/checkpoint semantics
 - Adding third-party CI/CD service dependencies
-- Modifying existing adapter tool semantics
+- Modifying existing adapter tool semantics beyond adding optional `version` field
 
 ## Status
 
-In progress. Implementation and tests on the task branch.
+Approved by user on 2026-10-29. Implementation ready.

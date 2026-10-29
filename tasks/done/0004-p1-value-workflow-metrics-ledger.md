@@ -1,12 +1,12 @@
 ---
 id: 0004
 title: "P1 value: workflow metrics ledger"
-status: review
+status: done
 owner: null
 priority: medium
-spec: specs/active/0004-p1-value-workflow-metrics-ledger.md
+spec: specs/done/0004-p1-value-workflow-metrics-ledger.md
 created: 2026-10-29T06:55:08Z
-updated: 2026-10-29T08:28:13Z
+updated: 2026-10-29T11:30:00Z
 lock: null
 depends_on: 0003
 branch: feature/0004-p1-value-workflow-metrics-ledger
