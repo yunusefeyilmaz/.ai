@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: shipped
 task: 0001
 approved_by: null
 approved_on: null
@@ -56,26 +56,26 @@ commands, not safety checks.
 
 ## Acceptance criteria
 
-- [ ] In an empty root-template workspace with a Git commit, `ai start --json`
+- [x] In an empty root-template workspace with a Git commit, `ai start --json`
       exits 0, creates one task and one spec, and reports `shape: "root"` and
       the integration/production branches.
-- [ ] `ai start --agent me` claims the starter task and the printed next steps
+- [x] `ai start --agent me` claims the starter task and the printed next steps
       contain `ai git start`.
-- [ ] A second `ai start` creates no second task and exits 0.
-- [ ] With no Git commit, `ai start` exits 0, prints `ai git setup`, and does not
+- [x] A second `ai start` creates no second task and exits 0.
+- [x] With no Git commit, `ai start` exits 0, prints `ai git setup`, and does not
       wait for input.
-- [ ] `ai task new "X"` creates `specs/active/<id>-x.md`, sets `spec`, and the
+- [x] `ai task new "X"` creates `specs/active/<id>-x.md`, sets `spec`, and the
       file has `task: <id>` in its front matter. `--no-spec` creates no file.
-- [ ] With `--spec specs/active/custom.md`, that file is linked and its content
+- [x] With `--spec specs/active/custom.md`, that file is linked and its content
       is unchanged.
-- [ ] `ai check --strict` on a just-claimed task in `lite` mode reports no
+- [x] `ai check --strict` on a just-claimed task in `lite` mode reports no
       missing-checkpoint warning; the same state in `strict` mode warns.
-- [ ] A checkpoint older than `handoff.warnAfterMinutes` warns in both modes.
-- [ ] `ai capabilities` lists `start`; README and GUIDE show it as the first
+- [x] A checkpoint older than `handoff.warnAfterMinutes` warns in both modes.
+- [x] `ai capabilities` lists `start`; README and GUIDE show it as the first
       command.
-- [ ] `scripts/ai.cmd` returns 1 for a failing command and 0 for a successful
+- [x] `scripts/ai.cmd` returns 1 for a failing command and 0 for a successful
       one.
-- [ ] `python -m unittest discover -s tests` passes.
+- [x] `python -m unittest discover -s tests` passes.
 
 ## Out of scope
 
@@ -86,4 +86,7 @@ commands, not safety checks.
 
 ## Status
 
-In progress. Implementation and tests land on the task branch.
+Shipped. Independently verified by `reviewer` on 2026-10-29:
+`ai doctor --strict` 0 errors / 0 warnings, `ai check --strict` 0 errors /
+0 warnings (13 tests), and `python -m unittest discover -s tests -v` passed
+13/13. Every acceptance criterion was re-checked in a scratch copy.
