@@ -6,26 +6,44 @@ owner: implementer
 priority: high
 spec: specs/active/0007-p0-first-run-keep-the-start-path-branchable.md
 created: 2026-10-29T07:17:08Z
-updated: 2026-10-29T07:17:08Z
+updated: 2026-10-29T07:20:53Z
 lock: task-0007
 depends_on: 0001
+branch: feature/0007-p0-first-run-keep-the-start-path-brancha
 ---
 
 # 0007 - P0 first-run: keep the start path branchable
 
 ## Intent
 
-<!-- What problem does this solve? Who is it for? -->
+The first independent review found that the printed first-run loop still fails:
+`ai start --agent` leaves the new task and spec uncommitted, so the next
+`ai git start` refuses to run. A ledger with only archived tasks makes `start`
+try to claim a done task. Both break the one-command promise on the very first
+use. The Git status parser also drops the first character of the first porcelain
+entry, which can hide a staged path from `ai git verify`.
 
 ## Acceptance criteria
 
-- [ ] 
+- [ ] After `ai start --agent <name>`, `ai git start` for that task succeeds even
+      though the task and spec are still uncommitted.
+- [ ] `ai git start` still refuses when a product file is modified or untracked.
+- [ ] With only done tasks, `ai start --agent <name>` creates the next task,
+      claims it, and never targets the archived one.
+- [ ] With an active task present, `ai start` creates nothing.
+- [ ] `ai git verify --strict` sees the first staged path in full and reports it
+      covered by a lease.
+- [ ] The suite covers the four scenarios and `ai check --strict` is green.
 
 ## Plan
 
 Spec: `specs/active/0007-p0-first-run-keep-the-start-path-branchable.md`
 
-<!-- Filled by the planner. -->
+1. Treat `tasks/` and `specs/` as ledger paths that do not block a task branch;
+   product paths still do.
+2. Select only active tasks in `start` and create a starter when none exist.
+3. Parse `git status --porcelain` without trimming its first column.
+4. Add regression tests and changelog entries.
 
 ## Notes
 
@@ -33,3 +51,5 @@ Spec: `specs/active/0007-p0-first-run-keep-the-start-path-branchable.md`
 
 - 2026-10-29T07:17:08Z created
 - 2026-10-29T07:17:08Z claimed by implementer
+- 2026-10-29T07:17:25Z created branch feature/0007-p0-first-run-keep-the-start-path-brancha from develop by implementer
+- 2026-10-29T07:20:53Z committed: fix(onboarding): keep the first-run loop branchable

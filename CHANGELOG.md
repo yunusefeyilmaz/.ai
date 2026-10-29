@@ -22,9 +22,16 @@ All notable changes to this workspace are documented here.
 - In `lite` mode `ai check` gives a freshly claimed task
   `handoff.warnAfterMinutes` before warning about a missing checkpoint. `strict`
   mode still warns immediately; a stale checkpoint warns in both modes.
+- `ai start` considers active tasks only: a ledger of archived tasks receives a
+  new starter task instead of a failed attempt to claim a done one.
+- `ai git start` ignores uncommitted `tasks/` and `specs/` files; product changes
+  still block the branch. This makes the printed first-run loop work without a
+  manual metadata commit.
 - `ai task new` no longer prints a stray `Released 'tasks.index'.` line.
 - `scripts/ai.cmd` now exits with the CLI's code; previously every Windows run
   reported success, hiding failed checks from CI and scripts.
+- `git status --porcelain` parsing no longer drops the first character of the
+  first entry, so `ai git verify` sees every staged path in full.
 - README, GUIDE and the CLI contract open with `ai start`.
 
 ## [0.2.0] - 2026-10-27
