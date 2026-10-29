@@ -41,6 +41,9 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 .ai/scripts/ai adopt
 ```
 
+`ai start` performs the same wiring automatically, so a first clone can go
+straight to the first pass below.
+
 `adopt` writes managed pointer blocks to the root files that tools auto-load:
 
 | File | Read by |
@@ -72,63 +75,106 @@ This is the smallest complete cycle. Run it once on a toy task before using the
 workspace on real work.
 
 ```sh
-# 1. Confirm the workspace is coherent
+# 1. Prepare the workspace and receive a claimed starter task with a spec
+ai start --agent implementer
+
+# 2. Confirm the workspace is coherent
 ai doctor
 ai check --no-commands
 
-# 2. See what exists
-ai status
-
-# 3. Create the task and its acceptance criteria
-ai task new "Export invoices as CSV" --priority high
-cp specs/TEMPLATE.md specs/active/0001-export-invoices.md
-$EDITOR specs/active/0001-export-invoices.md
-
-# 4. Become the owner
-ai task claim 0001 --agent implementer
-
-# 5. Lease the paths you intend to change
+# 3. Lease the paths you intend to change; the task lease already exists
 ai lock acquire src/billing --agent implementer --task 0001
 
-# 6. Work in small increments
+# 4. Work in small increments
 ai check --fast
 
-# 7. Save your position before the context fills
+# 5. Save your position before the context fills
 ai checkpoint 0001 --agent implementer --percent 70 \
   --next "write the CSV writer" --files src/billing/export.py
 
-# 8. Prove it, then close it
+# 6. Prove it, then close it
 ai check --strict
 ai task done 0001 --agent implementer
 ```
 
-Steps 3 and 8 are the ones agents skip when unsupervised. The workspace makes
+Steps 3 and 6 are the ones agents skip when unsupervised. The workspace makes
 skipping visible: `ai check` warns about work in progress with no fresh
 checkpoint, about ownership that disagrees with leases, and about tasks whose
 folder and status diverge.
+
+If `ai start` reports `ai git setup`, run it once, confirm the baseline snapshot,
+then rerun `ai start --agent implementer`. If `ai doctor` reports broken
+workspace state, run `ai doctor --fix`; it repairs only missing, regenerable
+files and names anything it cannot fix.
 
 ## Command surface
 
 Use `ai <group> --help` for every flag. The groups are stable; the shortcuts are
 the ones below.
 
+### First run
+
+```sh
+ai start [--agent <name>] [--demo|--no-demo] [--json]
+```
+
+Creates missing runtime state, wires adapters for a subfolder install, runs
+`ai git setup` when the repository already has a commit, and creates one starter
+task with its spec. `--agent` claims it. `--no-demo` skips the starter task.
+Without a commit it only prints `ai git setup`; it never prompts or force-claims.
+
 ### Workspace health
 
 ```sh
-ai doctor [--strict] [--json]
+ai doctor [--fix] [--strict] [--json]
 ai check [--fast] [--strict] [--json] [--no-commands]
-ai status [--json]
+ai status [--json] [--board]
+ai metrics [--json] [--since YYYY-MM-DD]
 ai capabilities
 ```
+
+Every `ai doctor` finding prints `fix: <command>` when a safe repair is known.
+`--json` keeps `ok`/`errors`/`warnings` and adds `findings` with their hints.
+
+`ai doctor --fix` performs only repairs that cannot lose data: it recreates
+missing runtime directories and keep files, writes `config/workspace.json` when
+it is absent, and in a subfolder install writes the missing root adapter
+pointers and `.gitignore` rules. Each change is reported as `FIXED`. It never
+rewrites an invalid config, removes a lock, edits task or spec files, or touches
+Git. Anything left over is still a finding, and the command exits 1; `--json`
+returns `fixes` plus the remaining `check.findings`.
+
+Without `--fix`, `doctor` and `check` only read: a missing runtime tree stays
+missing until you repair it on purpose.
 
 `--strict` promotes warnings to failures. CI runs `doctor --strict` and
 `check --strict`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
 
+`ai status --board` is the read-only one-screen view: active tasks in
+dependency order with owner, status, priority, checkpoint age, waiting reason
+and title, then each held lease with its TTL and remaining seconds, then the
+last five refused leases with the conflicting resource and its holder. It
+creates no state, never prints colour and leaves plain `ai status` and
+`ai status --json` unchanged. A refusal names its conflict because
+`ai lock acquire` records the conflicting lease's resource and agent on the
+`lock_refused` event; `ai lock status --json` adds `state`,
+`remaining_seconds` and the matching `refusals` to each lease.
+
+`ai metrics` reads the local event ledger under `runtime/state/` without
+creating it. Successful task, lock, checkpoint and resume actions append JSONL
+records to `events.jsonl`; the active file is rotated to a date-stamped archive
+when the UTC date changes. Metrics include only events recorded after this
+feature was installed; old task files are not backfilled. `--since` filters
+events by UTC timestamp while retaining earlier creation or review events
+needed for duration calculations. A retry is each claim after a task's first;
+per-agent values count events attributed to that agent. Duration medians are in
+seconds. No event data is uploaded.
+
 ### Task ledger
 
 ```sh
-ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--depends-on 0002]
+ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--no-spec] [--depends-on 0002]
 ai task list [--all] [--json]
 ai task show <id> [--json]
 ai task ready [--json]                 # claimable: todo, deps done, no live lease
@@ -141,6 +187,10 @@ ai task unblock <id> --agent <name>
 ai task done <id> --agent <name> [--force]
 ai task discard <id>              # interactive operator action; permanent
 ```
+
+`task new` writes `specs/active/<id>-<slug>.md` from `specs/TEMPLATE.md` and
+stores that path in the task. `--no-spec` skips the file; an explicit `--spec`
+is linked without being rewritten.
 
 Claim rules:
 
@@ -212,7 +262,8 @@ If no commit exists, it previews the non-ignored project files and asks for
 confirmation before the initial commit; non-interactive setup does not stage or
 commit them. Claim the task, then start its task branch before editing; stop if setup or branch creation
 fails. Read-only tasks need no branch. If Git reports dubious ownership, request
-approval to trust only this checkout. The implementer submits
+approval to trust only this checkout. Uncommitted `tasks/` and `specs/` files do
+not block `ai git start`; product changes do. The implementer submits
 the committed task for review before releasing
 the claim. A different reviewer runs `ai git finish`, which checks the tree and
 workspace, then merges with `--no-ff`. `verify` checks that every staged path is

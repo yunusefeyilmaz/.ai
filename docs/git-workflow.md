@@ -11,7 +11,9 @@ asks not to use Git. Run `ai git setup` before file-changing work; it initialize
 Git if `.git` is absent and creates the configured branches if needed. Then
 claim the task and successfully start its task branch before the first edit. If
 `ai git start` fails, stop before changing files and report the reason. Read-only
-tasks do not need a branch.
+tasks do not need a branch. `ai git start` ignores uncommitted `tasks/` and
+`specs/` files, because a fresh claim is ledger state; product files must be
+clean.
 
 If Git reports dubious ownership, do not treat the folder as non-Git and do not
 run `git init`. Ask the user to approve adding only this checkout to Git's

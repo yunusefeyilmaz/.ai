@@ -59,5 +59,11 @@
   "security": {
     "warnTrackedSecrets": true
   },
-  "checks": []
+  "checks": [
+    {
+      "name": "cli tests",
+      "command": "python -m unittest discover -s tests -q",
+      "fast": true
+    }
+  ]
 }

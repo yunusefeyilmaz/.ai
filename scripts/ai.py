@@ -13,17 +13,20 @@ import contextlib
 import datetime as dt
 import fnmatch
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import socket
+import statistics
 import subprocess
 import sys
 import tempfile
 import time
+from typing import NamedTuple
 
-VERSION = "0.3.2"
+VERSION = "0.6.0"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -88,11 +91,14 @@ REQUIRED_PATHS = [
 TASK_STATUSES = {"todo", "in_progress", "review", "blocked", "done"}
 ACTIVE_DIR = os.path.join(WORKSPACE, "tasks", "active")
 DONE_DIR = os.path.join(WORKSPACE, "tasks", "done")
+SPECS_ACTIVE_DIR = os.path.join(WORKSPACE, "specs", "active")
+SPECS_TEMPLATE = os.path.join(WORKSPACE, "specs", "TEMPLATE.md")
 LOCKS_DIR = os.path.join(WORKSPACE, "runtime", "locks")
 STATE_DIR = os.path.join(WORKSPACE, "runtime", "state")
 CHECKPOINT_DIR = os.path.join(STATE_DIR, "checkpoints")
 CHECKPOINT_ARCHIVE = os.path.join(CHECKPOINT_DIR, "archive")
 HANDOFF_DIR = os.path.join(STATE_DIR, "handoff")
+EVENTS_FILE = os.path.join(STATE_DIR, "events.jsonl")
 ARTIFACTS_DIR = os.path.join(WORKSPACE, "runtime", "artifacts")
 LOGS_DIR = os.path.join(WORKSPACE, "runtime", "logs")
 COUNTER_PATH = os.path.join(STATE_DIR, "task-counter.json")
@@ -113,6 +119,14 @@ def now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
 
 
+class Finding(NamedTuple):
+    """One diagnostic and, when one exists, the next safe action."""
+
+    level: str
+    message: str
+    hint: str | None = None
+
+
 def iso(value: dt.datetime | None = None) -> str:
     return (value or now()).isoformat().replace("+00:00", "Z")
 
@@ -121,8 +135,9 @@ def parse_iso(value: str) -> dt.datetime:
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def ensure_dirs() -> None:
-    for path in (
+def workspace_dirs() -> tuple[str, ...]:
+    """Every directory the workspace owns and may recreate safely."""
+    return (
         os.path.join(WORKSPACE, "config"),
         os.path.join(WORKSPACE, "docs", "decisions"),
         os.path.join(WORKSPACE, "agents"),
@@ -137,8 +152,30 @@ def ensure_dirs() -> None:
         HANDOFF_DIR,
         ARTIFACTS_DIR,
         LOGS_DIR,
-    ):
+    )
+
+
+def ensure_dirs() -> None:
+    for path in workspace_dirs():
         os.makedirs(path, exist_ok=True)
+
+
+def ensure_placeholders() -> list[str]:
+    """Create runtime keep files and return the ones that were missing."""
+    created: list[str] = []
+    root_ignore = os.path.join(WORKSPACE, "runtime", ".gitignore")
+    if not os.path.exists(root_ignore):
+        write_text_atomic(
+            root_ignore,
+            "# Keep the shape, ignore transient state.\n*\n!.gitignore\n!**/\n!**/.gitkeep\n",
+        )
+        created.append("runtime/.gitignore")
+    for folder in (LOCKS_DIR, STATE_DIR, CHECKPOINT_DIR, HANDOFF_DIR, ARTIFACTS_DIR, LOGS_DIR):
+        keep = os.path.join(folder, ".gitkeep")
+        if not os.path.exists(keep):
+            write_text_atomic(keep, "")
+            created.append(os.path.relpath(keep, WORKSPACE).replace(os.sep, "/"))
+    return created
 
 
 def config_path() -> str:
@@ -318,6 +355,178 @@ def workspace_state_guard():
         yield
 
 
+def append_event(event: str, **fields) -> None:
+    """Append one local JSONL event, rotating the active file by UTC date."""
+    record = {"timestamp": iso(), "event": event}
+    record.update({key: value for key, value in fields.items() if value is not None})
+    try:
+        ensure_dirs()
+        with registry_mutex():
+            if os.path.isfile(EVENTS_FILE):
+                last = None
+                try:
+                    with open(EVENTS_FILE, encoding="utf-8") as handle:
+                        for line in handle:
+                            if line.strip():
+                                try:
+                                    last = json.loads(line)
+                                except ValueError:
+                                    continue
+                except OSError:
+                    last = None
+                previous_date = str((last or {}).get("timestamp") or "")[:10]
+                event_date = record["timestamp"][:10]
+                if previous_date and previous_date != event_date:
+                    archive = os.path.join(STATE_DIR, f"events-{previous_date}.jsonl")
+                    if os.path.exists(archive):
+                        with open(EVENTS_FILE, "rb") as source, open(archive, "ab") as target:
+                            shutil.copyfileobj(source, target)
+                        os.remove(EVENTS_FILE)
+                    else:
+                        os.replace(EVENTS_FILE, archive)
+            descriptor = os.open(EVENTS_FILE, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+            try:
+                line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+                os.write(descriptor, line.encode("utf-8"))
+            finally:
+                os.close(descriptor)
+    except (OSError, TimeoutError) as exc:
+        print(f"WARN  could not record metrics event '{event}': {exc}", file=sys.stderr)
+
+
+def read_events() -> list[dict]:
+    """Read the active and rotated event ledgers without creating state."""
+    if not os.path.isdir(STATE_DIR):
+        return []
+    paths = [
+        os.path.join(STATE_DIR, name)
+        for name in os.listdir(STATE_DIR)
+        if name == "events.jsonl" or re.fullmatch(r"events-\d{4}-\d{2}-\d{2}\.jsonl", name)
+    ]
+    events = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict) and event.get("event") and event.get("timestamp"):
+                        events.append(event)
+        except OSError:
+            continue
+    events.sort(key=lambda item: str(item.get("timestamp") or ""))
+    return events
+
+
+def metrics_since(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return dt.datetime.combine(dt.date.fromisoformat(value), dt.time.min, dt.timezone.utc)
+        parsed = parse_iso(value)
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except ValueError as exc:
+        raise ValueError("--since must be an ISO date or timestamp") from exc
+
+
+def event_datetime(event: dict) -> dt.datetime | None:
+    try:
+        parsed = parse_iso(str(event.get("timestamp") or ""))
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def duration_median(events: list[dict], starts: list[dict], end_type: str) -> float | None:
+    starts_by_task: dict[str, list[dt.datetime]] = {}
+    for event in starts:
+        task = str(event.get("task") or "")
+        stamp = event_datetime(event)
+        if task and stamp:
+            starts_by_task.setdefault(task, []).append(stamp)
+    durations = []
+    for event in events:
+        if event.get("event") != end_type:
+            continue
+        task = str(event.get("task") or "")
+        end = event_datetime(event)
+        earlier = [stamp for stamp in starts_by_task.get(task, []) if end and stamp <= end]
+        if earlier and end:
+            durations.append((end - max(earlier)).total_seconds())
+    return float(statistics.median(durations)) if durations else None
+
+
+def collect_metrics(since: dt.datetime | None = None) -> dict:
+    events = read_events()
+    timed = [(event, event_datetime(event)) for event in events]
+    period = [event for event, stamp in timed if stamp and (since is None or stamp >= since)]
+    completed = {
+        str(event.get("task")) for event in period
+        if event.get("event") == "task_done" and event.get("task")
+    }
+    claims: dict[str, list[dict]] = {}
+    for event in events:
+        if event.get("event") == "task_claimed" and event.get("task"):
+            claims.setdefault(str(event["task"]), []).append(event)
+    retries = 0
+    for attempts in claims.values():
+        for attempt in attempts[1:]:
+            stamp = event_datetime(attempt)
+            if stamp and (since is None or stamp >= since):
+                retries += 1
+    created = [event for event in events if event.get("event") == "task_created"]
+    reviewed = [event for event in events if event.get("event") == "task_reviewed"]
+    merged = [event for event in period if event.get("event") == "task_merged"]
+    agents: dict[str, int] = {}
+    for event in period:
+        agent = event.get("agent")
+        if agent:
+            agents[str(agent)] = agents.get(str(agent), 0) + 1
+    return {
+        "since": since.isoformat().replace("+00:00", "Z") if since else None,
+        "events_recorded": len(period),
+        "tasks_completed": len(completed),
+        "median_creation_to_done_seconds": duration_median(
+            [event for event in period if event.get("event") == "task_done"], created, "task_done"
+        ),
+        "median_review_to_merge_seconds": duration_median(merged, reviewed, "task_merged"),
+        "lock_refusals": sum(event.get("event") == "lock_refused" for event in period),
+        "retries": retries,
+        "resumes": sum(event.get("event") == "resume" for event in period),
+        "per_agent": dict(sorted(agents.items())),
+    }
+
+
+def cmd_metrics(args) -> int:
+    try:
+        since = metrics_since(args.since)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    result = collect_metrics(since)
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    print(f"Events recorded: {result['events_recorded']}")
+    print(f"Tasks completed: {result['tasks_completed']}")
+    for key, label in (
+        ("median_creation_to_done_seconds", "Median creation-to-done"),
+        ("median_review_to_merge_seconds", "Median review-to-merge"),
+    ):
+        value = result[key]
+        print(f"{label}: {value:.1f} seconds" if value is not None else f"{label}: n/a")
+    print(f"Lock refusals: {result['lock_refusals']}")
+    print(f"Retries: {result['retries']}")
+    print(f"Resumes: {result['resumes']}")
+    print("Per-agent events:")
+    for agent, count in result["per_agent"].items():
+        print(f"  {agent}: {count}")
+    return 0
+
+
 def acquire_lock(
     resource: str,
     agent: str | None = None,
@@ -354,6 +563,12 @@ def acquire_lock(
                 other = read_json(other_path)
                 if not isinstance(other, dict):
                     continue
+                other_resource = str(other.get("resource") or "")
+                # Task claims protect task metadata ownership. They are a
+                # separate namespace from file leases and must not conflict
+                # with broad resources such as `project`.
+                if resource.startswith("task-") or other_resource.startswith("task-"):
+                    continue
                 if lock_is_stale(other, stale_after):
                     if force:
                         try:
@@ -362,7 +577,7 @@ def acquire_lock(
                             pass
                     continue
                 try:
-                    overlaps = resources_overlap(resource, other.get("resource", ""))
+                    overlaps = resources_overlap(resource, other_resource)
                 except ValueError:
                     overlaps = False
                 if not overlaps:
@@ -386,7 +601,9 @@ def acquire_lock(
         return {"ok": False, "holder": None, "error": str(exc)}
 
 
-def release_lock(resource: str, agent: str | None = None, force: bool = False) -> int:
+def release_lock(
+    resource: str, agent: str | None = None, force: bool = False, quiet: bool = False
+) -> int:
     try:
         resource = normalize_resource(resource)
     except ValueError as exc:
@@ -395,7 +612,8 @@ def release_lock(resource: str, agent: str | None = None, force: bool = False) -
     path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
     holder = read_json(path)
     if holder is None:
-        print(f"No lock held for '{resource}'.")
+        if not quiet:
+            print(f"No lock held for '{resource}'.")
         return 0
     if agent and holder.get("agent") != agent and not force:
         print(
@@ -408,7 +626,8 @@ def release_lock(resource: str, agent: str | None = None, force: bool = False) -
         os.remove(path)
     except FileNotFoundError:
         pass
-    print(f"Released '{resource}'.")
+    if not quiet:
+        print(f"Released '{resource}'.")
     return 0
 
 
@@ -432,8 +651,11 @@ def heartbeat_lock(resource: str, agent: str | None = None) -> int:
     return 0
 
 
-def list_locks() -> list[dict]:
-    ensure_dirs()
+def list_locks(ensure: bool = True) -> list[dict]:
+    if ensure:
+        ensure_dirs()
+    if not os.path.isdir(LOCKS_DIR):
+        return []
     items = []
     for name in sorted(os.listdir(LOCKS_DIR)):
         if not name.endswith(".lock"):
@@ -561,6 +783,22 @@ def run_git(
         return 127, "", "git is not available"
 
 
+def run_git_stdout(args: list[str]) -> str:
+    """Git stdout without stripping: porcelain's first column is meaningful."""
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=PROJECT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, ValueError):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
 def git_state() -> dict:
     state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
     code, top, err = run_git(["rev-parse", "--show-toplevel"])
@@ -576,8 +814,7 @@ def git_state() -> dict:
         "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
     ])
     state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
-    _, status, _ = run_git(["status", "--porcelain"])
-    for line in status.splitlines():
+    for line in run_git_stdout(["status", "--porcelain"]).splitlines():
         if len(line) < 3:
             continue
         code_part = line[:2]
@@ -636,8 +873,27 @@ def git_commit_id(revision: str) -> str | None:
     return commit if code == 0 and commit else None
 
 
-def git_clean() -> bool:
-    return not git_state().get("dirty")
+def is_workspace_ledger_path(path: str) -> bool:
+    """True for tasks/ and specs/ files: coordination state, not product code."""
+    try:
+        absolute = os.path.realpath(os.path.join(PROJECT, path))
+    except OSError:
+        return False
+    for folder in (os.path.join(WORKSPACE, "tasks"), os.path.join(WORKSPACE, "specs")):
+        root = os.path.realpath(folder)
+        try:
+            if os.path.commonpath([absolute, root]) == root:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def git_clean(ignore_ledger: bool = False) -> bool:
+    dirty = git_state().get("dirty") or []
+    if ignore_ledger:
+        dirty = [path for path in dirty if not is_workspace_ledger_path(path)]
+    return not dirty
 
 
 def task_branch_name(meta: dict, branch_type: str) -> str:
@@ -664,6 +920,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
     )
     if current:
         if current.get("agent") != agent:
+            append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
             return False, False, (
                 f"git index is locked by {current.get('agent')} "
                 f"(task {current.get('task') or '-'})."
@@ -672,6 +929,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
     result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=600)
     if not result["ok"]:
         holder = result["holder"] or {}
+        append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
         return False, False, (
             f"git index is locked by {holder.get('agent')} "
             f"(task {holder.get('task') or '-'})."
@@ -742,8 +1000,11 @@ def handoff_marker(task_id: str) -> str:
     return os.path.join(HANDOFF_DIR, normalize_id(str(task_id)) + ".json")
 
 
-def list_handoff_markers() -> list[dict]:
-    ensure_dirs()
+def list_handoff_markers(ensure: bool = True) -> list[dict]:
+    if ensure:
+        ensure_dirs()
+    if not os.path.isdir(HANDOFF_DIR):
+        return []
     items = []
     for name in sorted(os.listdir(HANDOFF_DIR)):
         if not name.endswith(".json"):
@@ -886,6 +1147,173 @@ def write_checkpoint(
 # ---------------------------------------------------------------------------
 
 
+def format_checkpoint_age(task_id: str) -> str:
+    age = checkpoint_age_minutes(task_id)
+    if age is None:
+        return "none"
+    minutes = int(age)
+    if minutes < 60:
+        return f"{minutes}m ago"
+    if minutes < 48 * 60:
+        return f"{minutes // 60}h ago"
+    return f"{minutes // (24 * 60)}d ago"
+
+
+def board_dependencies(task: dict) -> list[str]:
+    raw = task.get("depends_on")
+    if raw is None or str(raw).strip() in ("", "null", "None"):
+        return []
+    parts = [str(item) for item in raw] if isinstance(raw, (list, tuple)) else re.split(r"[,\s]+", str(raw))
+    return [normalize_id(part) for part in parts if part and part.strip() not in ("", "null")]
+
+
+def board_task_rows(tasks: list[dict]) -> list[tuple[dict, str]]:
+    """Order active tasks after their dependencies and compute the waiting reason."""
+    active = [task for task in tasks if task.get("_folder") == "active"]
+    done_ids = {str(task.get("id")) for task in tasks if task.get("_folder") == "done"}
+    by_id = {str(task.get("id")): task for task in active}
+    ordered: list[dict] = []
+    seen: set[str] = set()
+
+    def visit(task: dict, stack: set[str]) -> None:
+        task_id = str(task.get("id"))
+        if task_id in seen or task_id in stack:
+            return
+        stack.add(task_id)
+        for dependency in board_dependencies(task):
+            if dependency in by_id:
+                visit(by_id[dependency], stack)
+        stack.discard(task_id)
+        if task_id not in seen:
+            seen.add(task_id)
+            ordered.append(task)
+
+    ranked = sorted(
+        active,
+        key=lambda item: (PRIORITY_ORDER.get(str(item.get("priority")), 1), str(item.get("id"))),
+    )
+    for task in ranked:
+        visit(task, set())
+
+    rows = []
+    for task in ordered:
+        waiting = [dep for dep in board_dependencies(task) if dep not in done_ids]
+        if str(task.get("status")) == "blocked":
+            rows.append((task, "blocked" + (f" {', '.join(waiting)}" if waiting else "")))
+        else:
+            rows.append((task, ", ".join(waiting) if waiting else "-"))
+    return rows
+
+
+def lock_remaining_seconds(lock: dict) -> int | None:
+    ttl = lock.get("ttl_seconds")
+    try:
+        updated = parse_iso(lock.get("updated_at") or lock.get("started_at"))
+        age = (now() - updated).total_seconds()
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(ttl, int):
+        return None
+    return max(0, int(ttl - age))
+
+
+def recent_refusals(limit: int = 5) -> list[dict]:
+    events = [event for event in read_events() if event.get("event") == "lock_refused"]
+    return events[-limit:]
+
+
+def refusal_detail(event: dict) -> str:
+    conflict = event.get("conflict")
+    if not conflict:
+        return "conflict unknown"
+    holder = event.get("conflict_agent")
+    return f"conflict: {conflict} held by {holder}" if holder else f"conflict: {conflict}"
+
+
+def lock_status_payload(locks: list[dict]) -> list[dict]:
+    """Annotate each lease with its state, remaining time and matching refusals."""
+    _, stale_after = lock_settings()
+    refusals = [event for event in read_events() if event.get("event") == "lock_refused"]
+    payload = []
+    for lock in locks:
+        item = dict(lock)
+        resource = str(lock.get("resource") or "")
+        item["state"] = "stale" if lock_is_stale(lock, stale_after) else "held"
+        item["remaining_seconds"] = lock_remaining_seconds(lock)
+        item["refusals"] = [
+            {
+                "timestamp": event.get("timestamp"),
+                "agent": event.get("agent"),
+                "task": event.get("task"),
+                "resource": event.get("resource"),
+                "conflict": event.get("conflict"),
+                "holder": event.get("conflict_agent"),
+                "reason": refusal_detail(event),
+            }
+            for event in refusals
+            if resource and str(event.get("conflict") or "") == resource
+        ]
+        payload.append(item)
+    return payload
+
+
+def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
+    """Render the read-only board: dependency order, leases and refusals."""
+    _, stale_after = lock_settings()
+    active = [task for task in tasks if task.get("_folder") == "active"]
+    checkpoints = sum(1 for task in active if read_checkpoint(str(task.get("id"))))
+    lines = [
+        "Task board",
+        f"mode: {mode} | active: {len(active)} | leases: {len(locks)} | checkpoints: {checkpoints}",
+        "",
+        "Tasks",
+    ]
+    rows = board_task_rows(tasks)
+    if not rows:
+        lines.append("  (no active tasks)")
+    else:
+        lines.append(
+            f"  {'ID':<6} {'STATUS':<12} {'OWNER':<12} {'PRIORITY':<9} "
+            f"{'CHECKPOINT':<12} {'WAITING ON':<12} TITLE"
+        )
+        for task, waiting in rows:
+            lines.append(
+                f"  {str(task.get('id')):<6} {str(task.get('status') or '?'):<12} "
+                f"{str(task.get('owner') or '-'):<12} "
+                f"{str(task.get('priority') or '-'):<9} "
+                f"{format_checkpoint_age(str(task.get('id'))):<12} "
+                f"{waiting:<12} {task.get('title')}"
+            )
+    lines.extend(["", "Leases"])
+    if not locks:
+        lines.append("  (no leases)")
+    else:
+        lines.append(
+            f"  {'RESOURCE':<28} {'AGENT':<14} {'TASK':<8} {'TTL':>7} {'REMAINING':>10}  STATE"
+        )
+        for lock in sorted(locks, key=lambda item: str(item.get("resource"))):
+            ttl = lock.get("ttl_seconds")
+            remaining = lock_remaining_seconds(lock)
+            lines.append(
+                f"  {str(lock.get('resource'))[:28]:<28} {str(lock.get('agent'))[:14]:<14} "
+                f"{str(lock.get('task') or '-'):<8} "
+                f"{(f'{ttl}s' if isinstance(ttl, int) else '?'):>7} "
+                f"{(f'{remaining}s' if remaining is not None else '?'):>10}  "
+                f"{'stale' if lock_is_stale(lock, stale_after) else 'held'}"
+            )
+    lines.extend(["", "Refusals"])
+    refusals = recent_refusals()
+    if not refusals:
+        lines.append("  (none)")
+    else:
+        for event in refusals:
+            lines.append(
+                f"  {event.get('timestamp')}  {event.get('agent')} -> "
+                f"{event.get('resource')} ({refusal_detail(event)})"
+            )
+    return "\n".join(lines)
+
+
 def print_lock_table(locks: list[dict]) -> None:
     _, stale_after = lock_settings()
     if not locks:
@@ -935,7 +1363,7 @@ def write_board(tasks: list[dict]) -> None:
         lines.append("## Recently done")
         lines.append("")
         for task in sorted(done, key=lambda item: str(item.get("updated") or ""), reverse=True)[:20]:
-            lines.append(f"- {task.get('id', '?')} — {task.get('title', '?')} ({task.get('updated', '?')})")
+            lines.append(f"- {task.get('id', '?')} â€” {task.get('title', '?')} ({task.get('updated', '?')})")
         lines.append("")
     write_text_atomic(os.path.join(WORKSPACE, "tasks", "BOARD.md"), "\n".join(lines))
 
@@ -979,16 +1407,7 @@ def cmd_init(args) -> int:
     ensure_dirs()
     if not os.path.exists(config_path()):
         write_json_atomic(config_path(), default_config())
-    root_ignore = os.path.join(WORKSPACE, "runtime", ".gitignore")
-    if not os.path.exists(root_ignore):
-        write_text_atomic(
-            root_ignore,
-            "# Keep the shape, ignore transient state.\n*\n!.gitignore\n!**/\n!**/.gitkeep\n",
-        )
-    for folder in (LOCKS_DIR, STATE_DIR, CHECKPOINT_DIR, HANDOFF_DIR, ARTIFACTS_DIR, LOGS_DIR):
-        keep = os.path.join(folder, ".gitkeep")
-        if not os.path.exists(keep):
-            write_text_atomic(keep, "")
+    ensure_placeholders()
     print(f"Workspace ready: {WORKSPACE}")
     print(f"Project root:    {PROJECT}")
     if args.wire:
@@ -1214,24 +1633,103 @@ def write_ci() -> None:
     print(f"CI workflow: {os.path.relpath(path, PROJECT)}")
 
 
-def collect_checks() -> list[tuple[str, str]]:
-    problems: list[tuple[str, str]] = []
+def adapter_findings() -> list[Finding]:
+    """A subfolder install works only when its host points at the workspace."""
+    if workspace_shape() != "subfolder":
+        return []
+    findings: list[Finding] = []
+    try:
+        for path, state in adopt_root(check=True):
+            if state != "ok":
+                findings.append(
+                    Finding("warn", f"missing adapter pointer: {path}", "ai doctor --fix")
+                )
+        _, missing = adopt_gitignore(check=True)
+    except OSError as exc:
+        return [Finding("warn", f"could not inspect the host adapters: {exc}")]
+    if missing:
+        findings.append(
+            Finding(
+                "warn",
+                "project .gitignore is missing: " + ", ".join(missing),
+                "ai doctor --fix",
+            )
+        )
+    return findings
+
+
+def apply_safe_fixes() -> list[str]:
+    """Repair missing, regenerable state. Never overwrite files or touch Git."""
+    fixes: list[str] = []
+    for path in workspace_dirs():
+        if not os.path.isdir(path):
+            os.makedirs(path, exist_ok=True)
+            fixes.append(f"created {os.path.relpath(path, WORKSPACE).replace(os.sep, '/')}/")
+    fixes.extend(f"created {item}" for item in ensure_placeholders())
+    if not os.path.exists(config_path()):
+        write_json_atomic(config_path(), default_config())
+        fixes.append("created config/workspace.json")
+    if workspace_shape() == "subfolder":
+        missing = [path for path, state in adopt_root(check=True) if state != "ok"]
+        if missing:
+            adopt_root()
+            fixes.extend(f"wired {path}" for path in missing)
+        _, missing_ignore = adopt_gitignore(check=True)
+        if missing_ignore:
+            adopt_gitignore()
+            fixes.append("added .gitignore rules: " + ", ".join(missing_ignore))
+    return fixes
+
+
+def collect_checks() -> list[Finding]:
+    problems: list[Finding] = []
     for rel in REQUIRED_PATHS:
+        # The config loader below owns this one: it knows whether the file is
+        # absent (safe to recreate) or corrupt (never overwrite).
+        if rel == "config/workspace.json":
+            continue
         if not os.path.exists(os.path.join(WORKSPACE, rel)):
-            problems.append(("error", f"missing required path: {rel}"))
+            if rel.startswith("runtime"):
+                hint = "ai doctor --fix"
+            elif workspace_shape() == "subfolder":
+                hint = f"restore {rel} from the .ai workspace copy"
+            else:
+                hint = f"git checkout -- {rel}"
+            problems.append(Finding("error", f"missing required path: {rel}", hint))
     try:
         config = load_config()
+    except FileNotFoundError:
+        problems.append(Finding("error", "config/workspace.json is missing", "ai doctor --fix"))
+        config = {}
     except (OSError, ValueError) as exc:
-        problems.append(("error", f"config/workspace.json is unreadable: {exc}"))
+        problems.append(
+            Finding(
+                "error",
+                f"config/workspace.json is unreadable: {exc}",
+                "move config/workspace.json aside and run `ai init`",
+            )
+        )
         config = {}
     if config:
         if config.get("mode") not in ("lite", "strict"):
-            problems.append(("error", "config mode must be 'lite' or 'strict'"))
+            problems.append(
+                Finding(
+                    "error",
+                    "config mode must be 'lite' or 'strict'",
+                    'set "mode" to "lite" or "strict" in config/workspace.json',
+                )
+            )
         for key in ("version", "language", "locks", "handoff", "budget", "artifacts"):
             if key not in config:
-                problems.append(("warn", f"config is missing key: {key}"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"config is missing key: {key}",
+                        f'add "{key}" to config/workspace.json',
+                    )
+                )
 
-    locks = list_locks()
+    locks = list_locks(ensure=False)
     lock_by_task = {}
     for lock in locks:
         resource = str(lock.get("resource") or "")
@@ -1244,73 +1742,170 @@ def collect_checks() -> list[tuple[str, str]]:
         path = os.path.relpath(task["_path"], WORKSPACE)
         task_id = task.get("id")
         if not task_id:
-            problems.append(("error", f"{path}: missing id"))
+            problems.append(Finding("error", f"{path}: missing id", f"add an `id:` field to {path}"))
         else:
             task_id = str(task_id)
             if task_id in ids:
-                problems.append(("error", f"duplicate task id {task_id}: {path} and {ids[task_id]}"))
+                problems.append(
+                    Finding(
+                        "error",
+                        f"duplicate task id {task_id}: {path} and {ids[task_id]}",
+                        "give one of the tasks a different id, then rerun `ai check`",
+                    )
+                )
             ids[task_id] = path
             if task["_folder"] == "active" and normalize_id(task_id) + "-" not in os.path.basename(path):
-                problems.append(("warn", f"{path}: filename does not start with {task_id}-"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: filename does not start with {task_id}-",
+                        f"rename {path} to {task_id}-<slug>.md",
+                    )
+                )
         if not task.get("title"):
-            problems.append(("error", f"{path}: missing title"))
+            problems.append(Finding("error", f"{path}: missing title", f"add a `title:` field to {path}"))
         status = task.get("status")
         if status not in TASK_STATUSES:
-            problems.append(("error", f"{path}: invalid status '{status}'"))
+            problems.append(
+                Finding(
+                    "error",
+                    f"{path}: invalid status '{status}'",
+                    f"set `status:` to one of {', '.join(sorted(TASK_STATUSES))} in {path}",
+                )
+            )
         if task["_folder"] == "done" and status != "done":
-            problems.append(("warn", f"{path}: file in done/ but status is '{status}'"))
+            problems.append(
+                Finding(
+                    "warn",
+                    f"{path}: file in done/ but status is '{status}'",
+                    f"set `status: done` in {path}",
+                )
+            )
         if task["_folder"] == "active" and status == "done":
-            problems.append(("warn", f"{path}: status is done but file is in active/"))
+            problems.append(
+                Finding(
+                    "warn",
+                    f"{path}: status is done but file is in active/",
+                    f"run `ai task done {task_id} --agent <name>` to archive it",
+                )
+            )
         depends = task.get("depends_on")
         if depends:
             for dependency in re.split(r"[,\s]+", str(depends)):
                 dependency = dependency.strip()
                 if dependency and normalize_id(dependency) not in ids and not find_task(dependency):
-                    problems.append(("warn", f"{path}: depends_on unknown task {dependency}"))
+                    problems.append(
+                        Finding(
+                            "warn",
+                            f"{path}: depends_on unknown task {dependency}",
+                            f"remove `{dependency}` from depends_on in {path}, or create it with `ai task new`",
+                        )
+                    )
         if task["_folder"] == "active":
             owner = task.get("owner")
             held = lock_by_task.get(str(task_id))
             if owner and not held:
-                problems.append(("warn", f"{path}: owner '{owner}' has no task lock (use `ai recover`)"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: owner '{owner}' has no task lock",
+                        "ai recover --apply",
+                    )
+                )
             if held and not owner:
-                problems.append(("warn", f"{path}: task lock held by {held.get('agent')} but owner is empty"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: task lock held by {held.get('agent')} but owner is empty",
+                        "ai recover --apply",
+                    )
+                )
             if owner and held and held.get("agent") != owner:
-                problems.append(("warn", f"{path}: owner '{owner}' differs from lock holder '{held.get('agent')}'"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: owner '{owner}' differs from lock holder '{held.get('agent')}'",
+                        "ai recover --apply",
+                    )
+                )
             if status == "in_progress":
                 warn_after = int(config.get("handoff", {}).get("warnAfterMinutes", 30)) if config else 30
+                checkpoint_hint = f"ai checkpoint {task_id} --agent {owner or 'agent'} --next \"<step>\""
                 age = checkpoint_age_minutes(task_id)
                 if age is None:
-                    problems.append(
-                        ("warn", f"{path}: in_progress with no checkpoint "
-                                 f"(run `ai checkpoint {task_id} --agent {owner or 'agent'}`)")
+                    claimed_age = age_minutes(
+                        (held or {}).get("started_at") or task.get("updated")
                     )
+                    # Lite mode gives a small task time to finish before asking
+                    # for a checkpoint; strict mode holds the full standard.
+                    grace = (
+                        str(config.get("mode") or "lite") == "lite"
+                        and claimed_age is not None
+                        and claimed_age <= warn_after
+                    )
+                    if not grace:
+                        problems.append(
+                            Finding(
+                                "warn",
+                                f"{path}: in_progress with no checkpoint",
+                                checkpoint_hint,
+                            )
+                        )
                 elif age > warn_after:
                     problems.append(
-                        ("warn", f"{path}: last checkpoint is {int(age)} min old "
-                                 f"(checkpoint before the context window fills)")
+                        Finding(
+                            "warn",
+                            f"{path}: last checkpoint is {int(age)} min old",
+                            checkpoint_hint,
+                        )
                     )
         if task["_folder"] == "done" and str(task_id) in lock_by_task:
-            problems.append(("warn", f"{path}: done task still holds task lock (use `ai recover --apply`)"))
+            problems.append(
+                Finding(
+                    "warn",
+                    f"{path}: done task still holds task lock",
+                    "ai recover --apply",
+                )
+            )
 
-    _, stale_after = lock_settings()
+    try:
+        _, stale_after = lock_settings()
+    except (OSError, ValueError):
+        # A missing or corrupt config is already reported above; staleness is
+        # still useful, so fall back to the documented defaults.
+        stale_after = 3600
     for lock in locks:
         if lock_is_stale(lock, stale_after):
             problems.append(
-                ("warn", f"stale lock: {lock.get('resource')} held by {lock.get('agent')} "
-                         f"(use `ai clean --stale-locks`)")
+                Finding(
+                    "warn",
+                    f"stale lock: {lock.get('resource')} held by {lock.get('agent')}",
+                    "ai clean --stale-locks",
+                )
             )
     for lock in locks:
         resource = str(lock.get("resource") or "")
         if resource.startswith("task-") and resource[5:] not in ids:
-            problems.append(("warn", f"orphan task lock: {resource} has no task file"))
+            problems.append(
+                Finding(
+                    "warn",
+                    f"orphan task lock: {resource} has no task file",
+                    "ai recover --apply",
+                )
+            )
 
-    for marker in list_handoff_markers():
+    for marker in list_handoff_markers(ensure=False):
         task_id = str(marker.get("task") or "")
+        hint = f"ai checkpoint {task_id} --agent {marker.get('agent')} --next \"<step>\""
         data = read_checkpoint(task_id)
         if not data:
-            problems.append(("warn", f"handoff requested for {task_id} but no checkpoint exists"))
+            problems.append(
+                Finding("warn", f"handoff requested for {task_id} but no checkpoint exists", hint)
+            )
         elif str(data[0].get("created") or "") < str(marker.get("created") or ""):
-            problems.append(("warn", f"handoff requested for {task_id} but the checkpoint is older"))
+            problems.append(
+                Finding("warn", f"handoff requested for {task_id} but the checkpoint is older", hint)
+            )
 
     watch = config.get("artifacts", {}).get("watch", []) if config else []
     try:
@@ -1320,8 +1915,11 @@ def collect_checks() -> list[tuple[str, str]]:
     for name in watch:
         if name in top_level and name not in SCAN_SKIP:
             problems.append(
-                ("error", f"AI scratch path outside the workspace: {name}/ "
-                          f"(move it with `ai artifact put {name}`)")
+                Finding(
+                    "error",
+                    f"AI scratch path outside the workspace: {name}/",
+                    f"ai artifact put {name} --reason \"agent scratch\"",
+                )
             )
 
     if config.get("security", {}).get("warnTrackedSecrets", True):
@@ -1334,25 +1932,34 @@ def collect_checks() -> list[tuple[str, str]]:
                 or os.path.basename(item) in ("id_rsa", "id_ed25519", "credentials.json")
             ]
             for item in risky:
-                problems.append(("warn", f"tracked secret-shaped file: {item}"))
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"tracked secret-shaped file: {item}",
+                        f"git rm --cached {item}  (then rotate the secret)",
+                    )
+                )
+
+    problems.extend(adapter_findings())
     return problems
 
 
-def report_problems(problems: list[tuple[str, str]]) -> int:
-    errors = [msg for level, msg in problems if level == "error"]
-    warnings = [msg for level, msg in problems if level == "warn"]
-    for message in errors:
-        print(f"ERROR  {message}")
-    for message in warnings:
-        print(f"WARN   {message}")
+def report_problems(problems: list[Finding]) -> int:
+    errors = [finding for finding in problems if finding.level == "error"]
+    warnings = [finding for finding in problems if finding.level == "warn"]
+    for label, group in (("ERROR", errors), ("WARN ", warnings)):
+        for finding in group:
+            print(f"{label}  {finding.message}")
+            if finding.hint:
+                print(f"       fix: {finding.hint}")
     if not problems:
         print("OK     workspace structure and task state are consistent")
     print(f"\n{len(errors)} error(s), {len(warnings)} warning(s)")
     return 1 if errors else 0
 
 
-def run_commands(fast_only: bool) -> list[tuple[str, str]]:
-    problems: list[tuple[str, str]] = []
+def run_commands(fast_only: bool) -> list[Finding]:
+    problems: list[Finding] = []
     config = load_config()
     for item in config.get("checks", []):
         if fast_only and not item.get("fast", False):
@@ -1364,7 +1971,13 @@ def run_commands(fast_only: bool) -> list[tuple[str, str]]:
         print(f"\n$ {command}")
         result = subprocess.run(command, shell=True, cwd=PROJECT)
         if result.returncode != 0:
-            problems.append(("error", f"check '{name}' failed with exit code {result.returncode}"))
+            problems.append(
+                Finding(
+                    "error",
+                    f"check '{name}' failed with exit code {result.returncode}",
+                    f"run the failing command yourself: {command}",
+                )
+            )
     return problems
 
 
@@ -1375,19 +1988,38 @@ def adapters() -> list[str]:
     return sorted(name for name in os.listdir(directory) if os.path.isdir(os.path.join(directory, name)))
 
 
-def problems_to_dict(problems: list[tuple[str, str]]) -> dict:
+def problems_to_dict(problems: list[Finding]) -> dict:
     return {
-        "ok": not any(level == "error" for level, _ in problems),
-        "errors": [message for level, message in problems if level == "error"],
-        "warnings": [message for level, message in problems if level == "warn"],
+        "ok": not any(finding.level == "error" for finding in problems),
+        "errors": [finding.message for finding in problems if finding.level == "error"],
+        "warnings": [finding.message for finding in problems if finding.level == "warn"],
+        "findings": [
+            {"level": finding.level, "message": finding.message, "hint": finding.hint}
+            for finding in problems
+        ],
     }
 
 
 def cmd_doctor(args) -> int:
+    fixes: list[str] = []
+    if getattr(args, "fix", False):
+        try:
+            fixes = apply_safe_fixes()
+        except OSError as exc:
+            print(f"Could not complete the repair: {exc}", file=sys.stderr)
     problems = collect_checks()
-    code = report_problems(problems) if not args.json else 0
-    if args.strict and any(level == "warn" for level, _ in problems):
+    code = 1 if any(finding.level == "error" for finding in problems) else 0
+    if args.strict and any(finding.level == "warn" for finding in problems):
         code = 1
+    if getattr(args, "fix", False) and problems:
+        code = 1
+    if not args.json:
+        if fixes:
+            print("Repaired:")
+            for item in fixes:
+                print(f"FIXED  {item}")
+            print()
+        report_problems(problems)
     if args.json:
         payload = {
             "workspace": WORKSPACE,
@@ -1396,6 +2028,7 @@ def cmd_doctor(args) -> int:
             "python": sys.version.split()[0],
             "version": VERSION,
             "adapters": adapters(),
+            "fixes": fixes,
             "check": problems_to_dict(problems),
         }
         print(json.dumps(payload, indent=2))
@@ -1418,9 +2051,11 @@ def cmd_check(args) -> int:
         try:
             problems.extend(run_commands(args.fast))
         except (OSError, ValueError) as exc:
-            problems.append(("error", f"could not run configured checks: {exc}"))
-    code = 1 if any(level == "error" for level, _ in problems) else 0
-    if args.strict and any(level == "warn" for level, _ in problems):
+            problems.append(
+                Finding("error", f"could not run configured checks: {exc}", "fix config/workspace.json")
+            )
+    code = 1 if any(finding.level == "error" for finding in problems) else 0
+    if args.strict and any(finding.level == "warn" for finding in problems):
         code = 1
     if args.json:
         print(json.dumps(problems_to_dict(problems), indent=2))
@@ -1432,6 +2067,9 @@ def cmd_check(args) -> int:
 def cmd_status(args) -> int:
     config = load_config()
     tasks = load_tasks()
+    if getattr(args, "board", False) and not getattr(args, "json", False):
+        print(render_board(tasks, list_locks(ensure=False), str(config.get("mode"))))
+        return 0
     active = [task for task in tasks if task["_folder"] == "active"]
     locks = list_locks()
     artifacts = read_json(MANIFEST_PATH) or []
@@ -1478,6 +2116,173 @@ def cmd_status(args) -> int:
     return 0
 
 
+def workspace_shape() -> str:
+    """Report whether the workspace is the project root or a `.ai` subfolder."""
+    if (
+        os.path.basename(WORKSPACE) == ".ai"
+        and os.path.abspath(PROJECT) != os.path.abspath(WORKSPACE)
+    ):
+        return "subfolder"
+    return "root"
+
+
+def age_minutes(value) -> float | None:
+    if not value:
+        return None
+    try:
+        return (now() - parse_iso(str(value))).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
+
+
+def cmd_start(args) -> int:
+    """Prepare the workspace, report what exists, and name the next two steps."""
+    ensure_dirs()
+    if not os.path.exists(config_path()):
+        write_json_atomic(config_path(), default_config())
+
+    shape = workspace_shape()
+    adapter_report: list[tuple[str, str]] = []
+    ignore_report = {"state": "not-needed", "missing": []}
+    if shape == "subfolder":
+        try:
+            adapter_report = adopt_root()
+            state, missing = adopt_gitignore()
+            ignore_report = {"state": state, "missing": missing}
+        except OSError as exc:
+            print(f"Could not wire the local adapters: {exc}", file=sys.stderr)
+            return 1
+
+    state = git_state()
+    setup_error = ""
+    if state.get("repo") and state.get("head"):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            setup_code = cmd_git_setup(argparse.Namespace(json=False))
+        if setup_code != 0:
+            setup_error = (out.getvalue() + err.getvalue()).strip()
+            print(setup_error, file=sys.stderr)
+        state = git_state()
+    branches = git_config()
+    git_ready = bool(
+        state.get("repo")
+        and state.get("head")
+        and branch_exists(branches["integration"])
+        and branch_exists(branches["production"])
+    )
+
+    created = None
+    try:
+        tasks = load_tasks()
+    except OSError:
+        tasks = []
+    active_tasks = [task for task in tasks if task["_folder"] == "active"]
+    if not active_tasks and args.demo:
+        try:
+            created = create_task("Try the workspace")
+        except RuntimeError:
+            created = None
+        if created:
+            active_tasks = [task for task in load_tasks() if task["_folder"] == "active"]
+
+    target = active_tasks[0] if active_tasks else None
+
+    claimed = False
+    claim_error = None
+    if target and args.agent and not target.get("owner"):
+        ok, message = claim_task(target["_path"], args.agent)
+        if ok:
+            claimed = True
+            target = next(
+                (task for task in load_tasks() if str(task.get("id")) == str(message)),
+                target,
+            )
+        else:
+            claim_error = message
+
+    next_steps: list[str] = []
+    if not git_ready:
+        next_steps.append("ai git setup")
+    if target:
+        owner = target.get("owner") or (args.agent if claimed else None)
+        current_branch = state.get("branch")
+        if owner and target.get("branch") and target.get("branch") == current_branch:
+            pass  # The task branch is already checked out.
+        elif owner:
+            next_steps.append(
+                f"ai git start --task {target.get('id')} --agent {owner} --type feature"
+            )
+        else:
+            next_steps.append(f"ai task claim {target.get('id')} --agent <name>")
+    else:
+        next_steps.append('ai task new "<title>"')
+    next_steps.append("ai check --fast")
+
+    if claim_error:
+        print(claim_error, file=sys.stderr)
+
+    if args.json:
+        payload = {
+            "workspace": WORKSPACE,
+            "project": PROJECT,
+            "version": VERSION,
+            "shape": shape,
+            "mode": load_config().get("mode"),
+            "adapters": [{"path": path, "state": item} for path, item in adapter_report],
+            "gitignore": ignore_report,
+            "git": {
+                "repo": bool(state.get("repo")),
+                "head": bool(state.get("head")),
+                "branch": state.get("branch"),
+                "integration": branches["integration"],
+                "production": branches["production"],
+                "ready": git_ready,
+                "error": setup_error or None,
+            },
+            "task": {
+                "id": target.get("id"),
+                "title": target.get("title"),
+                "owner": target.get("owner"),
+                "spec": target.get("spec"),
+            } if target else None,
+            "claimed": claimed,
+            "created": bool(created),
+            "next": next_steps,
+        }
+        print(json.dumps(payload, indent=2, default=str))
+        return 1 if claim_error else 0
+
+    print(f"Workspace : {WORKSPACE}")
+    print(f"Shape     : {shape}" + (" install" if shape == "subfolder" else " template"))
+    print(f"Mode      : {load_config().get('mode')}")
+    if shape == "subfolder":
+        written = [item for _, item in adapter_report if item != "unchanged"]
+        print(f"Adapters  : {len(adapter_report)} local file(s), {len(written)} changed")
+    else:
+        print("Adapters  : not needed (the root AGENTS.md is the entry point)")
+    if git_ready:
+        print(
+            f"Git       : ready (integration {branches['integration']}, "
+            f"production {branches['production']})"
+        )
+    elif state.get("repo"):
+        print("Git       : repository found, Gitflow base missing")
+    else:
+        print("Git       : not initialized")
+    if target:
+        owner = f" ({target.get('owner')})" if target.get("owner") else ""
+        print(f"Task      : {target.get('id')} {target.get('title')}{owner}")
+        if target.get("spec"):
+            print(f"Spec      : {target.get('spec')}")
+    else:
+        print("Task      : none yet")
+    print("\nNext:")
+    for index, step in enumerate(next_steps, 1):
+        print(f"  {index}. {step}")
+    print("\nFull loop: GUIDE.md#first-pass-clone-to-verified-change")
+    return 1 if claim_error else 0
+
+
 @contextlib.contextmanager
 def task_index_guard():
     resource = "tasks.index"
@@ -1493,7 +2298,7 @@ def task_index_guard():
     try:
         yield
     finally:
-        release_lock(resource, agent="task-index")
+        release_lock(resource, agent="task-index", quiet=True)
 
 
 def allocate_task_number() -> int:
@@ -1513,28 +2318,98 @@ def allocate_task_number() -> int:
     return number
 
 
-def cmd_task_new(args) -> int:
+FALLBACK_SPEC = """---
+status: draft
+task: {task_id}
+approved_by: null
+approved_on: null
+---
+
+# {title}
+
+## Intent
+
+<!-- The problem in one paragraph. What changes for the user? Why now? -->
+
+## Behavior
+
+### Changed
+
+<!-- What will be different. Be concrete. -->
+
+### Preserved
+
+<!-- What must not change. Explicitly list existing behavior at risk. -->
+
+## Acceptance criteria
+
+- [ ] Criterion one, observable and independently testable
+- [ ] Criterion two
+- [ ] Existing behavior X still holds
+
+## Out of scope
+
+<!-- What this work will not do. Prevents scope creep. -->
+
+## Status
+
+<!-- draft -> approved -> in progress -> shipped. Update as the work moves. -->
+"""
+
+
+def spec_from_template(title: str, task_id: str) -> str:
+    """Fill the repository spec template, or a compatible fallback."""
+    text = None
+    if os.path.isfile(SPECS_TEMPLATE):
+        try:
+            text = read_text(SPECS_TEMPLATE)
+        except OSError:
+            text = None
+    if not text:
+        text = FALLBACK_SPEC
+    text = text.replace("task: null", f"task: {task_id}", 1)
+    text = text.replace("# <title>", f"# {title}", 1)
+    return text
+
+
+def create_task(
+    title: str,
+    priority: str = "medium",
+    spec: str | None = None,
+    depends_on: str | None = None,
+    make_spec: bool = True,
+) -> dict:
+    """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
-    try:
-        with task_index_guard():
-            number = allocate_task_number()
-            task_id = f"{number:04d}"
-            title = args.title.strip()
-            slug = slugify(title)
-            path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
-            meta = {
-                "id": task_id,
-                "title": title,
-                "status": "todo",
-                "owner": None,
-                "priority": args.priority,
-                "spec": args.spec,
-                "depends_on": getattr(args, "depends_on", None),
-                "created": iso(),
-                "updated": iso(),
-                "lock": None,
-            }
-            body = f"""# {task_id} - {title}
+    with task_index_guard():
+        number = allocate_task_number()
+        task_id = f"{number:04d}"
+        title = title.strip()
+        slug = slugify(title)
+        path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
+        spec_ref = spec
+        if not spec_ref and make_spec:
+            spec_path = os.path.join(SPECS_ACTIVE_DIR, f"{task_id}-{slug}.md")
+            write_text_atomic(spec_path, spec_from_template(title, task_id))
+            spec_ref = os.path.relpath(spec_path, WORKSPACE).replace(os.sep, "/")
+        meta = {
+            "id": task_id,
+            "title": title,
+            "status": "todo",
+            "owner": None,
+            "priority": priority,
+            "spec": spec_ref,
+            "depends_on": depends_on,
+            "created": iso(),
+            "updated": iso(),
+            "lock": None,
+        }
+        plan = (
+            f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
+            if spec_ref
+            else "<!-- Filled by the planner. Link the spec when one exists. -->"
+        )
+        body = f"""# {task_id} - {title}
 
 ## Intent
 
@@ -1546,7 +2421,7 @@ def cmd_task_new(args) -> int:
 
 ## Plan
 
-<!-- Filled by the planner. Link the spec when one exists. -->
+{plan}
 
 ## Notes
 
@@ -1554,14 +2429,27 @@ def cmd_task_new(args) -> int:
 
 - {iso()} created
 """
-            write_task(path, meta, body)
-            write_board(load_tasks())
+        write_task(path, meta, body)
+        write_board(load_tasks())
+    append_event("task_created", task=task_id)
+    return {"id": task_id, "path": path, "spec": spec_ref, "slug": slug}
+
+
+def cmd_task_new(args) -> int:
+    try:
+        created = create_task(
+            args.title,
+            args.priority,
+            args.spec,
+            getattr(args, "depends_on", None),
+            make_spec=not getattr(args, "no_spec", False),
+        )
     except RuntimeError:
         return 1
-    print(f"Created {os.path.relpath(path, PROJECT)}")
-    if args.spec:
-        print(f"Spec: {args.spec}")
-    print(f"Claim it: ai task claim {task_id} --agent <name>")
+    print(f"Created {os.path.relpath(created['path'], PROJECT)}")
+    if created["spec"]:
+        print(f"Spec: {created['spec']}")
+    print(f"Claim it: ai task claim {created['id']} --agent <name>")
     return 0
 
 
@@ -1594,12 +2482,24 @@ def cmd_task_show(args) -> int:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
     meta, body = parse_task(path)
+    ci_results = [
+        line.strip().lstrip("- ")
+        for line in body.splitlines()
+        if "CI:" in line
+    ]
     if args.json:
-        print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
+        payload = {"meta": meta, "body": body}
+        if ci_results:
+            payload["ci_results"] = ci_results
+        print(json.dumps(payload, indent=2, default=str))
         return 0
     print(f"File: {os.path.relpath(path, PROJECT)}")
     for key, value in meta.items():
         print(f"{key}: {value}")
+    if ci_results:
+        print("\nCI results:")
+        for r in ci_results:
+            print(f"  {r}")
     print()
     print(body)
     return 0
@@ -1636,13 +2536,23 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
         return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
     resource = f"task-{task_id}"
     result = acquire_lock(resource, agent=agent, task=task_id, force=force)
+    new_claim = bool(result["ok"])
     if not result["ok"]:
         if result.get("error"):
+            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
             return False, f"Could not claim task {task_id}: {result['error']}"
         holder = result["holder"] or {}
         if holder.get("agent") == agent:
             heartbeat_lock(resource, agent=agent)
         else:
+            append_event(
+                "lock_refused",
+                resource=resource,
+                agent=agent,
+                task=task_id,
+                conflict=holder.get("resource"),
+                conflict_agent=holder.get("agent"),
+            )
             return False, (
                 f"Task {task_id} is locked by {holder.get('agent')} "
                 f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
@@ -1657,6 +2567,8 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     body = body.rstrip("\n") + f"\n- {iso()} claimed by {agent}\n"
     write_task(path, meta, body)
     write_board(load_tasks())
+    if new_claim:
+        append_event("task_claimed", task=task_id, agent=agent)
     return True, task_id
 
 
@@ -1783,7 +2695,10 @@ def cmd_task_release(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot release task {task_id}: {exc}.", file=sys.stderr)
         return 1
-    return release_lock(resource, agent=args.agent, force=args.force)
+    result = release_lock(resource, agent=args.agent, force=args.force)
+    if result == 0:
+        append_event("task_released", task=task_id, agent=args.agent)
+    return result
 
 
 def cmd_task_review(args) -> int:
@@ -1817,6 +2732,7 @@ def cmd_task_review(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot submit task {args.task_id} for review: {exc}.", file=sys.stderr)
         return 1
+    append_event("task_reviewed", task=task_id, agent=args.agent)
     print(f"Task {task_id} is ready for independent review. Release it before reviewer takeover.")
     return 0
 
@@ -1884,9 +2800,11 @@ def cmd_task_done(args) -> int:
     if not holder:
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:
+            append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
             print(f"Task {task_id} is locked by {result['holder'].get('agent')}.", file=sys.stderr)
             return 1
     elif holder.get("agent") != args.agent and not args.force:
+        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
         print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
         return 1
     meta["status"] = "done"
@@ -1904,6 +2822,7 @@ def cmd_task_done(args) -> int:
         except OSError:
             pass
     write_board(load_tasks())
+    append_event("task_done", task=task_id, agent=args.agent)
     print(f"Done: {os.path.relpath(target, PROJECT)}")
     return 0
 
@@ -2071,6 +2990,63 @@ def cmd_task_discard(args) -> int:
         print(f"Could not discard task {task_id}: {exc}", file=sys.stderr)
         return 1
     print(f"Discarded task {task_id}; removed {len(current_targets)} file(s).")
+    return 0
+
+
+def link_task_github(
+    path: str,
+    issue: str | None = None,
+    pr: str | None = None,
+    agent: str | None = None,
+) -> tuple[dict, str]:
+    """Helper to link a GitHub issue and pull request from a task record without external tokens."""
+    meta, body = parse_task(path)
+    links = []
+    if issue:
+        meta["github_issue"] = str(issue).strip()
+        links.append(f"issue: {issue}")
+    if pr:
+        meta["github_pr"] = str(pr).strip()
+        links.append(f"pr: {pr}")
+    if not links:
+        return meta, body
+
+    if issue and pr:
+        note_line = f"GitHub: {issue} / {pr}"
+    elif issue:
+        note_line = f"GitHub issue: {issue}"
+    else:
+        note_line = f"GitHub PR: {pr}"
+
+    notes_match = re.search(r"(## Notes\s*\n)", body)
+    if notes_match:
+        idx = notes_match.end()
+        body = body[:idx] + f"- {note_line}\n" + body[idx:]
+    else:
+        body = body.rstrip() + f"\n\n## Notes\n\n- {note_line}\n"
+
+    meta["updated"] = iso()
+    log_entry = f"- {iso()} linked GitHub {', '.join(links)}"
+    if agent:
+        log_entry += f" by {agent}"
+    body = body.rstrip() + f"\n{log_entry}\n"
+    write_task(path, meta, body)
+    return meta, body
+
+
+def cmd_task_link(args) -> int:
+    path = find_task(args.task_id)
+    if not path:
+        print(f"No task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    if not args.issue and not args.pr:
+        print("Specify at least --issue or --pr.", file=sys.stderr)
+        return 1
+    meta, body = link_task_github(path, issue=args.issue, pr=args.pr, agent=args.agent)
+    if args.json:
+        print(json.dumps({"ok": True, "meta": meta, "task": args.task_id}, indent=2, default=str))
+        return 0
+    print(f"Linked task {args.task_id} to GitHub: issue={args.issue}, pr={args.pr}")
     return 0
 
 
@@ -2366,6 +3342,7 @@ def cmd_checkpoint(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot checkpoint task {task_id}: {exc}.", file=sys.stderr)
         return 1
+    append_event("checkpoint", task=task_id, agent=args.agent)
     print(f"Checkpoint: {ws_rel(checkpoint)}")
     if args.next:
         print(f"Next: {args.next}")
@@ -2493,6 +3470,7 @@ def cmd_resume(args) -> int:
     data = read_checkpoint(task_id)
     drift = current_drift(task_id)
     markers = [marker for marker in list_handoff_markers() if str(marker.get("task")) == task_id]
+    append_event("resume", task=task_id, agent=meta.get("owner"))
     payload = {
         "task": meta,
         "checkpoint": data[0] if data else None,
@@ -2912,8 +3890,12 @@ def cmd_git_start(args) -> int:
     if not state.get("repo"):
         print("Not a git repository.", file=sys.stderr)
         return 1
-    if not git_clean():
-        print("Working tree is dirty. Commit or stash before starting a task branch.", file=sys.stderr)
+    if not git_clean(ignore_ledger=True):
+        print(
+            "Working tree has product changes. Commit or stash them before "
+            "starting a task branch (only tasks/ and specs/ may stay uncommitted).",
+            file=sys.stderr,
+        )
         return 1
     config = git_config()
     branch_type = args.type
@@ -3029,6 +4011,8 @@ def cmd_git_commit(args) -> int:
         _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
+        if args.ci:
+            body += f"- {iso()} CI: {args.ci}\n"
         write_task(path, meta, body)
         write_board(load_tasks())
         amended = commit_task_metadata(path, "", amend=True)
@@ -3120,6 +4104,7 @@ def cmd_git_finish(args) -> int:
         commit_task_metadata(path, f"chore(task): record merge {task_id}")
     finally:
         release_git_guard(owned, args.agent)
+    append_event("task_merged", task=task_id, agent=args.agent, branch=branch, integration=integration)
     if args.json:
         print(json.dumps({
             "task": task_id,
@@ -3348,16 +4333,19 @@ CAPABILITIES = {
         "tasks": "tasks/active, tasks/done",
         "locks": "runtime/locks/*.lock (advisory, TTL leases)",
         "checkpoints": "runtime/state/checkpoints",
+        "events": "runtime/state/events.jsonl and date-rotated local archives",
         "handoffs": "runtime/state/handoff",
         "artifacts": "runtime/artifacts",
     },
     "commands": {
+        "start": "one-command first run: prepare, detect Git, create or claim a task; --agent, --json, --no-demo",
         "adopt": "wire root adapters for every AI tool",
-        "doctor": "workspace health; --strict, --json",
+        "doctor": "workspace health with a repair hint per finding; --fix, --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
-        "status": "tasks, locks, checkpoints, handoffs; --json",
+        "status": "tasks, locks, checkpoints, handoffs; --json, --board",
+        "metrics": "summarize local workflow events; --since, --json",
         "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
-        "task": "new | list | show | ready | next | claim | release | review | done | discard | block | unblock",
+        "task": "new | list | show | link | ready | next | claim | release | review | done | discard | block | unblock",
         "lock": "acquire | release | heartbeat | status",
         "checkpoint": "save resumable context",
         "resume": "print a compact resume brief with drift",
@@ -3381,7 +4369,18 @@ CAPABILITIES = {
 
 
 def cmd_capabilities(args) -> int:
-    print(json.dumps(CAPABILITIES, indent=2))
+    payload = dict(CAPABILITIES)
+    payload["adapter_contract"] = {
+        "schema_version": "0.1.0",
+        "schema_path": "adapters/contract.schema.json",
+        "adapter_dir": "adapters/",
+        "state_paths": [
+            "runtime/state/",
+            "tasks/",
+            "specs/",
+        ],
+    }
+    print(json.dumps(payload, indent=2))
     return 0
 
 
@@ -3403,6 +4402,14 @@ def cmd_lock(args) -> int:
             f"(task {holder.get('task') or '-'}, since {holder.get('started_at')}).",
             file=sys.stderr,
         )
+        append_event(
+            "lock_refused",
+            resource=args.resource,
+            agent=args.agent,
+            task=args.task,
+            conflict=holder.get("resource"),
+            conflict_agent=holder.get("agent"),
+        )
         return 1
     if args.action == "release":
         return release_lock(args.resource, agent=args.agent, force=args.force)
@@ -3410,7 +4417,7 @@ def cmd_lock(args) -> int:
         return heartbeat_lock(args.resource, agent=args.agent)
     locks = list_locks()
     if getattr(args, "json", False):
-        print(json.dumps(locks, indent=2, default=str))
+        print(json.dumps(lock_status_payload(locks), indent=2, default=str))
         return 0
     print_lock_table(locks)
     return 0
@@ -3542,8 +4549,12 @@ def build_parser() -> argparse.ArgumentParser:
     adopt.add_argument("--ci", action="store_true", help="also write the CI workflow")
     adopt.set_defaults(func=cmd_adopt)
 
-    doctor = sub.add_parser("doctor", help="check workspace health")
+    doctor = sub.add_parser("doctor", help="check workspace health; --fix repairs safe issues")
     doctor.add_argument("--strict", action="store_true", help="treat warnings as failures")
+    doctor.add_argument(
+        "--fix", action="store_true",
+        help="recreate missing runtime state, config and subfolder adapters",
+    )
     doctor.add_argument("--json", action="store_true")
     doctor.set_defaults(func=cmd_doctor)
 
@@ -3556,7 +4567,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="show tasks, locks, checkpoints, handoffs and artifacts")
     status.add_argument("--json", action="store_true")
+    status.add_argument(
+        "--board",
+        action="store_true",
+        help="read-only board: dependency order, checkpoint age, leases and refusals",
+    )
     status.set_defaults(func=cmd_status)
+
+    metrics = sub.add_parser("metrics", help="summarize local workflow metrics")
+    metrics.add_argument("--since", default=None, help="filter on or after an ISO date or timestamp")
+    metrics.add_argument("--json", action="store_true")
+    metrics.set_defaults(func=cmd_metrics)
+
+    start = sub.add_parser(
+        "start", help="prepare the workspace and leave a first task ready to claim"
+    )
+    start.add_argument("--agent", default=None, help="claim the first task for this agent")
+    start.add_argument(
+        "--demo", dest="demo", action="store_true", default=True,
+        help="create a starter task when the ledger is empty (default)",
+    )
+    start.add_argument("--no-demo", dest="demo", action="store_false")
+    start.add_argument("--json", action="store_true")
+    start.set_defaults(func=cmd_start)
 
     task = sub.add_parser("task", help="manage local tasks")
     task_sub = task.add_subparsers(dest="action", required=True)
@@ -3565,6 +4598,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_new.add_argument("title")
     task_new.add_argument("--priority", default="medium", choices=["low", "medium", "high"])
     task_new.add_argument("--spec", default=None)
+    task_new.add_argument("--no-spec", dest="no_spec", action="store_true",
+                          help="do not create a spec skeleton")
     task_new.add_argument("--depends-on", dest="depends_on", default=None)
     task_new.set_defaults(func=cmd_task_new)
 
@@ -3577,6 +4612,14 @@ def build_parser() -> argparse.ArgumentParser:
     task_show.add_argument("task_id")
     task_show.add_argument("--json", action="store_true")
     task_show.set_defaults(func=cmd_task_show)
+
+    task_link = task_sub.add_parser("link", help="link GitHub issue and/or PR to task")
+    task_link.add_argument("task_id")
+    task_link.add_argument("--issue", default=None, help="GitHub issue URL or number")
+    task_link.add_argument("--pr", default=None, help="GitHub pull request URL or number")
+    task_link.add_argument("--agent", default=None)
+    task_link.add_argument("--json", action="store_true")
+    task_link.set_defaults(func=cmd_task_link)
 
     task_ready = task_sub.add_parser("ready", help="list claimable tasks whose dependencies are done")
     task_ready.add_argument("--json", action="store_true")
@@ -3719,6 +4762,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
     git_commit.add_argument("--force", action="store_true")
     git_commit.add_argument("--json", action="store_true")
+    git_commit.add_argument("--ci", default=None, help="record CI result URL or identifier in task log")
     git_commit.set_defaults(func=cmd_git)
     git_finish = git_sub.add_parser("finish", help="check, no-ff merge the task branch, and clean up")
     git_finish.add_argument("--task", required=True)
@@ -3741,6 +4785,7 @@ def build_parser() -> argparse.ArgumentParser:
     git_verify.set_defaults(func=cmd_git)
 
     capabilities = sub.add_parser("capabilities", help="print the machine-readable CLI contract")
+    capabilities.add_argument("--json", action="store_true")
     capabilities.set_defaults(func=cmd_capabilities)
 
     artifact = sub.add_parser("artifact", help="quarantine AI scratch files")

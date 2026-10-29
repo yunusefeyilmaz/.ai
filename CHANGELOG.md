@@ -2,6 +2,119 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.6.0] - 2026-10-29
+
+### Added
+
+- `ai status --board`: a read-only one-screen view. Active tasks are listed in
+  dependency order with id, status, owner, priority, checkpoint age, waiting
+  reason and title, followed by every lease with its TTL, remaining seconds and
+  `held`/`stale` state, and the last five refused leases.
+- A refused lease names its conflict: `ai lock acquire` and a refused task claim
+  record `conflict` and `conflict_agent` on the `lock_refused` event.
+  `ai lock status --json` adds `state`, `remaining_seconds` and the matching
+  `refusals` to each lease. Events written before this release render as
+  `conflict unknown`.
+- Versioned adapter contract: `adapters/contract.schema.json` fixes the shape
+  of every `adapters/*/adapter.json`, each adapter may carry a semver
+  `version` (absent means `0.1.0`), and `ai capabilities --json` publishes
+  `adapter_contract` with the contract version, schema path and the state paths
+  adapters may rely on.
+- `tests/test_adapter_contract.py`: every adapter is validated against the
+  schema, and adapter documents may only reference commands the CLI publishes.
+- `ai git commit --ci <url|result>` records the CI result in the task log and
+  `ai task show` prints the recorded CI results.
+- `ai task link --issue <url> --pr <url>` links a GitHub issue and pull request
+  from a task record. It writes only to the task file and needs no token.
+- `.github/workflows/ci.yml` now runs on Ubuntu, macOS and Windows with Python
+  3.8 and 3.11.
+- `tests/test_board.py`: snapshot coverage for empty, single-task, blocked and
+  dependency-ordered boards, plus lease detail, read-only and plain-text
+  guarantees.
+
+### Changed
+
+- `ai status` keeps its previous output in every respect; `--board` is additive
+  and `--json` is unchanged.
+- `ai check --strict` stays the single verification gate; reliability tests for
+  concurrent leases, lease takeover and guarded Git failures run inside it.
+
+## [0.5.2] - 2026-10-29
+
+### Added
+
+- `ai metrics [--json] [--since <date>]` summarizes task completion and review
+  times, lock refusals, retries, resumes, and event counts by agent from a
+  local, date-rotated JSONL ledger.
+- Task lifecycle, lock refusal, checkpoint, and resume commands append local
+  events. The ledger is not uploaded and historical tasks are not backfilled.
+
+## [0.5.1] - 2026-10-29
+
+### Fixed
+
+- `ai doctor` and `ai check` no longer create runtime directories while
+  diagnosing; only `--fix` writes. A missing state tree now stays visible until
+  it is repaired on purpose.
+- A missing `config/workspace.json` produces one finding with the
+  `ai doctor --fix` hint instead of a duplicate `git checkout` hint.
+- Missing framework files in a subfolder install are hinted as a restore from
+  the `.ai` copy rather than a host-repository checkout that cannot work.
+
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- `ai doctor --fix`: repairs only missing, regenerable state - runtime
+  directories and keep files, an absent `config/workspace.json`, and missing
+  subfolder adapter pointers and ignore rules. Each change is reported as
+  `FIXED`; task, spec, lock and Git data are never touched.
+- Every diagnostic carries a repair hint. Human output prints `fix: <command>`;
+  `--json` adds a `findings` array of `{level, message, hint}` and a `fixes`
+  array. With `--fix` the exit code is 0 only when nothing remains.
+- Subfolder installs now report missing root adapter pointers and ignore rules,
+  so the repair is visible before an agent fails to find the workspace.
+- `tests/test_doctor.py`: regression coverage for hinted findings, safe repair,
+  corrupt config, orphan locks and subfolder wiring.
+
+### Changed
+
+- `ai doctor --json` keeps `ok`, `errors` and `warnings` and adds structured
+  findings, so existing scripts keep working.
+- `ai init` shares its placeholder logic with `--fix`; behavior is unchanged.
+
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- `ai start`: prepares missing state, detects the install shape and Git layout,
+  runs `ai git setup` when a commit already exists, creates one starter task
+  with its spec and, with `--agent`, claims it. It never prompts, force-claims or
+  overwrites a task.
+- `ai task new` writes `specs/active/<id>-<slug>.md` from `specs/TEMPLATE.md`
+  and links it in the task. `--no-spec` keeps the previous behavior.
+- `tests/`: first CLI integration tests for first-run, spec creation and the
+  lite checkpoint rule. They run in `ai check`.
+- `docs/roadmap.md` and tasks `0001`-`0006`: the P0-P2 plan with success
+  signals and guardrails.
+
+### Changed
+
+- In `lite` mode `ai check` gives a freshly claimed task
+  `handoff.warnAfterMinutes` before warning about a missing checkpoint. `strict`
+  mode still warns immediately; a stale checkpoint warns in both modes.
+- `ai start` considers active tasks only: a ledger of archived tasks receives a
+  new starter task instead of a failed attempt to claim a done one.
+- `ai git start` ignores uncommitted `tasks/` and `specs/` files; product changes
+  still block the branch. This makes the printed first-run loop work without a
+  manual metadata commit.
+- `ai task new` no longer prints a stray `Released 'tasks.index'.` line.
+- `scripts/ai.cmd` now exits with the CLI's code; previously every Windows run
+  reported success, hiding failed checks from CI and scripts.
+- `git status --porcelain` parsing no longer drops the first character of the
+  first entry, so `ai git verify` sees every staged path in full.
+- README, GUIDE and the CLI contract open with `ai start`.
+
 ## [0.2.0] - 2026-10-27
 
 ### Added

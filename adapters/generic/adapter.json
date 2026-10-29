@@ -2,5 +2,6 @@
   "tool": "generic",
   "entry": null,
   "autoload": [],
-  "supports": []
+  "supports": [],
+  "version": "0.1.0"
 }

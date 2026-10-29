@@ -2,5 +2,6 @@
   "tool": "github-copilot",
   "entry": ".github/copilot-instructions.md",
   "autoload": [".github/copilot-instructions.md"],
-  "supports": ["auto-load", "fresh-chat"]
+  "supports": ["auto-load", "fresh-chat"],
+  "version": "0.1.0"
 }

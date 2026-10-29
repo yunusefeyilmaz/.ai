@@ -2,5 +2,6 @@
   "tool": "codex",
   "entry": "AGENTS.md",
   "autoload": ["AGENTS.md"],
-  "supports": ["auto-load", "fresh-session", "skills"]
+  "supports": ["auto-load", "fresh-session", "skills"],
+  "version": "0.1.0"
 }
