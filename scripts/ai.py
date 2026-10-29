@@ -19,13 +19,14 @@ import os
 import re
 import shutil
 import socket
+import statistics
 import subprocess
 import sys
 import tempfile
 import time
 from typing import NamedTuple
 
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -97,6 +98,7 @@ STATE_DIR = os.path.join(WORKSPACE, "runtime", "state")
 CHECKPOINT_DIR = os.path.join(STATE_DIR, "checkpoints")
 CHECKPOINT_ARCHIVE = os.path.join(CHECKPOINT_DIR, "archive")
 HANDOFF_DIR = os.path.join(STATE_DIR, "handoff")
+EVENTS_FILE = os.path.join(STATE_DIR, "events.jsonl")
 ARTIFACTS_DIR = os.path.join(WORKSPACE, "runtime", "artifacts")
 LOGS_DIR = os.path.join(WORKSPACE, "runtime", "logs")
 COUNTER_PATH = os.path.join(STATE_DIR, "task-counter.json")
@@ -351,6 +353,178 @@ def workspace_state_guard():
         if os.path.exists(reset_lock):
             raise RuntimeError("workspace reset is in progress")
         yield
+
+
+def append_event(event: str, **fields) -> None:
+    """Append one local JSONL event, rotating the active file by UTC date."""
+    record = {"timestamp": iso(), "event": event}
+    record.update({key: value for key, value in fields.items() if value is not None})
+    try:
+        ensure_dirs()
+        with registry_mutex():
+            if os.path.isfile(EVENTS_FILE):
+                last = None
+                try:
+                    with open(EVENTS_FILE, encoding="utf-8") as handle:
+                        for line in handle:
+                            if line.strip():
+                                try:
+                                    last = json.loads(line)
+                                except ValueError:
+                                    continue
+                except OSError:
+                    last = None
+                previous_date = str((last or {}).get("timestamp") or "")[:10]
+                event_date = record["timestamp"][:10]
+                if previous_date and previous_date != event_date:
+                    archive = os.path.join(STATE_DIR, f"events-{previous_date}.jsonl")
+                    if os.path.exists(archive):
+                        with open(EVENTS_FILE, "rb") as source, open(archive, "ab") as target:
+                            shutil.copyfileobj(source, target)
+                        os.remove(EVENTS_FILE)
+                    else:
+                        os.replace(EVENTS_FILE, archive)
+            descriptor = os.open(EVENTS_FILE, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+            try:
+                line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+                os.write(descriptor, line.encode("utf-8"))
+            finally:
+                os.close(descriptor)
+    except (OSError, TimeoutError) as exc:
+        print(f"WARN  could not record metrics event '{event}': {exc}", file=sys.stderr)
+
+
+def read_events() -> list[dict]:
+    """Read the active and rotated event ledgers without creating state."""
+    if not os.path.isdir(STATE_DIR):
+        return []
+    paths = [
+        os.path.join(STATE_DIR, name)
+        for name in os.listdir(STATE_DIR)
+        if name == "events.jsonl" or re.fullmatch(r"events-\d{4}-\d{2}-\d{2}\.jsonl", name)
+    ]
+    events = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict) and event.get("event") and event.get("timestamp"):
+                        events.append(event)
+        except OSError:
+            continue
+    events.sort(key=lambda item: str(item.get("timestamp") or ""))
+    return events
+
+
+def metrics_since(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return dt.datetime.combine(dt.date.fromisoformat(value), dt.time.min, dt.timezone.utc)
+        parsed = parse_iso(value)
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except ValueError as exc:
+        raise ValueError("--since must be an ISO date or timestamp") from exc
+
+
+def event_datetime(event: dict) -> dt.datetime | None:
+    try:
+        parsed = parse_iso(str(event.get("timestamp") or ""))
+        return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def duration_median(events: list[dict], starts: list[dict], end_type: str) -> float | None:
+    starts_by_task: dict[str, list[dt.datetime]] = {}
+    for event in starts:
+        task = str(event.get("task") or "")
+        stamp = event_datetime(event)
+        if task and stamp:
+            starts_by_task.setdefault(task, []).append(stamp)
+    durations = []
+    for event in events:
+        if event.get("event") != end_type:
+            continue
+        task = str(event.get("task") or "")
+        end = event_datetime(event)
+        earlier = [stamp for stamp in starts_by_task.get(task, []) if end and stamp <= end]
+        if earlier and end:
+            durations.append((end - max(earlier)).total_seconds())
+    return float(statistics.median(durations)) if durations else None
+
+
+def collect_metrics(since: dt.datetime | None = None) -> dict:
+    events = read_events()
+    timed = [(event, event_datetime(event)) for event in events]
+    period = [event for event, stamp in timed if stamp and (since is None or stamp >= since)]
+    completed = {
+        str(event.get("task")) for event in period
+        if event.get("event") == "task_done" and event.get("task")
+    }
+    claims: dict[str, list[dict]] = {}
+    for event in events:
+        if event.get("event") == "task_claimed" and event.get("task"):
+            claims.setdefault(str(event["task"]), []).append(event)
+    retries = 0
+    for attempts in claims.values():
+        for attempt in attempts[1:]:
+            stamp = event_datetime(attempt)
+            if stamp and (since is None or stamp >= since):
+                retries += 1
+    created = [event for event in events if event.get("event") == "task_created"]
+    reviewed = [event for event in events if event.get("event") == "task_reviewed"]
+    merged = [event for event in period if event.get("event") == "task_merged"]
+    agents: dict[str, int] = {}
+    for event in period:
+        agent = event.get("agent")
+        if agent:
+            agents[str(agent)] = agents.get(str(agent), 0) + 1
+    return {
+        "since": since.isoformat().replace("+00:00", "Z") if since else None,
+        "events_recorded": len(period),
+        "tasks_completed": len(completed),
+        "median_creation_to_done_seconds": duration_median(
+            [event for event in period if event.get("event") == "task_done"], created, "task_done"
+        ),
+        "median_review_to_merge_seconds": duration_median(merged, reviewed, "task_merged"),
+        "lock_refusals": sum(event.get("event") == "lock_refused" for event in period),
+        "retries": retries,
+        "resumes": sum(event.get("event") == "resume" for event in period),
+        "per_agent": dict(sorted(agents.items())),
+    }
+
+
+def cmd_metrics(args) -> int:
+    try:
+        since = metrics_since(args.since)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    result = collect_metrics(since)
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    print(f"Events recorded: {result['events_recorded']}")
+    print(f"Tasks completed: {result['tasks_completed']}")
+    for key, label in (
+        ("median_creation_to_done_seconds", "Median creation-to-done"),
+        ("median_review_to_merge_seconds", "Median review-to-merge"),
+    ):
+        value = result[key]
+        print(f"{label}: {value:.1f} seconds" if value is not None else f"{label}: n/a")
+    print(f"Lock refusals: {result['lock_refusals']}")
+    print(f"Retries: {result['retries']}")
+    print(f"Resumes: {result['resumes']}")
+    print("Per-agent events:")
+    for agent, count in result["per_agent"].items():
+        print(f"  {agent}: {count}")
+    return 0
 
 
 def acquire_lock(
@@ -746,6 +920,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
     )
     if current:
         if current.get("agent") != agent:
+            append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
             return False, False, (
                 f"git index is locked by {current.get('agent')} "
                 f"(task {current.get('task') or '-'})."
@@ -754,6 +929,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
     result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=600)
     if not result["ok"]:
         holder = result["holder"] or {}
+        append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
         return False, False, (
             f"git index is locked by {holder.get('agent')} "
             f"(task {holder.get('task') or '-'})."
@@ -2085,6 +2261,7 @@ def create_task(
 """
         write_task(path, meta, body)
         write_board(load_tasks())
+    append_event("task_created", task=task_id)
     return {"id": task_id, "path": path, "spec": spec_ref, "slug": slug}
 
 
@@ -2177,13 +2354,16 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
         return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
     resource = f"task-{task_id}"
     result = acquire_lock(resource, agent=agent, task=task_id, force=force)
+    new_claim = bool(result["ok"])
     if not result["ok"]:
         if result.get("error"):
+            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
             return False, f"Could not claim task {task_id}: {result['error']}"
         holder = result["holder"] or {}
         if holder.get("agent") == agent:
             heartbeat_lock(resource, agent=agent)
         else:
+            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
             return False, (
                 f"Task {task_id} is locked by {holder.get('agent')} "
                 f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
@@ -2198,6 +2378,8 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     body = body.rstrip("\n") + f"\n- {iso()} claimed by {agent}\n"
     write_task(path, meta, body)
     write_board(load_tasks())
+    if new_claim:
+        append_event("task_claimed", task=task_id, agent=agent)
     return True, task_id
 
 
@@ -2324,7 +2506,10 @@ def cmd_task_release(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot release task {task_id}: {exc}.", file=sys.stderr)
         return 1
-    return release_lock(resource, agent=args.agent, force=args.force)
+    result = release_lock(resource, agent=args.agent, force=args.force)
+    if result == 0:
+        append_event("task_released", task=task_id, agent=args.agent)
+    return result
 
 
 def cmd_task_review(args) -> int:
@@ -2358,6 +2543,7 @@ def cmd_task_review(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot submit task {args.task_id} for review: {exc}.", file=sys.stderr)
         return 1
+    append_event("task_reviewed", task=task_id, agent=args.agent)
     print(f"Task {task_id} is ready for independent review. Release it before reviewer takeover.")
     return 0
 
@@ -2425,9 +2611,11 @@ def cmd_task_done(args) -> int:
     if not holder:
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:
+            append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
             print(f"Task {task_id} is locked by {result['holder'].get('agent')}.", file=sys.stderr)
             return 1
     elif holder.get("agent") != args.agent and not args.force:
+        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
         print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
         return 1
     meta["status"] = "done"
@@ -2445,6 +2633,7 @@ def cmd_task_done(args) -> int:
         except OSError:
             pass
     write_board(load_tasks())
+    append_event("task_done", task=task_id, agent=args.agent)
     print(f"Done: {os.path.relpath(target, PROJECT)}")
     return 0
 
@@ -2907,6 +3096,7 @@ def cmd_checkpoint(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot checkpoint task {task_id}: {exc}.", file=sys.stderr)
         return 1
+    append_event("checkpoint", task=task_id, agent=args.agent)
     print(f"Checkpoint: {ws_rel(checkpoint)}")
     if args.next:
         print(f"Next: {args.next}")
@@ -3034,6 +3224,7 @@ def cmd_resume(args) -> int:
     data = read_checkpoint(task_id)
     drift = current_drift(task_id)
     markers = [marker for marker in list_handoff_markers() if str(marker.get("task")) == task_id]
+    append_event("resume", task=task_id, agent=meta.get("owner"))
     payload = {
         "task": meta,
         "checkpoint": data[0] if data else None,
@@ -3665,6 +3856,7 @@ def cmd_git_finish(args) -> int:
         commit_task_metadata(path, f"chore(task): record merge {task_id}")
     finally:
         release_git_guard(owned, args.agent)
+    append_event("task_merged", task=task_id, agent=args.agent, branch=branch, integration=integration)
     if args.json:
         print(json.dumps({
             "task": task_id,
@@ -3893,6 +4085,7 @@ CAPABILITIES = {
         "tasks": "tasks/active, tasks/done",
         "locks": "runtime/locks/*.lock (advisory, TTL leases)",
         "checkpoints": "runtime/state/checkpoints",
+        "events": "runtime/state/events.jsonl and date-rotated local archives",
         "handoffs": "runtime/state/handoff",
         "artifacts": "runtime/artifacts",
     },
@@ -3902,6 +4095,7 @@ CAPABILITIES = {
         "doctor": "workspace health with a repair hint per finding; --fix, --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
         "status": "tasks, locks, checkpoints, handoffs; --json",
+        "metrics": "summarize local workflow events; --since, --json",
         "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
         "task": "new | list | show | ready | next | claim | release | review | done | discard | block | unblock",
         "lock": "acquire | release | heartbeat | status",
@@ -3949,6 +4143,7 @@ def cmd_lock(args) -> int:
             f"(task {holder.get('task') or '-'}, since {holder.get('started_at')}).",
             file=sys.stderr,
         )
+        append_event("lock_refused", resource=args.resource, agent=args.agent, task=args.task)
         return 1
     if args.action == "release":
         return release_lock(args.resource, agent=args.agent, force=args.force)
@@ -4107,6 +4302,11 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="show tasks, locks, checkpoints, handoffs and artifacts")
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_status)
+
+    metrics = sub.add_parser("metrics", help="summarize local workflow metrics")
+    metrics.add_argument("--since", default=None, help="filter on or after an ISO date or timestamp")
+    metrics.add_argument("--json", action="store_true")
+    metrics.set_defaults(func=cmd_metrics)
 
     start = sub.add_parser(
         "start", help="prepare the workspace and leave a first task ready to claim"
