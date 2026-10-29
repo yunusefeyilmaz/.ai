@@ -84,12 +84,12 @@ Adding an agent or a CI provider should not require editing the core workflow. P
 
 ## Acceptance criteria
 
-- [ ] `ai capabilities --json` publishes a versioned adapter contract with command names, exit codes and state paths adapters may rely on
-- [ ] A contract test fails when an adapter document references a command or flag the CLI no longer has
-- [ ] `ai git commit --ci <url|result>` records the CI result in the task log; `ai task show` prints it
-- [ ] Optional GitHub helpers link an issue and a pull request from the task without requiring a token to run locally
-- [ ] Install/verify passes on Windows, macOS and Linux in CI
-- [ ] `ai check --strict` passes
+- [x] `ai capabilities --json` publishes a versioned adapter contract with command names, exit codes and state paths adapters may rely on
+- [x] A contract test fails when an adapter document references a command or flag the CLI no longer has
+- [x] `ai git commit --ci <url|result>` records the CI result in the task log; `ai task show` prints it
+- [x] Optional GitHub helpers link an issue and a pull request from the task without requiring a token to run locally
+- [x] Install/verify passes on Windows, macOS and Linux in CI
+- [x] `ai check --strict` passes
 
 ## Out of scope
 

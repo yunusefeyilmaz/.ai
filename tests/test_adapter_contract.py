@@ -54,6 +54,29 @@ def validate_adapter(data: dict, schema: dict, path: Path) -> list[str]:
     return errors
 
 
+def extract_command_references(text: str) -> list[str]:
+    """Extract 'ai <cmd>' command names referenced in markdown text."""
+    pattern = re.compile(
+        r"(?:`(?:\.ai/scripts/)?ai\s+([a-z0-9_-]+)|(?:\.ai/scripts/ai|(?<![\w/.])ai)\s+([a-z0-9_-]+))"
+    )
+    ignored = {"workspace", "engineering", "notes", "adapter", "state"}
+    commands = []
+    for match in pattern.finditer(text):
+        cmd = match.group(1) or match.group(2)
+        if cmd and cmd not in ignored and not cmd.startswith("-"):
+            commands.append(cmd)
+    return commands
+
+
+def validate_adapter_doc(text: str, valid_commands: set[str]) -> list[str]:
+    """Validate that commands referenced in an adapter doc exist in the CLI contract."""
+    errors = []
+    for cmd in extract_command_references(text):
+        if cmd not in valid_commands:
+            errors.append(f"referenced unknown command 'ai {cmd}'")
+    return errors
+
+
 class AdapterContractTest(unittest.TestCase):
     def test_adapter_json_files_have_required_fields(self) -> None:
         """Every adapters/*/adapter.json must have required fields."""
@@ -101,6 +124,69 @@ class AdapterContractTest(unittest.TestCase):
             data = json.loads(adapter_file.read_text(encoding="utf-8"))
             errors = validate_adapter(data, schema, adapter_file)
             self.assertEqual(errors, [], f"adapter violations: {errors}")
+
+    def test_adapter_docs_reference_only_valid_commands(self) -> None:
+        """Every adapter doc must reference only commands exposed by the CLI."""
+        cap_result = run(ROOT, "capabilities", "--json")
+        self.assertEqual(cap_result.returncode, 0, cap_result.stderr)
+        capabilities = json.loads(cap_result.stdout)
+        valid_commands = set(capabilities.get("commands", {}).keys())
+
+        adapters_dir = ROOT / "adapters"
+        doc_files = sorted(adapters_dir.glob("**/*.md"))
+        self.assertGreater(len(doc_files), 0, "no adapter doc files found")
+
+        all_errors = []
+        for doc_file in doc_files:
+            text = doc_file.read_text(encoding="utf-8")
+            errors = validate_adapter_doc(text, valid_commands)
+            for err in errors:
+                all_errors.append(f"{doc_file.name}: {err}")
+        self.assertEqual(all_errors, [], f"adapter docs reference invalid commands: {all_errors}")
+
+    def test_contract_fails_when_adapter_references_unknown_command(self) -> None:
+        """Contract validation fails if an adapter references an unknown command."""
+        valid_commands = {"git", "task", "check", "doctor"}
+        bad_doc = "Run `.ai/scripts/ai nonexistent_cmd --flag` to test."
+        errors = validate_adapter_doc(bad_doc, valid_commands)
+        self.assertIn("referenced unknown command 'ai nonexistent_cmd'", errors)
+
+    def test_task_show_prints_ci_results(self) -> None:
+        """ai task show prints CI result lines from task log."""
+        result = run(ROOT, "task", "show", "0005")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Verify show output works cleanly
+        self.assertIn("File:", result.stdout)
+        self.assertIn("title:", result.stdout)
+
+        json_result = run(ROOT, "task", "show", "0005", "--json")
+        self.assertEqual(json_result.returncode, 0, json_result.stderr)
+        payload = json.loads(json_result.stdout)
+        self.assertIn("meta", payload)
+        self.assertIn("body", payload)
+
+    def test_task_link_github(self) -> None:
+        """link_task_github helper links GitHub issue and PR without external tokens."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            task_file = Path(tmpdir) / "0999-test.md"
+            task_file.write_text(
+                "---\nid: 0999\ntitle: test\nstatus: todo\nowner: null\n---\n\n# 0999 - test\n\n## Notes\n\n## Log\n",
+                encoding="utf-8",
+            )
+            # import helper directly from scripts.ai
+            sys.path.insert(0, str(ROOT))
+            from scripts.ai import link_task_github
+            meta, body = link_task_github(
+                str(task_file),
+                issue="https://github.com/org/repo/issues/42",
+                pr="https://github.com/org/repo/pull/43",
+                agent="tester",
+            )
+            self.assertEqual(meta.get("github_issue"), "https://github.com/org/repo/issues/42")
+            self.assertEqual(meta.get("github_pr"), "https://github.com/org/repo/pull/43")
+            self.assertIn("GitHub: https://github.com/org/repo/issues/42 / https://github.com/org/repo/pull/43", body)
+            self.assertIn("linked GitHub issue: https://github.com/org/repo/issues/42, pr: https://github.com/org/repo/pull/43 by tester", body)
 
 
 if __name__ == "__main__":
