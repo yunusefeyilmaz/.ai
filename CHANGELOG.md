@@ -2,6 +2,31 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- `ai start`: prepares missing state, detects the install shape and Git layout,
+  runs `ai git setup` when a commit already exists, creates one starter task
+  with its spec and, with `--agent`, claims it. It never prompts, force-claims or
+  overwrites a task.
+- `ai task new` writes `specs/active/<id>-<slug>.md` from `specs/TEMPLATE.md`
+  and links it in the task. `--no-spec` keeps the previous behavior.
+- `tests/`: first CLI integration tests for first-run, spec creation and the
+  lite checkpoint rule. They run in `ai check`.
+- `docs/roadmap.md` and tasks `0001`-`0006`: the P0-P2 plan with success
+  signals and guardrails.
+
+### Changed
+
+- In `lite` mode `ai check` gives a freshly claimed task
+  `handoff.warnAfterMinutes` before warning about a missing checkpoint. `strict`
+  mode still warns immediately; a stale checkpoint warns in both modes.
+- `ai task new` no longer prints a stray `Released 'tasks.index'.` line.
+- `scripts/ai.cmd` now exits with the CLI's code; previously every Windows run
+  reported success, hiding failed checks from CI and scripts.
+- README, GUIDE and the CLI contract open with `ai start`.
+
 ## [0.2.0] - 2026-10-27
 
 ### Added

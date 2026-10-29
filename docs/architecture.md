@@ -21,6 +21,7 @@ project/                  <- product territory (the real repo)
     ├── prompts/          reusable prompt bodies
     ├── adapters/         per-tool pointers (never duplicate rules)
     ├── scripts/          ai CLI + launchers
+    ├── tests/            CLI integration tests (stdlib unittest)
     └── runtime/          locks/, state/, artifacts/, logs/ (never committed)
 ```
 

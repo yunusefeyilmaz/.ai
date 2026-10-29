@@ -4,11 +4,12 @@ title: "P0 first-run: one-command start and automatic spec"
 status: in_progress
 owner: implementer
 priority: high
-spec: null
+spec: specs/active/0001-first-run.md
 created: 2026-10-29T06:55:07Z
-updated: 2026-10-29T06:55:15Z
+updated: 2026-10-29T07:05:35Z
 lock: task-0001
 depends_on: null
+branch: feature/0001-p0-first-run-one-command-start-and-autom
 ---
 
 # 0001 - P0 first-run: one-command start and automatic spec
@@ -53,3 +54,5 @@ another configuration surface.
 
 - 2026-10-29T06:55:07Z created
 - 2026-10-29T06:55:15Z claimed by implementer
+- 2026-10-29T06:56:02Z created branch feature/0001-p0-first-run-one-command-start-and-autom from develop by implementer
+- 2026-10-29T07:05:35Z committed: feat(onboarding): add one-command start and automatic specs

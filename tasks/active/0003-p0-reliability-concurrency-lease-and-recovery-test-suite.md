@@ -25,6 +25,8 @@ and keeps later changes from breaking them.
       (exactly one winner), expired-lease takeover, the previous owner returning
       after expiry, `recover --apply` on owner/lock drift, dirty index and
       conflicting staging, and a failed `git finish` leaving branches intact.
+- [ ] A file lease such as `project` can be acquired while a task lease is held;
+      the task namespace never blocks file leases.
 - [ ] Every test builds its own temporary workspace, runs the real CLI, needs no
       network and finishes in under 60 seconds.
 - [ ] `ai check --fast` runs the suite; failures name the scenario.

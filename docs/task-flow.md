@@ -62,13 +62,16 @@ The CLI rewrites this block; do not hand-edit fields that the CLI maintains.
 ### 1. Create
 
 ```sh
-ai task new "Add invoice export" --priority high --spec specs/active/0001-export.md
-ai task new "Add invoice import" --depends-on 0001
+ai task new "Add invoice export" --priority high
+ai task new "Add invoice import" --depends-on 0001 --no-spec
+ai task new "Add refunds" --spec specs/active/refunds.md
 ```
 
 The id is allocated under the `tasks.index` lock, so two agents cannot receive
 the same id. The file is created in `tasks/active/` and `tasks/BOARD.md` is
-refreshed.
+refreshed. Unless `--no-spec` is given, a spec skeleton is written from
+`specs/TEMPLATE.md` to `specs/active/<id>-<slug>.md` and linked from the task.
+An explicit `--spec` only links an existing file; it is never rewritten.
 
 `depends_on` prevents parallel agents from starting work that needs unmerged
 predecessors.

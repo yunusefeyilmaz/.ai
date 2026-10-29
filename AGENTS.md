@@ -87,6 +87,7 @@ state lives under `.ai/`. The project outside it is product territory.
 | Prompt bodies | `.ai/prompts/` |
 | Tool wiring | `.ai/adapters/` |
 | CLI | `.ai/scripts/ai` / `.ai/scripts/ai.cmd` |
+| Tests | `.ai/tests/` |
 | Transient state | `.ai/runtime/` |
 
 ## Commands

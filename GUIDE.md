@@ -41,6 +41,9 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 .ai/scripts/ai adopt
 ```
 
+`ai start` performs the same wiring automatically, so a first clone can go
+straight to the first pass below.
+
 `adopt` writes managed pointer blocks to the root files that tools auto-load:
 
 | File | Read by |
@@ -72,45 +75,51 @@ This is the smallest complete cycle. Run it once on a toy task before using the
 workspace on real work.
 
 ```sh
-# 1. Confirm the workspace is coherent
+# 1. Prepare the workspace and receive a claimed starter task with a spec
+ai start --agent implementer
+
+# 2. Confirm the workspace is coherent
 ai doctor
 ai check --no-commands
 
-# 2. See what exists
-ai status
-
-# 3. Create the task and its acceptance criteria
-ai task new "Export invoices as CSV" --priority high
-cp specs/TEMPLATE.md specs/active/0001-export-invoices.md
-$EDITOR specs/active/0001-export-invoices.md
-
-# 4. Become the owner
-ai task claim 0001 --agent implementer
-
-# 5. Lease the paths you intend to change
+# 3. Lease the paths you intend to change; the task lease already exists
 ai lock acquire src/billing --agent implementer --task 0001
 
-# 6. Work in small increments
+# 4. Work in small increments
 ai check --fast
 
-# 7. Save your position before the context fills
+# 5. Save your position before the context fills
 ai checkpoint 0001 --agent implementer --percent 70 \
   --next "write the CSV writer" --files src/billing/export.py
 
-# 8. Prove it, then close it
+# 6. Prove it, then close it
 ai check --strict
 ai task done 0001 --agent implementer
 ```
 
-Steps 3 and 8 are the ones agents skip when unsupervised. The workspace makes
+Steps 3 and 6 are the ones agents skip when unsupervised. The workspace makes
 skipping visible: `ai check` warns about work in progress with no fresh
 checkpoint, about ownership that disagrees with leases, and about tasks whose
 folder and status diverge.
+
+If `ai start` reports `ai git setup`, run it once, confirm the baseline snapshot,
+then rerun `ai start --agent implementer`.
 
 ## Command surface
 
 Use `ai <group> --help` for every flag. The groups are stable; the shortcuts are
 the ones below.
+
+### First run
+
+```sh
+ai start [--agent <name>] [--demo|--no-demo] [--json]
+```
+
+Creates missing runtime state, wires adapters for a subfolder install, runs
+`ai git setup` when the repository already has a commit, and creates one starter
+task with its spec. `--agent` claims it. `--no-demo` skips the starter task.
+Without a commit it only prints `ai git setup`; it never prompts or force-claims.
 
 ### Workspace health
 
@@ -128,7 +137,7 @@ ai capabilities
 ### Task ledger
 
 ```sh
-ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--depends-on 0002]
+ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--no-spec] [--depends-on 0002]
 ai task list [--all] [--json]
 ai task show <id> [--json]
 ai task ready [--json]                 # claimable: todo, deps done, no live lease
@@ -141,6 +150,10 @@ ai task unblock <id> --agent <name>
 ai task done <id> --agent <name> [--force]
 ai task discard <id>              # interactive operator action; permanent
 ```
+
+`task new` writes `specs/active/<id>-<slug>.md` from `specs/TEMPLATE.md` and
+stores that path in the task. `--no-spec` skips the file; an explicit `--spec`
+is linked without being rewritten.
 
 Claim rules:
 
