@@ -1,13 +1,13 @@
 ---
 id: 0006
 title: "P2 visibility: board, lock reasons and checkpoint history"
-status: todo
-owner: null
+status: in_progress
+owner: cline
 priority: low
 spec: null
 created: 2026-10-29T06:55:09Z
-updated: 2026-10-29T06:55:09Z
-lock: null
+updated: 2026-10-29T09:08:15Z
+lock: task-0006
 depends_on: 0004
 ---
 
@@ -37,3 +37,4 @@ lock files and logs to learn why. Show the reason in one view.
 ## Log
 
 - 2026-10-29T06:55:09Z created
+- 2026-10-29T09:08:15Z claimed by cline
