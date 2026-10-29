@@ -152,12 +152,14 @@ missing until you repair it on purpose.
 `config/workspace.json`; `--no-commands` skips configured shell commands.
 
 `ai status --board` is the read-only one-screen view: active tasks in
-dependency order with owner, status, checkpoint age and waiting reason, then
-each held lease with its TTL and remaining seconds, then the last five refused
-leases with the conflicting resource. It creates no state, never prints colour
-and leaves plain `ai status` and `ai status --json` unchanged. A refusal names
-its conflict because `ai lock acquire` records the conflicting lease's resource
-on the `lock_refused` event.
+dependency order with owner, status, priority, checkpoint age, waiting reason
+and title, then each held lease with its TTL and remaining seconds, then the
+last five refused leases with the conflicting resource and its holder. It
+creates no state, never prints colour and leaves plain `ai status` and
+`ai status --json` unchanged. A refusal names its conflict because
+`ai lock acquire` records the conflicting lease's resource and agent on the
+`lock_refused` event; `ai lock status --json` adds `state`,
+`remaining_seconds` and the matching `refusals` to each lease.
 
 `ai metrics` reads the local event ledger under `runtime/state/` without
 creating it. Successful task, lock, checkpoint and resume actions append JSONL

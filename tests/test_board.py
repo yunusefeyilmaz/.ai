@@ -143,8 +143,8 @@ class BoardSnapshotTest(BoardCase):
             "mode: lite | active: 1 | leases: 0 | checkpoints: 1\n"
             "\n"
             "Tasks\n"
-            "  ID     STATUS       OWNER        CHECKPOINT   WAITING ON\n"
-            "  0001   in_progress  alice        5m ago       -\n"
+            "  ID     STATUS       OWNER        PRIORITY  CHECKPOINT   WAITING ON   TITLE\n"
+            "  0001   in_progress  alice        medium    5m ago       -            Board probe\n"
             "\n"
             "Leases\n"
             "  (no leases)\n"
@@ -169,10 +169,10 @@ class BoardSnapshotTest(BoardCase):
             "mode: lite | active: 3 | leases: 0 | checkpoints: 0\n"
             "\n"
             "Tasks\n"
-            "  ID     STATUS       OWNER        CHECKPOINT   WAITING ON\n"
-            "  0002   todo         -            none         -\n"
-            "  0003   todo         -            none         0002\n"
-            "  0004   blocked      -            none         blocked 0002\n"
+            "  ID     STATUS       OWNER        PRIORITY  CHECKPOINT   WAITING ON   TITLE\n"
+            "  0002   todo         -            low       none         -            Ready work\n"
+            "  0003   todo         -            low       none         0002         Waiting work\n"
+            "  0004   blocked      -            low       none         blocked 0002 Blocked work\n"
             "\n"
             "Leases\n"
             "  (no leases)\n"
@@ -211,8 +211,27 @@ class BoardLeaseTest(BoardCase):
         self.assertRegex(
             refusals,
             r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z  bob -> src/billing/writer\.py "
-            r"\(conflict: src/billing\)",
+            r"\(conflict: src/billing held by alice\)",
         )
+
+    def test_lock_status_json_details_refusals(self) -> None:
+        workspace = self.make_workspace()
+        self.check_ok(workspace, "lock", "acquire", "src/billing", "--agent", "alice", "--task", "0001")
+        refused = run(
+            workspace, "lock", "acquire", "src/billing/writer.py", "--agent", "bob", "--task", "0002"
+        )
+        self.assertEqual(refused.returncode, 1)
+
+        payload = json.loads(self.check_ok(workspace, "lock", "status", "--json").stdout)
+        lease = next(item for item in payload if item.get("resource") == "src/billing")
+        self.assertEqual(lease["state"], "held")
+        self.assertIsInstance(lease["remaining_seconds"], int)
+        self.assertEqual(len(lease["refusals"]), 1)
+        refusal = lease["refusals"][0]
+        self.assertEqual(refusal["agent"], "bob")
+        self.assertEqual(refusal["resource"], "src/billing/writer.py")
+        self.assertEqual(refusal["holder"], "alice")
+        self.assertEqual(refusal["reason"], "conflict: src/billing held by alice")
 
     def test_refusal_without_recorded_conflict_degrades(self) -> None:
         workspace = self.make_workspace()

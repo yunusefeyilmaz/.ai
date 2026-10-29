@@ -6,7 +6,7 @@ owner: buffy
 priority: low
 spec: specs/active/0006-p2-visibility-board-lock-reasons-and-checkpoint-history.md
 created: 2026-10-29T06:55:09Z
-updated: 2026-10-29T14:13:48Z
+updated: 2026-10-29T14:21:06Z
 lock: task-0006
 depends_on: 0004
 branch: feature/0006-p2-visibility-board-lock-reasons-and-che
@@ -48,8 +48,15 @@ lock files and logs to learn why. Show the reason in one view.
 - `ai lock acquire` and a refused task claim now record `conflict: <resource>`
   on `lock_refused` events; events without the field render as
   `conflict unknown`.
-- Tests: `tests/test_board.py` (9 tests: three snapshots, lease/refusal rows,
-  plain-text, read-only and unchanged plain/JSON status).
+- Tests: `tests/test_board.py` (10 tests: three snapshots, lease/refusal rows,
+  `lock status --json` detail, plain-text, read-only and unchanged
+  plain/JSON status).
+- The approved spec already existed at
+  `specs/active/0006-p2-visibility-board-lock-reasons-and-checkpoint-history.md`;
+  the task front matter said `spec: null`, which was stale. The spec was
+  restored unchanged and the implementation follows it: board rows also carry
+  priority and title, refusals name the holder, and `ai lock status --json`
+  carries the refusal detail.
 
 ## Log
 
@@ -60,7 +67,9 @@ lock files and logs to learn why. Show the reason in one view.
 - 2026-10-29T14:22:00Z claimed by buffy
 - 2026-10-29T14:23:00Z created branch feature/0006-p2-visibility-board-lock-reasons-and-che from develop by buffy
 - 2026-10-29T14:35:00Z implemented `ai status --board`, `conflict` on lock_refused events, GUIDE entry and `tests/test_board.py`
+- 2026-10-29T14:45:00Z linked the approved 0006 spec that already existed on develop (front matter said `spec: null`) and aligned the board with it: priority and title columns, conflicting holder, `ai lock status --json` refusal detail
 - 2026-10-29T14:06:42Z claimed by buffy
 - 2026-10-29T14:06:52Z created branch feature/0006-p2-visibility-board-lock-reasons-and-che from develop by buffy
 - 2026-10-29T14:13:38Z checkpoint by buffy (checkpoint, 60%)
 - 2026-10-29T14:13:48Z committed: feat(status): add a read-only board view with lease and refusal reasons
+- 2026-10-29T14:21:06Z committed: feat(status): carry priority, title and the conflicting holder in the board

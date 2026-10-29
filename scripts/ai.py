@@ -1222,6 +1222,41 @@ def recent_refusals(limit: int = 5) -> list[dict]:
     return events[-limit:]
 
 
+def refusal_detail(event: dict) -> str:
+    conflict = event.get("conflict")
+    if not conflict:
+        return "conflict unknown"
+    holder = event.get("conflict_agent")
+    return f"conflict: {conflict} held by {holder}" if holder else f"conflict: {conflict}"
+
+
+def lock_status_payload(locks: list[dict]) -> list[dict]:
+    """Annotate each lease with its state, remaining time and matching refusals."""
+    _, stale_after = lock_settings()
+    refusals = [event for event in read_events() if event.get("event") == "lock_refused"]
+    payload = []
+    for lock in locks:
+        item = dict(lock)
+        resource = str(lock.get("resource") or "")
+        item["state"] = "stale" if lock_is_stale(lock, stale_after) else "held"
+        item["remaining_seconds"] = lock_remaining_seconds(lock)
+        item["refusals"] = [
+            {
+                "timestamp": event.get("timestamp"),
+                "agent": event.get("agent"),
+                "task": event.get("task"),
+                "resource": event.get("resource"),
+                "conflict": event.get("conflict"),
+                "holder": event.get("conflict_agent"),
+                "reason": refusal_detail(event),
+            }
+            for event in refusals
+            if resource and str(event.get("conflict") or "") == resource
+        ]
+        payload.append(item)
+    return payload
+
+
 def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
     """Render the read-only board: dependency order, leases and refusals."""
     _, stale_after = lock_settings()
@@ -1237,12 +1272,17 @@ def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
     if not rows:
         lines.append("  (no active tasks)")
     else:
-        lines.append(f"  {'ID':<6} {'STATUS':<12} {'OWNER':<12} {'CHECKPOINT':<12} WAITING ON")
+        lines.append(
+            f"  {'ID':<6} {'STATUS':<12} {'OWNER':<12} {'PRIORITY':<9} "
+            f"{'CHECKPOINT':<12} {'WAITING ON':<12} TITLE"
+        )
         for task, waiting in rows:
             lines.append(
                 f"  {str(task.get('id')):<6} {str(task.get('status') or '?'):<12} "
                 f"{str(task.get('owner') or '-'):<12} "
-                f"{format_checkpoint_age(str(task.get('id'))):<12} {waiting}"
+                f"{str(task.get('priority') or '-'):<9} "
+                f"{format_checkpoint_age(str(task.get('id'))):<12} "
+                f"{waiting:<12} {task.get('title')}"
             )
     lines.extend(["", "Leases"])
     if not locks:
@@ -1267,11 +1307,9 @@ def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
         lines.append("  (none)")
     else:
         for event in refusals:
-            conflict = event.get("conflict")
-            detail = f"conflict: {conflict}" if conflict else "conflict unknown"
             lines.append(
                 f"  {event.get('timestamp')}  {event.get('agent')} -> "
-                f"{event.get('resource')} ({detail})"
+                f"{event.get('resource')} ({refusal_detail(event)})"
             )
     return "\n".join(lines)
 
@@ -2513,6 +2551,7 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
                 agent=agent,
                 task=task_id,
                 conflict=holder.get("resource"),
+                conflict_agent=holder.get("agent"),
             )
             return False, (
                 f"Task {task_id} is locked by {holder.get('agent')} "
@@ -4369,6 +4408,7 @@ def cmd_lock(args) -> int:
             agent=args.agent,
             task=args.task,
             conflict=holder.get("resource"),
+            conflict_agent=holder.get("agent"),
         )
         return 1
     if args.action == "release":
@@ -4377,7 +4417,7 @@ def cmd_lock(args) -> int:
         return heartbeat_lock(args.resource, agent=args.agent)
     locks = list_locks()
     if getattr(args, "json", False):
-        print(json.dumps(locks, indent=2, default=str))
+        print(json.dumps(lock_status_payload(locks), indent=2, default=str))
         return 0
     print_lock_table(locks)
     return 0
