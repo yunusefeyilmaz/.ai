@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: shipped
 task: 0002
 approved_by: null
 approved_on: null
@@ -57,23 +57,23 @@ files or guessing which of the findings are safe to act on. The change keeps
 
 ## Acceptance criteria
 
-- [ ] A workspace missing `runtime/` reports `missing required path: runtime`
+- [x] A workspace missing `runtime/` reports `missing required path: runtime`
       with a hint, and `ai doctor --fix` recreates the runtime tree, reports the
       change, and exits 0.
-- [ ] A workspace missing `config/workspace.json` is reported with a hint and
+- [x] A workspace missing `config/workspace.json` is reported with a hint and
       repaired by `--fix`; tasks, specs and the Git HEAD are byte-identical
       before and after.
-- [ ] A corrupt `config/workspace.json` is reported, `--fix` leaves it
+- [x] A corrupt `config/workspace.json` is reported, `--fix` leaves it
       unchanged, and the command exits 1.
-- [ ] An orphan task lock is reported with a hint; `--fix` does not remove the
+- [x] An orphan task lock is reported with a hint; `--fix` does not remove the
       lock, still reports the finding, and exits 1.
-- [ ] `ai doctor --fix --json` prints a `fixes` array and the remaining
+- [x] `ai doctor --fix --json` prints a `fixes` array and the remaining
       `findings`, and its exit code is 0 only when `findings` is empty.
-- [ ] A subfolder install with no root adapter pointers reports the missing
+- [x] A subfolder install with no root adapter pointers reports the missing
       adapters and `.gitignore` rules; `--fix` writes them and re-checks clean.
-- [ ] `ai doctor --json` keeps `ok`, `errors` and `warnings` and adds
+- [x] `ai doctor --json` keeps `ok`, `errors` and `warnings` and adds
       `findings` with hints.
-- [ ] `python -m unittest discover -s tests` passes and `ai check --strict` is
+- [x] `python -m unittest discover -s tests` passes and `ai check --strict` is
       green.
 
 ## Out of scope
@@ -86,4 +86,18 @@ files or guessing which of the findings are safe to act on. The change keeps
 
 ## Status
 
-In progress. Implementation and tests land on the task branch.
+Shipped. Independently verified by `reviewer` on 2026-10-29:
+`ai doctor --strict` -> 0 errors, 0 warnings; `ai check --strict` -> 0 errors,
+0 warnings (23 tests); `python -m unittest discover -s tests -v` -> 23 tests OK
+on Python 3.9.10 and 3.10.6. Every acceptance criterion was re-checked in
+scratch copies under `%TEMP%`: missing `runtime/` -> exit 1 with
+`missing required path: runtime` (hint `ai doctor --fix`), `--fix` reported the
+created runtime entries and exited 0 with no findings, and a second `--fix`
+returned an empty `fixes` array; a missing config was recreated with task/spec
+bytes and `git rev-parse HEAD` unchanged; a corrupt config stayed byte-identical
+with exit 1 and a manual hint; an orphan lock survived `--fix` with the
+`ai recover --apply` hint and exit 1; the subfolder install reported the four
+adapter pointers and `.gitignore` rules, `--fix` wired them, and the re-check
+exited 0. Safe-repair audit: `--fix` only creates missing directories, keep
+files, config and append-only adapter blocks; it never rewrites an existing
+config, removes a lock, or touches task, spec or Git data.

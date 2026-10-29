@@ -6,7 +6,7 @@ owner: null
 priority: high
 spec: specs/active/0002-actionable-diagnostics.md
 created: 2026-10-29T06:55:07Z
-updated: 2026-10-29T07:44:00Z
+updated: 2026-10-29T07:49:54Z
 lock: null
 depends_on: 0001
 branch: feature/0002-p0-diagnostics-actionable-doctor-output
@@ -21,14 +21,14 @@ next action. Diagnosis is only useful if it names the safe repair.
 
 ## Acceptance criteria
 
-- [ ] Every `ai doctor` finding with a known safe repair prints the exact next
+- [x] Every `ai doctor` finding with a known safe repair prints the exact next
       command.
-- [ ] `ai doctor --fix` repairs only idempotent, non-destructive issues: runtime
+- [x] `ai doctor --fix` repairs only idempotent, non-destructive issues: runtime
       directories, missing config, subfolder adapter pointers and ignore rules.
       It reports each change and leaves everything else untouched.
-- [ ] `ai doctor --fix --json` returns a `fixes` array and the remaining
+- [x] `ai doctor --fix --json` returns a `fixes` array and the remaining
       findings; the exit code is 0 only when nothing remains.
-- [ ] Unit tests prove a broken workspace is diagnosed, repaired, and re-checked
+- [x] Unit tests prove a broken workspace is diagnosed, repaired, and re-checked
       clean without deleting task, spec or Git data.
 
 ## Plan
@@ -54,3 +54,5 @@ Spec: `specs/active/0002-actionable-diagnostics.md`
 - 2026-10-29T07:43:58Z submitted for independent review by implementer
 - 2026-10-29T07:43:59Z released by implementer
 - 2026-10-29T07:44:00Z committed: chore: record review-ready state for 0002
+- 2026-10-29T07:49:27Z reviewed by reviewer: PASS. Commands: `ai doctor --strict` -> 0 errors, 0 warnings; `ai check --strict` -> 0 errors, 0 warnings (23 tests); `python -m unittest discover -s tests -v` -> 23 tests OK (Python 3.9.10 and 3.10.6); scratch-copy checks for criteria 1-6 plus the safe-repair audit passed.
+- 2026-10-29T07:49:54Z committed: docs: record independent review evidence for 0002
