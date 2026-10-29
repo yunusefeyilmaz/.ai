@@ -8,12 +8,13 @@ Active: 3 | Done: 5 | Updated: 2026-10-29T08:28:13Z
 
 | ID | Status | Owner | Priority | Title |
 |----|--------|-------|----------|-------|
-| 0004 | review | - | medium | P1 value: workflow metrics ledger |
+| 0004 | done | - | medium | P1 value: workflow metrics ledger |
 | 0005 | todo | - | medium | P1 integration: versioned adapter contract, CI and GitHub links |
 | 0006 | todo | - | low | P2 visibility: board, lock reasons and checkpoint history |
 
 ## Recently done
 
+- 0004 — P1 value: workflow metrics ledger (2026-10-29T11:00:00Z)
 - 0003 â€” P0 reliability: concurrency, lease and recovery test suite (2026-10-29T08:14:45Z)
 - 0008 â€” P0 diagnostics: keep doctor read-only and report each problem once (2026-10-29T08:06:28Z)
 - 0002 â€” P0 diagnostics: actionable doctor output and safe repair (2026-10-29T07:50:44Z)
