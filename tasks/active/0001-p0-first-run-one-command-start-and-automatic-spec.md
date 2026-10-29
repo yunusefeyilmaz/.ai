@@ -6,10 +6,12 @@ owner: null
 priority: high
 spec: specs/active/0001-first-run.md
 created: 2026-10-29T06:55:07Z
-updated: 2026-10-29T07:09:57Z
+updated: 2026-10-29T07:10:49Z
 lock: null
 depends_on: null
-branch: feature/0001-p0-first-run-one-command-start-and-autom
+branch: null
+merged_into: develop
+merged_at: 2026-10-29T07:10:49Z
 ---
 
 # 0001 - P0 first-run: one-command start and automatic spec
@@ -61,3 +63,4 @@ another configuration surface.
 - 2026-10-29T07:06:09Z committed: chore: record review-ready state
 - 2026-10-29T07:09:39Z reviewed by reviewer: PASS. Commands: `ai doctor --strict` -> 0 errors, 0 warnings; `ai check --strict` -> 0 errors, 0 warnings; `python -m unittest discover -s tests -v` -> 13 tests OK; independent scratch-copy checks for every spec acceptance criterion passed.
 - 2026-10-29T07:09:57Z committed: docs: record independent review evidence
+- 2026-10-29T07:10:49Z merged feature/0001-p0-first-run-one-command-start-and-autom into develop by reviewer
