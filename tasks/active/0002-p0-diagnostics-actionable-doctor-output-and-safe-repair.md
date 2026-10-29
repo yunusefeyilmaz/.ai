@@ -1,13 +1,13 @@
 ---
 id: 0002
 title: "P0 diagnostics: actionable doctor output and safe repair"
-status: in_progress
-owner: implementer
+status: review
+owner: null
 priority: high
 spec: specs/active/0002-actionable-diagnostics.md
 created: 2026-10-29T06:55:07Z
-updated: 2026-10-29T07:43:51Z
-lock: task-0002
+updated: 2026-10-29T07:44:00Z
+lock: null
 depends_on: 0001
 branch: feature/0002-p0-diagnostics-actionable-doctor-output
 ---
@@ -51,3 +51,6 @@ Spec: `specs/active/0002-actionable-diagnostics.md`
 - 2026-10-29T07:32:44Z created branch feature/0002-p0-diagnostics-actionable-doctor-output from develop by implementer
 - 2026-10-29T07:43:33Z implementation ready: `python -m unittest discover -s tests -q` -> 23 tests OK; `ai check --strict` -> 0 errors, 0 warnings
 - 2026-10-29T07:43:51Z committed: feat(doctor): add repair hints and safe fixes
+- 2026-10-29T07:43:58Z submitted for independent review by implementer
+- 2026-10-29T07:43:59Z released by implementer
+- 2026-10-29T07:44:00Z committed: chore: record review-ready state for 0002
