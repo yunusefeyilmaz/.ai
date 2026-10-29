@@ -129,6 +129,7 @@ Without a commit it only prints `ai git setup`; it never prompts or force-claims
 ai doctor [--fix] [--strict] [--json]
 ai check [--fast] [--strict] [--json] [--no-commands]
 ai status [--json]
+ai metrics [--json] [--since YYYY-MM-DD]
 ai capabilities
 ```
 
@@ -149,6 +150,16 @@ missing until you repair it on purpose.
 `--strict` promotes warnings to failures. CI runs `doctor --strict` and
 `check --strict`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
+
+`ai metrics` reads the local event ledger under `runtime/state/` without
+creating it. Successful task, lock, checkpoint and resume actions append JSONL
+records to `events.jsonl`; the active file is rotated to a date-stamped archive
+when the UTC date changes. Metrics include only events recorded after this
+feature was installed; old task files are not backfilled. `--since` filters
+events by UTC timestamp while retaining earlier creation or review events
+needed for duration calculations. A retry is each claim after a task's first;
+per-agent values count events attributed to that agent. Duration medians are in
+seconds. No event data is uploaded.
 
 ### Task ledger
 

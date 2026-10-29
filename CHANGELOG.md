@@ -2,6 +2,16 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.5.2] - 2026-10-29
+
+### Added
+
+- `ai metrics [--json] [--since <date>]` summarizes task completion and review
+  times, lock refusals, retries, resumes, and event counts by agent from a
+  local, date-rotated JSONL ledger.
+- Task lifecycle, lock refusal, checkpoint, and resume commands append local
+  events. The ledger is not uploaded and historical tasks are not backfilled.
+
 ## [0.5.1] - 2026-10-29
 
 ### Fixed
