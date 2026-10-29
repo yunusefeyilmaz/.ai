@@ -54,11 +54,11 @@ The task board shows only titles. When a session waits, the human has to read lo
 
 ## Acceptance criteria
 
-- [ ] `ai status --board` renders active tasks as a dependency-aware list with owner, status and checkpoint age
-- [ ] Each held lease shows owner, task, TTL and remaining time; each refusal is explained by the conflicting resource
-- [ ] The view is read-only, works without colour and degrades to plain text
-- [ ] Snapshot tests cover empty, single-task and blocked-work states
-- [ ] `ai check --strict` passes
+- [x] `ai status --board` renders active tasks as a dependency-aware list with owner, status and checkpoint age
+- [x] Each held lease shows owner, task, TTL and remaining time; each refusal is explained by the conflicting resource
+- [x] The view is read-only, works without colour and degrades to plain text
+- [x] Snapshot tests cover empty, single-task and blocked-work states
+- [x] `ai check --strict` passes
 
 ## Out of scope
 
@@ -68,4 +68,4 @@ The task board shows only titles. When a session waits, the human has to read lo
 
 ## Status
 
-Approved by user on 2026-10-29. Implementation ready.
+Approved by user on 2026-10-29. Implemented and verified with `ai check --strict` on 2026-10-29.

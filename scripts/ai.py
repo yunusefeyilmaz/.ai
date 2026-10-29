@@ -1147,6 +1147,173 @@ def write_checkpoint(
 # ---------------------------------------------------------------------------
 
 
+def format_checkpoint_age(task_id: str) -> str:
+    age = checkpoint_age_minutes(task_id)
+    if age is None:
+        return "none"
+    minutes = int(age)
+    if minutes < 60:
+        return f"{minutes}m ago"
+    if minutes < 48 * 60:
+        return f"{minutes // 60}h ago"
+    return f"{minutes // (24 * 60)}d ago"
+
+
+def board_dependencies(task: dict) -> list[str]:
+    raw = task.get("depends_on")
+    if raw is None or str(raw).strip() in ("", "null", "None"):
+        return []
+    parts = [str(item) for item in raw] if isinstance(raw, (list, tuple)) else re.split(r"[,\s]+", str(raw))
+    return [normalize_id(part) for part in parts if part and part.strip() not in ("", "null")]
+
+
+def board_task_rows(tasks: list[dict]) -> list[tuple[dict, str]]:
+    """Order active tasks after their dependencies and compute the waiting reason."""
+    active = [task for task in tasks if task.get("_folder") == "active"]
+    done_ids = {str(task.get("id")) for task in tasks if task.get("_folder") == "done"}
+    by_id = {str(task.get("id")): task for task in active}
+    ordered: list[dict] = []
+    seen: set[str] = set()
+
+    def visit(task: dict, stack: set[str]) -> None:
+        task_id = str(task.get("id"))
+        if task_id in seen or task_id in stack:
+            return
+        stack.add(task_id)
+        for dependency in board_dependencies(task):
+            if dependency in by_id:
+                visit(by_id[dependency], stack)
+        stack.discard(task_id)
+        if task_id not in seen:
+            seen.add(task_id)
+            ordered.append(task)
+
+    ranked = sorted(
+        active,
+        key=lambda item: (PRIORITY_ORDER.get(str(item.get("priority")), 1), str(item.get("id"))),
+    )
+    for task in ranked:
+        visit(task, set())
+
+    rows = []
+    for task in ordered:
+        waiting = [dep for dep in board_dependencies(task) if dep not in done_ids]
+        if str(task.get("status")) == "blocked":
+            rows.append((task, "blocked" + (f" {', '.join(waiting)}" if waiting else "")))
+        else:
+            rows.append((task, ", ".join(waiting) if waiting else "-"))
+    return rows
+
+
+def lock_remaining_seconds(lock: dict) -> int | None:
+    ttl = lock.get("ttl_seconds")
+    try:
+        updated = parse_iso(lock.get("updated_at") or lock.get("started_at"))
+        age = (now() - updated).total_seconds()
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(ttl, int):
+        return None
+    return max(0, int(ttl - age))
+
+
+def recent_refusals(limit: int = 5) -> list[dict]:
+    events = [event for event in read_events() if event.get("event") == "lock_refused"]
+    return events[-limit:]
+
+
+def refusal_detail(event: dict) -> str:
+    conflict = event.get("conflict")
+    if not conflict:
+        return "conflict unknown"
+    holder = event.get("conflict_agent")
+    return f"conflict: {conflict} held by {holder}" if holder else f"conflict: {conflict}"
+
+
+def lock_status_payload(locks: list[dict]) -> list[dict]:
+    """Annotate each lease with its state, remaining time and matching refusals."""
+    _, stale_after = lock_settings()
+    refusals = [event for event in read_events() if event.get("event") == "lock_refused"]
+    payload = []
+    for lock in locks:
+        item = dict(lock)
+        resource = str(lock.get("resource") or "")
+        item["state"] = "stale" if lock_is_stale(lock, stale_after) else "held"
+        item["remaining_seconds"] = lock_remaining_seconds(lock)
+        item["refusals"] = [
+            {
+                "timestamp": event.get("timestamp"),
+                "agent": event.get("agent"),
+                "task": event.get("task"),
+                "resource": event.get("resource"),
+                "conflict": event.get("conflict"),
+                "holder": event.get("conflict_agent"),
+                "reason": refusal_detail(event),
+            }
+            for event in refusals
+            if resource and str(event.get("conflict") or "") == resource
+        ]
+        payload.append(item)
+    return payload
+
+
+def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
+    """Render the read-only board: dependency order, leases and refusals."""
+    _, stale_after = lock_settings()
+    active = [task for task in tasks if task.get("_folder") == "active"]
+    checkpoints = sum(1 for task in active if read_checkpoint(str(task.get("id"))))
+    lines = [
+        "Task board",
+        f"mode: {mode} | active: {len(active)} | leases: {len(locks)} | checkpoints: {checkpoints}",
+        "",
+        "Tasks",
+    ]
+    rows = board_task_rows(tasks)
+    if not rows:
+        lines.append("  (no active tasks)")
+    else:
+        lines.append(
+            f"  {'ID':<6} {'STATUS':<12} {'OWNER':<12} {'PRIORITY':<9} "
+            f"{'CHECKPOINT':<12} {'WAITING ON':<12} TITLE"
+        )
+        for task, waiting in rows:
+            lines.append(
+                f"  {str(task.get('id')):<6} {str(task.get('status') or '?'):<12} "
+                f"{str(task.get('owner') or '-'):<12} "
+                f"{str(task.get('priority') or '-'):<9} "
+                f"{format_checkpoint_age(str(task.get('id'))):<12} "
+                f"{waiting:<12} {task.get('title')}"
+            )
+    lines.extend(["", "Leases"])
+    if not locks:
+        lines.append("  (no leases)")
+    else:
+        lines.append(
+            f"  {'RESOURCE':<28} {'AGENT':<14} {'TASK':<8} {'TTL':>7} {'REMAINING':>10}  STATE"
+        )
+        for lock in sorted(locks, key=lambda item: str(item.get("resource"))):
+            ttl = lock.get("ttl_seconds")
+            remaining = lock_remaining_seconds(lock)
+            lines.append(
+                f"  {str(lock.get('resource'))[:28]:<28} {str(lock.get('agent'))[:14]:<14} "
+                f"{str(lock.get('task') or '-'):<8} "
+                f"{(f'{ttl}s' if isinstance(ttl, int) else '?'):>7} "
+                f"{(f'{remaining}s' if remaining is not None else '?'):>10}  "
+                f"{'stale' if lock_is_stale(lock, stale_after) else 'held'}"
+            )
+    lines.extend(["", "Refusals"])
+    refusals = recent_refusals()
+    if not refusals:
+        lines.append("  (none)")
+    else:
+        for event in refusals:
+            lines.append(
+                f"  {event.get('timestamp')}  {event.get('agent')} -> "
+                f"{event.get('resource')} ({refusal_detail(event)})"
+            )
+    return "\n".join(lines)
+
+
 def print_lock_table(locks: list[dict]) -> None:
     _, stale_after = lock_settings()
     if not locks:
@@ -1900,6 +2067,9 @@ def cmd_check(args) -> int:
 def cmd_status(args) -> int:
     config = load_config()
     tasks = load_tasks()
+    if getattr(args, "board", False) and not getattr(args, "json", False):
+        print(render_board(tasks, list_locks(ensure=False), str(config.get("mode"))))
+        return 0
     active = [task for task in tasks if task["_folder"] == "active"]
     locks = list_locks()
     artifacts = read_json(MANIFEST_PATH) or []
@@ -2375,7 +2545,14 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
         if holder.get("agent") == agent:
             heartbeat_lock(resource, agent=agent)
         else:
-            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
+            append_event(
+                "lock_refused",
+                resource=resource,
+                agent=agent,
+                task=task_id,
+                conflict=holder.get("resource"),
+                conflict_agent=holder.get("agent"),
+            )
             return False, (
                 f"Task {task_id} is locked by {holder.get('agent')} "
                 f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
@@ -4165,7 +4342,7 @@ CAPABILITIES = {
         "adopt": "wire root adapters for every AI tool",
         "doctor": "workspace health with a repair hint per finding; --fix, --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
-        "status": "tasks, locks, checkpoints, handoffs; --json",
+        "status": "tasks, locks, checkpoints, handoffs; --json, --board",
         "metrics": "summarize local workflow events; --since, --json",
         "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
         "task": "new | list | show | link | ready | next | claim | release | review | done | discard | block | unblock",
@@ -4225,7 +4402,14 @@ def cmd_lock(args) -> int:
             f"(task {holder.get('task') or '-'}, since {holder.get('started_at')}).",
             file=sys.stderr,
         )
-        append_event("lock_refused", resource=args.resource, agent=args.agent, task=args.task)
+        append_event(
+            "lock_refused",
+            resource=args.resource,
+            agent=args.agent,
+            task=args.task,
+            conflict=holder.get("resource"),
+            conflict_agent=holder.get("agent"),
+        )
         return 1
     if args.action == "release":
         return release_lock(args.resource, agent=args.agent, force=args.force)
@@ -4233,7 +4417,7 @@ def cmd_lock(args) -> int:
         return heartbeat_lock(args.resource, agent=args.agent)
     locks = list_locks()
     if getattr(args, "json", False):
-        print(json.dumps(locks, indent=2, default=str))
+        print(json.dumps(lock_status_payload(locks), indent=2, default=str))
         return 0
     print_lock_table(locks)
     return 0
@@ -4383,6 +4567,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="show tasks, locks, checkpoints, handoffs and artifacts")
     status.add_argument("--json", action="store_true")
+    status.add_argument(
+        "--board",
+        action="store_true",
+        help="read-only board: dependency order, checkpoint age, leases and refusals",
+    )
     status.set_defaults(func=cmd_status)
 
     metrics = sub.add_parser("metrics", help="summarize local workflow metrics")

@@ -128,7 +128,7 @@ Without a commit it only prints `ai git setup`; it never prompts or force-claims
 ```sh
 ai doctor [--fix] [--strict] [--json]
 ai check [--fast] [--strict] [--json] [--no-commands]
-ai status [--json]
+ai status [--json] [--board]
 ai metrics [--json] [--since YYYY-MM-DD]
 ai capabilities
 ```
@@ -150,6 +150,16 @@ missing until you repair it on purpose.
 `--strict` promotes warnings to failures. CI runs `doctor --strict` and
 `check --strict`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
+
+`ai status --board` is the read-only one-screen view: active tasks in
+dependency order with owner, status, priority, checkpoint age, waiting reason
+and title, then each held lease with its TTL and remaining seconds, then the
+last five refused leases with the conflicting resource and its holder. It
+creates no state, never prints colour and leaves plain `ai status` and
+`ai status --json` unchanged. A refusal names its conflict because
+`ai lock acquire` records the conflicting lease's resource and agent on the
+`lock_refused` event; `ai lock status --json` adds `state`,
+`remaining_seconds` and the matching `refusals` to each lease.
 
 `ai metrics` reads the local event ledger under `runtime/state/` without
 creating it. Successful task, lock, checkpoint and resume actions append JSONL
