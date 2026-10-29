@@ -1,12 +1,12 @@
 ---
 id: 0008
 title: "P0 diagnostics: keep doctor read-only and report each problem once"
-status: review
+status: done
 owner: null
 priority: high
 spec: specs/active/0008-p0-diagnostics-keep-doctor-read-only-and-report-each-problem.md
 created: 2026-10-29T07:53:49Z
-updated: 2026-10-29T08:04:47Z
+updated: 2026-10-29T08:06:28Z
 lock: null
 depends_on: 0002
 branch: null
@@ -63,3 +63,4 @@ Spec: `specs/active/0008-p0-diagnostics-keep-doctor-read-only-and-report-each-pr
 - 2026-10-29T07:58:43Z released by implementer
 - 2026-10-29T07:58:45Z committed: chore: record review-ready state for 0008
 - 2026-10-29T08:04:47Z merged fix/0008-p0-diagnostics-keep-doctor-read-only-and into develop by codex
+- 2026-10-29T08:06:28Z marked done by codex
