@@ -36,6 +36,9 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 .ai/scripts/ai adopt              # Windows: .ai\scripts\ai.cmd adopt
 ```
 
+Run `ai start` instead to do this wiring automatically while creating the first
+task.
+
 `adopt` writes a managed pointer block into `AGENTS.md`, `CLAUDE.md`,
 `.cursor/rules/ai-workspace.mdc` and `.github/copilot-instructions.md`, then adds
 those paths and `.ai/` to the host project's `.gitignore`. It creates
@@ -48,21 +51,30 @@ Markdown and JSON files directly.
 
 ## A short walkthrough
 
+From a clone to a claimed task:
+
 ```sh
-ai doctor                                  # is the workspace intact?
-ai task new "Export invoices as CSV"       # creates tasks/active/0001-...
-ai task claim 0001 --agent implementer     # takes the task lease
-ai git setup                               # once per clone
-ai git start --task 0001 --agent implementer --type feature
+ai start --agent <your-name>
+```
+
+`ai start` creates missing runtime state, wires the local pointers in a subfolder
+install, detects the Git layout (running `ai git setup` when the repository
+already has a commit), creates the starter task with its spec, and claims it. It
+prints only the commands that come next. On a project with existing tasks it
+never adds a demo task; `--no-demo` also skips it on a fresh workspace.
+
+Then run the loop:
+
+```sh
+ai git start --task 0001 --agent <your-name> --type feature
 # ... edit the task's files ...
 git add <files-you-own>
 ai git verify --strict
-ai git commit --task 0001 --agent implementer --type feat --message "add CSV export"
-ai checkpoint 0001 --agent implementer --percent 70 --next "write the CSV writer"
-ai check --fast                            # iteration gate
+ai git commit --task 0001 --agent <your-name> --type feat --message "add CSV export"
+ai checkpoint 0001 --agent <your-name> --percent 70 --next "write the CSV writer"
 ai check --strict                          # required before review
-ai task review 0001 --agent implementer    # records review state
-ai task release 0001 --agent implementer   # reviewer takes over
+ai task review 0001 --agent <your-name>    # records review state
+ai task release 0001 --agent <your-name>   # reviewer takes over
 ai git finish --task 0001 --agent reviewer # guarded no-ff merge
 ai task done 0001 --agent reviewer         # archives after verification
 ```
@@ -103,6 +115,7 @@ your-project/
     ├── prompts/         reusable prompt bodies
     ├── adapters/        per-tool pointers
     ├── scripts/         stdlib-only Python CLI + launchers
+    ├── tests/           CLI integration tests (stdlib unittest)
     └── runtime/         leases, checkpoints, handoffs, artifacts, logs
 ```
 

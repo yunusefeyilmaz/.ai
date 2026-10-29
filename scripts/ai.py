@@ -13,6 +13,7 @@ import contextlib
 import datetime as dt
 import fnmatch
 import hashlib
+import io
 import json
 import os
 import re
@@ -23,7 +24,7 @@ import sys
 import tempfile
 import time
 
-VERSION = "0.3.2"
+VERSION = "0.4.0"
 HOST = socket.gethostname()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(SCRIPT_DIR)
@@ -88,6 +89,8 @@ REQUIRED_PATHS = [
 TASK_STATUSES = {"todo", "in_progress", "review", "blocked", "done"}
 ACTIVE_DIR = os.path.join(WORKSPACE, "tasks", "active")
 DONE_DIR = os.path.join(WORKSPACE, "tasks", "done")
+SPECS_ACTIVE_DIR = os.path.join(WORKSPACE, "specs", "active")
+SPECS_TEMPLATE = os.path.join(WORKSPACE, "specs", "TEMPLATE.md")
 LOCKS_DIR = os.path.join(WORKSPACE, "runtime", "locks")
 STATE_DIR = os.path.join(WORKSPACE, "runtime", "state")
 CHECKPOINT_DIR = os.path.join(STATE_DIR, "checkpoints")
@@ -386,7 +389,9 @@ def acquire_lock(
         return {"ok": False, "holder": None, "error": str(exc)}
 
 
-def release_lock(resource: str, agent: str | None = None, force: bool = False) -> int:
+def release_lock(
+    resource: str, agent: str | None = None, force: bool = False, quiet: bool = False
+) -> int:
     try:
         resource = normalize_resource(resource)
     except ValueError as exc:
@@ -395,7 +400,8 @@ def release_lock(resource: str, agent: str | None = None, force: bool = False) -
     path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
     holder = read_json(path)
     if holder is None:
-        print(f"No lock held for '{resource}'.")
+        if not quiet:
+            print(f"No lock held for '{resource}'.")
         return 0
     if agent and holder.get("agent") != agent and not force:
         print(
@@ -408,7 +414,8 @@ def release_lock(resource: str, agent: str | None = None, force: bool = False) -
         os.remove(path)
     except FileNotFoundError:
         pass
-    print(f"Released '{resource}'.")
+    if not quiet:
+        print(f"Released '{resource}'.")
     return 0
 
 
@@ -1280,10 +1287,21 @@ def collect_checks() -> list[tuple[str, str]]:
                 warn_after = int(config.get("handoff", {}).get("warnAfterMinutes", 30)) if config else 30
                 age = checkpoint_age_minutes(task_id)
                 if age is None:
-                    problems.append(
-                        ("warn", f"{path}: in_progress with no checkpoint "
-                                 f"(run `ai checkpoint {task_id} --agent {owner or 'agent'}`)")
+                    claimed_age = age_minutes(
+                        (held or {}).get("started_at") or task.get("updated")
                     )
+                    # Lite mode gives a small task time to finish before asking
+                    # for a checkpoint; strict mode holds the full standard.
+                    grace = (
+                        str(config.get("mode") or "lite") == "lite"
+                        and claimed_age is not None
+                        and claimed_age <= warn_after
+                    )
+                    if not grace:
+                        problems.append(
+                            ("warn", f"{path}: in_progress with no checkpoint "
+                                     f"(run `ai checkpoint {task_id} --agent {owner or 'agent'}`)")
+                        )
                 elif age > warn_after:
                     problems.append(
                         ("warn", f"{path}: last checkpoint is {int(age)} min old "
@@ -1478,6 +1496,173 @@ def cmd_status(args) -> int:
     return 0
 
 
+def workspace_shape() -> str:
+    """Report whether the workspace is the project root or a `.ai` subfolder."""
+    if (
+        os.path.basename(WORKSPACE) == ".ai"
+        and os.path.abspath(PROJECT) != os.path.abspath(WORKSPACE)
+    ):
+        return "subfolder"
+    return "root"
+
+
+def age_minutes(value) -> float | None:
+    if not value:
+        return None
+    try:
+        return (now() - parse_iso(str(value))).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
+
+
+def cmd_start(args) -> int:
+    """Prepare the workspace, report what exists, and name the next two steps."""
+    ensure_dirs()
+    if not os.path.exists(config_path()):
+        write_json_atomic(config_path(), default_config())
+
+    shape = workspace_shape()
+    adapter_report: list[tuple[str, str]] = []
+    ignore_report = {"state": "not-needed", "missing": []}
+    if shape == "subfolder":
+        try:
+            adapter_report = adopt_root()
+            state, missing = adopt_gitignore()
+            ignore_report = {"state": state, "missing": missing}
+        except OSError as exc:
+            print(f"Could not wire the local adapters: {exc}", file=sys.stderr)
+            return 1
+
+    state = git_state()
+    setup_error = ""
+    if state.get("repo") and state.get("head"):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            setup_code = cmd_git_setup(argparse.Namespace(json=False))
+        if setup_code != 0:
+            setup_error = (out.getvalue() + err.getvalue()).strip()
+            print(setup_error, file=sys.stderr)
+        state = git_state()
+    branches = git_config()
+    git_ready = bool(
+        state.get("repo")
+        and state.get("head")
+        and branch_exists(branches["integration"])
+        and branch_exists(branches["production"])
+    )
+
+    created = None
+    try:
+        tasks = load_tasks()
+    except OSError:
+        tasks = []
+    if not tasks and args.demo:
+        try:
+            created = create_task("Try the workspace")
+        except RuntimeError:
+            created = None
+        tasks = load_tasks() if created else tasks
+
+    target = None
+    if tasks:
+        target = next((task for task in tasks if task["_folder"] == "active"), tasks[0])
+
+    claimed = False
+    claim_error = None
+    if target and args.agent and not target.get("owner"):
+        ok, message = claim_task(target["_path"], args.agent)
+        if ok:
+            claimed = True
+            target = next(
+                (task for task in load_tasks() if str(task.get("id")) == str(message)),
+                target,
+            )
+        else:
+            claim_error = message
+
+    next_steps: list[str] = []
+    if not git_ready:
+        next_steps.append("ai git setup")
+    if target:
+        owner = target.get("owner") or (args.agent if claimed else None)
+        current_branch = state.get("branch")
+        if owner and target.get("branch") and target.get("branch") == current_branch:
+            pass  # The task branch is already checked out.
+        elif owner:
+            next_steps.append(
+                f"ai git start --task {target.get('id')} --agent {owner} --type feature"
+            )
+        else:
+            next_steps.append(f"ai task claim {target.get('id')} --agent <name>")
+    else:
+        next_steps.append('ai task new "<title>"')
+    next_steps.append("ai check --fast")
+
+    if claim_error:
+        print(claim_error, file=sys.stderr)
+
+    if args.json:
+        payload = {
+            "workspace": WORKSPACE,
+            "project": PROJECT,
+            "version": VERSION,
+            "shape": shape,
+            "mode": load_config().get("mode"),
+            "adapters": [{"path": path, "state": item} for path, item in adapter_report],
+            "gitignore": ignore_report,
+            "git": {
+                "repo": bool(state.get("repo")),
+                "head": bool(state.get("head")),
+                "branch": state.get("branch"),
+                "integration": branches["integration"],
+                "production": branches["production"],
+                "ready": git_ready,
+                "error": setup_error or None,
+            },
+            "task": {
+                "id": target.get("id"),
+                "title": target.get("title"),
+                "owner": target.get("owner"),
+                "spec": target.get("spec"),
+            } if target else None,
+            "claimed": claimed,
+            "created": bool(created),
+            "next": next_steps,
+        }
+        print(json.dumps(payload, indent=2, default=str))
+        return 1 if claim_error else 0
+
+    print(f"Workspace : {WORKSPACE}")
+    print(f"Shape     : {shape}" + (" install" if shape == "subfolder" else " template"))
+    print(f"Mode      : {load_config().get('mode')}")
+    if shape == "subfolder":
+        written = [item for _, item in adapter_report if item != "unchanged"]
+        print(f"Adapters  : {len(adapter_report)} local file(s), {len(written)} changed")
+    else:
+        print("Adapters  : not needed (the root AGENTS.md is the entry point)")
+    if git_ready:
+        print(
+            f"Git       : ready (integration {branches['integration']}, "
+            f"production {branches['production']})"
+        )
+    elif state.get("repo"):
+        print("Git       : repository found, Gitflow base missing")
+    else:
+        print("Git       : not initialized")
+    if target:
+        owner = f" ({target.get('owner')})" if target.get("owner") else ""
+        print(f"Task      : {target.get('id')} {target.get('title')}{owner}")
+        if target.get("spec"):
+            print(f"Spec      : {target.get('spec')}")
+    else:
+        print("Task      : none yet")
+    print("\nNext:")
+    for index, step in enumerate(next_steps, 1):
+        print(f"  {index}. {step}")
+    print("\nFull loop: GUIDE.md#first-pass-clone-to-verified-change")
+    return 1 if claim_error else 0
+
+
 @contextlib.contextmanager
 def task_index_guard():
     resource = "tasks.index"
@@ -1493,7 +1678,7 @@ def task_index_guard():
     try:
         yield
     finally:
-        release_lock(resource, agent="task-index")
+        release_lock(resource, agent="task-index", quiet=True)
 
 
 def allocate_task_number() -> int:
@@ -1513,28 +1698,98 @@ def allocate_task_number() -> int:
     return number
 
 
-def cmd_task_new(args) -> int:
+FALLBACK_SPEC = """---
+status: draft
+task: {task_id}
+approved_by: null
+approved_on: null
+---
+
+# {title}
+
+## Intent
+
+<!-- The problem in one paragraph. What changes for the user? Why now? -->
+
+## Behavior
+
+### Changed
+
+<!-- What will be different. Be concrete. -->
+
+### Preserved
+
+<!-- What must not change. Explicitly list existing behavior at risk. -->
+
+## Acceptance criteria
+
+- [ ] Criterion one, observable and independently testable
+- [ ] Criterion two
+- [ ] Existing behavior X still holds
+
+## Out of scope
+
+<!-- What this work will not do. Prevents scope creep. -->
+
+## Status
+
+<!-- draft -> approved -> in progress -> shipped. Update as the work moves. -->
+"""
+
+
+def spec_from_template(title: str, task_id: str) -> str:
+    """Fill the repository spec template, or a compatible fallback."""
+    text = None
+    if os.path.isfile(SPECS_TEMPLATE):
+        try:
+            text = read_text(SPECS_TEMPLATE)
+        except OSError:
+            text = None
+    if not text:
+        text = FALLBACK_SPEC
+    text = text.replace("task: null", f"task: {task_id}", 1)
+    text = text.replace("# <title>", f"# {title}", 1)
+    return text
+
+
+def create_task(
+    title: str,
+    priority: str = "medium",
+    spec: str | None = None,
+    depends_on: str | None = None,
+    make_spec: bool = True,
+) -> dict:
+    """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
-    try:
-        with task_index_guard():
-            number = allocate_task_number()
-            task_id = f"{number:04d}"
-            title = args.title.strip()
-            slug = slugify(title)
-            path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
-            meta = {
-                "id": task_id,
-                "title": title,
-                "status": "todo",
-                "owner": None,
-                "priority": args.priority,
-                "spec": args.spec,
-                "depends_on": getattr(args, "depends_on", None),
-                "created": iso(),
-                "updated": iso(),
-                "lock": None,
-            }
-            body = f"""# {task_id} - {title}
+    with task_index_guard():
+        number = allocate_task_number()
+        task_id = f"{number:04d}"
+        title = title.strip()
+        slug = slugify(title)
+        path = os.path.join(ACTIVE_DIR, f"{task_id}-{slug}.md")
+        spec_ref = spec
+        if not spec_ref and make_spec:
+            spec_path = os.path.join(SPECS_ACTIVE_DIR, f"{task_id}-{slug}.md")
+            write_text_atomic(spec_path, spec_from_template(title, task_id))
+            spec_ref = os.path.relpath(spec_path, WORKSPACE).replace(os.sep, "/")
+        meta = {
+            "id": task_id,
+            "title": title,
+            "status": "todo",
+            "owner": None,
+            "priority": priority,
+            "spec": spec_ref,
+            "depends_on": depends_on,
+            "created": iso(),
+            "updated": iso(),
+            "lock": None,
+        }
+        plan = (
+            f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
+            if spec_ref
+            else "<!-- Filled by the planner. Link the spec when one exists. -->"
+        )
+        body = f"""# {task_id} - {title}
 
 ## Intent
 
@@ -1546,7 +1801,7 @@ def cmd_task_new(args) -> int:
 
 ## Plan
 
-<!-- Filled by the planner. Link the spec when one exists. -->
+{plan}
 
 ## Notes
 
@@ -1554,14 +1809,26 @@ def cmd_task_new(args) -> int:
 
 - {iso()} created
 """
-            write_task(path, meta, body)
-            write_board(load_tasks())
+        write_task(path, meta, body)
+        write_board(load_tasks())
+    return {"id": task_id, "path": path, "spec": spec_ref, "slug": slug}
+
+
+def cmd_task_new(args) -> int:
+    try:
+        created = create_task(
+            args.title,
+            args.priority,
+            args.spec,
+            getattr(args, "depends_on", None),
+            make_spec=not getattr(args, "no_spec", False),
+        )
     except RuntimeError:
         return 1
-    print(f"Created {os.path.relpath(path, PROJECT)}")
-    if args.spec:
-        print(f"Spec: {args.spec}")
-    print(f"Claim it: ai task claim {task_id} --agent <name>")
+    print(f"Created {os.path.relpath(created['path'], PROJECT)}")
+    if created["spec"]:
+        print(f"Spec: {created['spec']}")
+    print(f"Claim it: ai task claim {created['id']} --agent <name>")
     return 0
 
 
@@ -3352,6 +3619,7 @@ CAPABILITIES = {
         "artifacts": "runtime/artifacts",
     },
     "commands": {
+        "start": "one-command first run: prepare, detect Git, create or claim a task; --agent, --json, --no-demo",
         "adopt": "wire root adapters for every AI tool",
         "doctor": "workspace health; --strict, --json",
         "check": "single verification contract; --fast, --strict, --json",
@@ -3558,6 +3826,18 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_status)
 
+    start = sub.add_parser(
+        "start", help="prepare the workspace and leave a first task ready to claim"
+    )
+    start.add_argument("--agent", default=None, help="claim the first task for this agent")
+    start.add_argument(
+        "--demo", dest="demo", action="store_true", default=True,
+        help="create a starter task when the ledger is empty (default)",
+    )
+    start.add_argument("--no-demo", dest="demo", action="store_false")
+    start.add_argument("--json", action="store_true")
+    start.set_defaults(func=cmd_start)
+
     task = sub.add_parser("task", help="manage local tasks")
     task_sub = task.add_subparsers(dest="action", required=True)
 
@@ -3565,6 +3845,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_new.add_argument("title")
     task_new.add_argument("--priority", default="medium", choices=["low", "medium", "high"])
     task_new.add_argument("--spec", default=None)
+    task_new.add_argument("--no-spec", dest="no_spec", action="store_true",
+                          help="do not create a spec skeleton")
     task_new.add_argument("--depends-on", dest="depends_on", default=None)
     task_new.set_defaults(func=cmd_task_new)
 
