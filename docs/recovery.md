@@ -93,6 +93,22 @@ Drift is information, not failure. A teammate may have changed the same area. Do
 not blindly apply the checkpoint's next steps: re-read the changed files first.
 If the drift invalidates the plan, write a new checkpoint before continuing.
 
+## Missing files and `ai doctor --fix`
+
+A crash, a partial copy or a bad merge can remove runtime directories or
+`config/workspace.json`. `ai doctor` names each problem and the next safe action;
+`ai doctor --fix` performs the repairs that cannot lose data:
+
+| Missing | Repair |
+|---------|--------|
+| runtime directories and keep files | recreated |
+| `config/workspace.json` | written from the defaults |
+| subfolder adapter pointers and ignore rules | written by the same code as `ai adopt` |
+
+It never rewrites an invalid config, removes a lock, edits a task or spec, or
+touches Git. Everything else stays as a finding and the command exits 1. Use
+`--json` to get `fixes` and the remaining `findings`.
+
 ## Inconsistent state and `ai recover`
 
 `ai check` reports structural problems. `ai recover` detects and can repair them.

@@ -22,7 +22,7 @@ once, or invoke it as `sh scripts/ai ...`. Windows users always use `ai.cmd`.
 | `ai init [--wire]` | Create runtime directories; `--wire` also writes the root adapters. |
 | `ai start [--agent <name>] [--demo\|--no-demo] [--json]` | First run: prepare, detect Git, create one task with a spec, optionally claim it. |
 | `ai adopt [--check] [--print] [--ci] [--force]` | Wire the workspace into root AI tool configs. |
-| `ai doctor [--strict] [--json]` | Workspace health: structure, config, tasks, locks, adapters. |
+| `ai doctor [--fix] [--strict] [--json]` | Workspace health with a repair hint per finding; `--fix` recreates only missing, regenerable state. |
 | `ai check [--fast] [--strict] [--json] [--no-commands]` | The single verification contract. |
 | `ai status [--json]` | Tasks, locks, checkpoints, handoffs, quarantined artifacts. |
 | `ai capabilities` | Machine-readable CLI contract (commands, state, exit codes). |
