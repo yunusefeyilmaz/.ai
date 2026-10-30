@@ -4,8 +4,8 @@
 the human supervising a session or the agent doing the work.
 
 The handbook assumes the CLI is available as `ai`. In a subfolder install that
-means `.ai/scripts/ai` (`.ai\scripts\ai.cmd` on Windows); you can add
-`.ai/scripts` to `PATH`. Without Python, every step still works by editing files.
+means `.ai/ai` (`.ai\ai.cmd` on Windows); you can add
+`.ai` to `PATH`. Without Python, every step still works by editing files.
 
 ## Three concepts
 
@@ -38,7 +38,7 @@ workspace is the project root.
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-.ai/scripts/ai adopt
+.ai/ai adopt
 ```
 
 `ai start` performs the same wiring automatically, so a first clone can go
@@ -92,9 +92,9 @@ ai check --fast
 ai checkpoint 0001 --agent implementer --percent 70 \
   --next "write the CSV writer" --files src/billing/export.py
 
-# 6. Prove it, then close it
-ai check --strict
-ai task done 0001 --agent implementer
+# 6. Prove it, then submit for review
+ai check
+ai task review 0001 --agent implementer
 ```
 
 Steps 3 and 6 are the ones agents skip when unsupervised. The workspace makes
@@ -147,8 +147,11 @@ returns `fixes` plus the remaining `check.findings`.
 Without `--fix`, `doctor` and `check` only read: a missing runtime tree stays
 missing until you repair it on purpose.
 
-`--strict` promotes warnings to failures. CI runs `doctor --strict` and
-`check --strict`. `--fast` runs only checks marked fast in
+`--strict` promotes warnings to failures; it is meant for CI (`doctor --strict`,
+`check --strict`), not for agents' normal loop. `ai check` runs only the
+*project's* commands from `checks` in `config/workspace.json` (empty by default:
+add your test/lint commands). It never runs the workspace's own tests in
+`lib/tests/`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
 
 `ai status --board` is the read-only one-screen view: active tasks in
@@ -495,7 +498,7 @@ from the first unchecked next step. Do not repeat finished work.
 You are the reviewer, not the producer. Read the spec, the task and the diff
 against the base branch. Check each acceptance criterion with file:line evidence,
 then look for missing tests, security problems and scope creep. Do not edit the
-implementation. Report PASS or FAIL and run `ai check --strict`.
+implementation. Report PASS or FAIL and run `ai check`.
 ```
 
 ### Repairing a session
@@ -545,19 +548,20 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | Path | Purpose |
 |------|---------|
 | `AGENTS.md` | Invariants every session accepts |
-| `config/workspace.json` | Mode, leases, budget, watch list, checks |
-| `tasks/` | Ledger, template, generated board |
+| `ai.py`, `ai`, `ai.cmd` | Entry point and launchers |
+| `lib/` | Scripts only, one folder per domain (see `lib/README.md`) |
+| `config/workspace.json` | Mode, leases, budget, workflow rules, checks |
+| `tasks/` | Ledger (active/done), template, generated board |
 | `specs/` | Acceptance criteria, active and shipped |
-| `docs/` | Flow, concurrency, orchestration, recovery, hygiene, decisions |
-| `agents/` | Role cards |
-| `prompts/` | Prompt bodies |
-| `adapters/` | Per-tool wiring |
-| `scripts/` | CLI and launchers |
-| `runtime/` | Leases, checkpoints, handoffs, artifacts, logs |
+| `runtime/` | Leases, checkpoints, handoffs, artifacts, logs (git-ignored state) |
+| `templates/git/` | Commit and PR templates |
+| `docs/` | Flow, concurrency, orchestration, recovery, hygiene, `decisions/` |
+| `agents/`, `prompts/`, `adapters/` | Role cards, prompt bodies, per-tool wiring |
+| `skills/` | Optional extensions (future) |
 
 ## If something looks wrong
 
-- **`ai` missing:** call the launcher path directly or add `.ai/scripts` to
+- **`ai` missing:** call the launcher path directly or add `.ai` to
   `PATH`.
 - **No Python:** follow `docs/task-flow.md`; keep the JSON lease shape if you
   must edit one by hand.

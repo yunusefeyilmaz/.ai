@@ -17,12 +17,12 @@ First read:
 - agents/orchestrator.md
 
 Then:
-1. Run `.ai/scripts/ai status` and `.ai/scripts/ai task list --all`.
+1. Run `.ai/ai status` and `.ai/ai task list --all`.
 2. Search the existing tasks for one that already covers the request. If one
    exists, report its id and status and stop. Do not create a duplicate.
 3. If no task covers it, split the request into the smallest independently
    verifiable tasks. Each task must fit one agent session and one context window.
-4. Create the tasks with `.ai/scripts/ai task new "<imperative title>"
+4. Create the tasks with `.ai/ai task new "<imperative title>"
    --priority <low|medium|high> [--depends-on <ids>]`.
    - Set `--depends-on` whenever a task needs another task's output.
    - Do not create a task without testable acceptance criteria.
@@ -45,8 +45,8 @@ Rules:
 ## After it runs
 
 ```sh
-.ai/scripts/ai task ready        # tasks that can start now
-.ai/scripts/ai task list --all
+.ai/ai task ready        # tasks that can start now
+.ai/ai task list --all
 ```
 
 Hand the ready queue to implementer windows. They should use `ai task next`,

@@ -27,7 +27,7 @@ Leave the tree cleaner than you found it.
    merges with `ai git finish` before the task is done. Read-only work is exempt.
    If Git reports dubious ownership, request approval to trust only this
    checkout. Follow `docs/git-workflow.md`.
-7. Before handoff run the full `ai check --strict` and paste the result into the task.
+7. Before handoff run the full `ai check` and paste the result into the task.
 8. Release file locks. Run `ai task review <id> --agent <name>`, then release
    the task claim so an independent reviewer can take over. Do not mark your
    own implementation done.

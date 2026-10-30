@@ -10,19 +10,22 @@ be atomic.
 ```
 project/                  <- product territory (the real repo)
 └── .ai/                  <- AI territory (this workspace)
-    ├── AGENTS.md         signpost: invariants + pointers
-    ├── config/           one JSON file: mode, languages, ttl, watch list, checks
+    ├── ai.py             thin entry point (+ launchers ai, ai.cmd)
+    ├── AGENTS.md         signpost: session loop, required order, invariants
     ├── GUIDE.md          practical manual: install, loop, prompts, recovery
-    ├── docs/             durable memory: architecture, flow, locks, orchestration,
-    │                     recovery, hygiene, ADRs
-    ├── agents/           role cards (responsibility, not technology)
+    ├── lib/              scripts only (see lib/README.md): core, config,
+    │                     runtime, tasks, specs, git, decisions, cmd, tests
+    ├── config/           one JSON file: mode, languages, ttl, workflow, checks
     ├── tasks/            local task store: active/, done/, BOARD.md
     ├── specs/            one spec per behavior change
+    ├── runtime/          locks/, state/, artifacts/, logs/ (never committed)
+    ├── templates/git/    commit and PR templates
+    ├── docs/             durable memory: architecture, flow, locks, orchestration,
+    │                     recovery, hygiene, decisions/
+    ├── agents/           role cards (responsibility, not technology)
     ├── prompts/          reusable prompt bodies
     ├── adapters/         per-tool pointers (never duplicate rules)
-    ├── scripts/          ai CLI + launchers
-    ├── tests/            CLI integration tests (stdlib unittest)
-    └── runtime/          locks/, state/, artifacts/, logs/ (never committed)
+    └── skills/           optional extensions (future)
 ```
 
 The boundary is the point: anything an agent generates that is not product code
@@ -61,7 +64,7 @@ agent A                    filesystem                    agent B
    |                           |--- lock exists ----------->| refused
    |-- edit files (task lock)--|                            |
    |-- ai check -------------->|                            |
-   |-- ai task done 0001 ----->| move to done/, free lock   |
+   |-- ai task done 0001 ----->| needs review + 2nd agent   |
 ```
 
 There is no server and no clock to trust. Locks are advisory and expire; the

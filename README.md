@@ -33,7 +33,7 @@ The subfolder shape is the common one:
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-.ai/scripts/ai adopt              # Windows: .ai\scripts\ai.cmd adopt
+.ai/scripts/ai adopt              # Windows: .ai\ai.cmd adopt
 ```
 
 Run `ai start` instead to do this wiring automatically while creating the first
@@ -76,7 +76,7 @@ ai check --strict                          # required before review
 ai task review 0001 --agent <your-name>    # records review state
 ai task release 0001 --agent <your-name>   # reviewer takes over
 ai git finish --task 0001 --agent reviewer # guarded no-ff merge
-ai task done 0001 --agent reviewer         # archives after verification
+ai task done 0001 --agent reviewer         # a different agent, after review + merge
 ```
 
 If the session ends before `done`, run `ai handoff`; a fresh session starts with
@@ -105,18 +105,21 @@ commit-backed Gitflow bases.
 your-project/
 ├── <product code>
 └── .ai/
+    ├── ai.py            the only entry point (thin); launchers: ai, ai.cmd
     ├── AGENTS.md        entry contract for every agent
     ├── GUIDE.md         operator's handbook
-    ├── config/          mode, TTLs, budgets, watch list, project checks
+    ├── lib/             scripts only: core, config, runtime, tasks, specs, git,
+    │                    decisions, cmd (one file per command), tests
+    ├── config/          mode, TTLs, budgets, workflow rules, project checks
     ├── tasks/           task ledger: active/, done/, generated BOARD.md
     ├── specs/           acceptance criteria per behavior change
-    ├── docs/            architecture, flow, concurrency, recovery, ADRs
+    ├── runtime/         leases, checkpoints, handoffs, artifacts, logs
+    ├── templates/git/   commit and PR templates
+    ├── docs/            architecture, flow, concurrency, recovery, decisions/
     ├── agents/          role cards
     ├── prompts/         reusable prompt bodies
     ├── adapters/        per-tool pointers
-    ├── scripts/         stdlib-only Python CLI + launchers
-    ├── tests/           CLI integration tests (stdlib unittest)
-    └── runtime/         leases, checkpoints, handoffs, artifacts, logs
+    └── skills/          optional extensions (future)
 ```
 
 The split matters: `.ai/` is agent territory, the rest is product territory.

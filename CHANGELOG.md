@@ -2,6 +2,57 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.7.0] - 2026-10-30
+
+### Changed
+
+- **Restructure.** The 4,800-line `scripts/ai.py` is split into `lib/`, which
+  holds scripts only: `lib/{core,config,runtime,tasks,specs,git,decisions,cmd,tests}`.
+  `ai.py` is now a thin entry point at the workspace root (launchers `ai` and
+  `ai.cmd` moved with it). Data stays where it was: `tasks/`, `specs/`,
+  `runtime/`, `config/`, `templates/git/`, `docs/decisions/`. See `lib/README.md`.
+  Command behavior is unchanged.
+- Commands are auto-discovered from `lib/cmd/*.py` (and future
+  `skills/*/skill.py`); adding a command is one file.
+- `ai.py` keeps bytecode out of the workspace (cached under the system temp
+  dir) and imports only the module of the invoked command: ~100 ms -> ~45 ms
+  per call.
+- `python lib/tests/run.py` runs the test modules in parallel (one process per
+  module, `-j N`); `unittest discover` still works serially.
+
+### Added
+
+- `ai now [--agent <n>]`: ~10 lines with the state and the single next required
+  command (derived from task status, Git, checkpoints and the last check).
+- `ai context`: compact project memory (open work with next steps, shipped
+  work, ADRs, recent activity).
+- `ai decision new|list`: numbered ADRs in `docs/decisions/`.
+- Workflow gates (`lib/tasks/gates.py`): `ai task done` requires the task to be
+  in `review` and approved by a different agent than the submitter
+  (`submitted_by` / `reviewed_by` are recorded). In strict mode `ai task review`
+  requires a green full `ai check` recorded after the claim. Configure with
+  `workflow.requireReview` and `workflow.requireCheck` in
+  `config/workspace.json`. `--force` bypasses and is logged.
+- `ai check` records its result in `runtime/state/last-check.json`.
+
+### Fixed
+
+- `ai check` no longer runs the workspace's own test suite. The shipped
+  `config/workspace.json` has an empty `checks` list; projects add their own
+  test/lint commands. With no checks configured, `ai check` prints a note on
+  stderr. The workspace's self-tests run via `python lib/tests/run.py` (and in
+  this repository's CI).
+- Agent docs no longer tell agents to run `ai check --strict` (CI-only flag).
+
+- The generated board no longer writes a mojibake dash for done tasks.
+
+### Migration
+
+Move `scripts/ai*` to the workspace root, add `lib/`, and move the old
+`tests/` into `lib/tests/`. Remove the old `cli tests` entry from `checks` in
+`config/workspace.json` (the workspace's own tests no longer belong there). Re-run
+`ai adopt --force` in host projects to refresh the pointer blocks.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
@@ -52,6 +103,13 @@ All notable changes to this workspace are documented here.
 ## [0.5.1] - 2026-10-29
 
 ### Fixed
+
+- `ai check` no longer runs the workspace's own test suite. The shipped
+  `config/workspace.json` has an empty `checks` list; projects add their own
+  test/lint commands. With no checks configured, `ai check` prints a note on
+  stderr. The workspace's self-tests run via `python lib/tests/run.py` (and in
+  this repository's CI).
+- Agent docs no longer tell agents to run `ai check --strict` (CI-only flag).
 
 - `ai doctor` and `ai check` no longer create runtime directories while
   diagnosing; only `--fix` writes. A missing state tree now stays visible until

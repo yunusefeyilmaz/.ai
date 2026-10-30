@@ -7,14 +7,14 @@ import subprocess
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @unittest.skipUnless(os.name == "nt", "Windows launcher")
 class WindowsLauncherTest(unittest.TestCase):
     def call(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["cmd", "/c", str(ROOT / "scripts" / "ai.cmd"), *args],
+            ["cmd", "/c", str(ROOT / "ai.cmd"), *args],
             cwd=str(ROOT),
             capture_output=True,
             text=True,

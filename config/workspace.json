@@ -16,6 +16,10 @@
   "orchestration": {
     "maxParallel": 3
   },
+  "workflow": {
+    "requireReview": true,
+    "requireCheck": "strict"
+  },
   "git": {
     "integrationBranch": "develop",
     "productionBranch": "master",
@@ -59,11 +63,5 @@
   "security": {
     "warnTrackedSecrets": true
   },
-  "checks": [
-    {
-      "name": "cli tests",
-      "command": "python -m unittest discover -s tests -q",
-      "fast": true
-    }
-  ]
+  "checks": []
 }
