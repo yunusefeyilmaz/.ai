@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
 
 
@@ -21,7 +21,7 @@ def run(workspace: Path, *args: str, timeout: int = 20) -> subprocess.CompletedP
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
-        [sys.executable, str(workspace / "scripts" / "ai.py"), *args],
+        [sys.executable, str(workspace / "ai.py"), *args],
         cwd=workspace,
         capture_output=True,
         text=True,
@@ -67,7 +67,7 @@ def validate_adapter(data: dict, schema: dict, path: Path) -> list[str]:
 def extract_command_references(text: str) -> list[str]:
     """Extract 'ai <cmd>' command names referenced in markdown text."""
     pattern = re.compile(
-        r"(?:`(?:\.ai/scripts/)?ai\s+([a-z0-9_-]+)|(?:\.ai/scripts/ai|(?<![\w/.])ai)\s+([a-z0-9_-]+))"
+        r"(?:`(?:\.ai/)?ai\s+([a-z0-9_-]+)|(?:\.ai/ai|(?<![\w/.])ai)\s+([a-z0-9_-]+))"
     )
     ignored = {"workspace", "engineering", "notes", "adapter", "state"}
     commands = []
@@ -188,7 +188,7 @@ class AdapterContractTest(unittest.TestCase):
     def test_contract_fails_when_adapter_references_unknown_command(self) -> None:
         """Contract validation fails if an adapter references an unknown command."""
         valid_commands = {"git", "task", "check", "doctor"}
-        bad_doc = "Run `.ai/scripts/ai nonexistent_cmd --flag` to test."
+        bad_doc = "Run `.ai/ai nonexistent_cmd --flag` to test."
         errors = validate_adapter_doc(bad_doc, valid_commands)
         self.assertIn("referenced unknown command 'ai nonexistent_cmd'", errors)
 
@@ -242,9 +242,9 @@ class AdapterContractTest(unittest.TestCase):
                 "---\nid: 0999\ntitle: test\nstatus: todo\nowner: null\n---\n\n# 0999 - test\n\n## Notes\n\n## Log\n",
                 encoding="utf-8",
             )
-            # import helper directly from scripts.ai
+            # import helper directly from lib.tasks.links
             sys.path.insert(0, str(ROOT))
-            from scripts.ai import link_task_github
+            from lib.tasks.links import link_task_github
             meta, body = link_task_github(
                 str(task_file),
                 issue="https://github.com/org/repo/issues/42",

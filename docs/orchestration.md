@@ -198,9 +198,9 @@ issues. Do not "clean up" by deleting task files.
 
 ```text
 Read .ai/AGENTS.md, .ai/GUIDE.md and .ai/docs/orchestration.md.
-Run `.ai/scripts/ai status --json`. Do not write product code.
+Run `.ai/ai status --json`. Do not write product code.
 Split the goal into independent tasks with testable acceptance criteria.
-Create them with `.ai/scripts/ai task new`, set `--depends-on` where order matters,
+Create them with `.ai/ai task new`, set `--depends-on` where order matters,
 and write each spec in .ai/specs/active/. Refresh the board and stop.
 ```
 
@@ -208,10 +208,10 @@ and write each spec in .ai/specs/active/. Refresh the board and stop.
 
 ```text
 Read .ai/AGENTS.md, the task and its spec. Claim it with
-`.ai/scripts/ai task claim <id> --agent <name>`. Acquire locks for the files you
+`.ai/ai task claim <id> --agent <name>`. Acquire locks for the files you
 will touch. Implement only the acceptance criteria, with tests. Run
-`.ai/scripts/ai check --fast` as you go. Checkpoint at milestones and before your
-context fills. When green, run `.ai/scripts/ai check --strict`, record the output
+`.ai/ai check --fast` as you go. Checkpoint at milestones and before your
+context fills. When green, run `.ai/ai check --strict`, record the output
 in the task, and move it to review.
 ```
 
@@ -221,15 +221,15 @@ in the task, and move it to review.
 You are the reviewer. Read the spec, the task and `git diff <base>...HEAD`.
 For each acceptance criterion, cite file:line evidence. Look for missing tests,
 security issues, scope creep and broken contracts. Do not edit code. Write a
-PASS/FAIL verdict with concrete fixes, then run `.ai/scripts/ai check --strict`.
+PASS/FAIL verdict with concrete fixes, then run `.ai/ai check --strict`.
 ```
 
 ### Handoff
 
 ```text
 Your context is nearly full. Do not start new work. Run
-`.ai/scripts/ai checkpoint <id> --agent <name> --reason context --percent 85`
-with a complete brief for a stranger, then `.ai/scripts/ai handoff <id> --agent
+`.ai/ai checkpoint <id> --agent <name> --reason context --percent 85`
+with a complete brief for a stranger, then `.ai/ai handoff <id> --agent
 <name> --reason "context limit"`. Stop. The next session will run `ai resume`.
 ```
 

@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
 
 
@@ -24,7 +24,7 @@ def run(workspace: Path, *args: str, stdin: str = "") -> subprocess.CompletedPro
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
-        [sys.executable, str(workspace / "scripts" / "ai.py"), *args],
+        [sys.executable, str(workspace / "ai.py"), *args],
         cwd=str(workspace),
         input=stdin,
         capture_output=True,
@@ -204,7 +204,7 @@ class FirstRunLoopTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         created = run(workspace, "task", "new", "Seed")
         self.assertEqual(created.returncode, 0, created.stderr)
-        archived = run(workspace, "task", "done", "0001", "--agent", "seed")
+        archived = run(workspace, "task", "done", "0001", "--agent", "seed", "--force")
         self.assertEqual(archived.returncode, 0, archived.stderr)
 
         payload = self.start(workspace, "--agent", "newcomer")

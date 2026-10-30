@@ -24,6 +24,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Workspace health
-        run: python scripts/ai.py doctor --strict
+        run: python ai.py doctor --strict
       - name: Verification contract
-        run: python scripts/ai.py check --strict
+        run: python ai.py check --strict
+      - name: Workspace self-tests
+        run: python lib/tests/run.py

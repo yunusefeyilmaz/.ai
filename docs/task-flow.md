@@ -130,8 +130,17 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 ```sh
 ai check
-ai task done 0001 --agent qa
+ai task review 0001 --agent implementer      # producer submits
+ai task release 0001 --agent implementer
+ai git finish --task 0001 --agent qa          # a DIFFERENT agent merges
+ai task done 0001 --agent qa                  # ...and marks it done
 ```
+
+`ai task done` is refused unless the task is in `review` and the caller is not
+the agent that submitted it (`submitted_by`). In strict mode `ai task review` is
+also refused without a green `ai check` recorded after the claim. Both rules are
+configured under `workflow` in `config/workspace.json`
+(`requireReview`, `requireCheck`). `ai now` prints the next required command.
 
 In a Git repository, stage only owned files, run `ai git verify --strict`, and
 commit with `ai git commit`. The implementer submits and releases the task for

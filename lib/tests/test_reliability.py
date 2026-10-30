@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
 
 
@@ -23,7 +23,7 @@ def run(workspace: Path, *args: str, timeout: int = 12) -> subprocess.CompletedP
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
-        [sys.executable, str(workspace / "scripts" / "ai.py"), *args],
+        [sys.executable, str(workspace / "ai.py"), *args],
         cwd=workspace,
         capture_output=True,
         text=True,

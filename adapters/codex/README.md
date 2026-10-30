@@ -8,7 +8,7 @@ project root (template install).
 For a subfolder install, run once:
 
 ```sh
-.ai/scripts/ai adopt
+.ai/ai adopt
 ```
 
 This adds a managed block to the project's root `AGENTS.md` (and the other
