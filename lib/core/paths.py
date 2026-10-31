@@ -15,7 +15,7 @@ import os
 import socket
 import sys
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 HOST = socket.gethostname()
 
 CORE_DIR = os.path.dirname(os.path.abspath(__file__))
