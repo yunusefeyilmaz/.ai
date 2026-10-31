@@ -25,13 +25,20 @@ Read task and spec files only when `NEXT` or the task asks you to.
 | 4 | Branch | `ai git start --task <id> --agent <n> --type feature` | before editing, always |
 | 5 | Work | `ai lock acquire <path> --agent <n> --task <id>`, edit, `ai checkpoint <id> --agent <n> --next "<step>"` | a live lock is a refusal |
 | 6 | Commit | `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat --message "<subject>"` | staged paths not covered by your locks |
-| 7 | Check | `ai check` (runs the *project's* `checks` from `config/workspace.json`) | red. Strict mode also requires it fresh before review |
+| 7 | Check | `ai check --task <id> --agent <n>` (runs the *project's* `checks` from `config/workspace.json`) | red. Strict mode needs green evidence for this task on the current HEAD before review |
 | 8 | **Review** | `ai task review <id> --agent <n>`, then `ai task release <id> --agent <n>` | not `in_progress`, not yours, or (strict) no green check |
 | 9 | **Merge + done** (a *different* agent) | `ai git finish --task <id> --agent <r>`, then `ai task done <id> --agent <r>` | task not in `review`, or `<r>` is the producer |
+| 9b | Not good enough? | `ai task request-changes <id> --agent <r> --reason "..."` | not in `review`, or `<r>` is the producer. The producer reclaims it |
 
 `ai task done` never works straight from `in_progress`. The producer never
 approves its own work. `--force` is an operator escape hatch; use it only when
 the human says so.
+
+## Reading a task
+
+`ai history <id>` shows who moved it, when, why and on which proof; `ai resume <id>` says whether
+the recorded verification is still valid. A task may declare `scope_allowed`/`scope_forbidden`:
+`ai git verify --task <id>` before committing.
 
 ## Running out of tokens (so another AI can continue)
 
@@ -47,7 +54,7 @@ the human says so.
 2. **Claim before you work.** One task per session. Never edit a task another agent owns.
 3. **Lock shared resources.** A live lock is a refusal, not a suggestion. Never delete lock files.
 4. **No spec, no code.** Behavior changes need testable acceptance criteria in `specs/`.
-5. **Producer never verifies its own work.** Review runs in a separate session.
+5. **Producer never verifies its own work.** Roles in `config/workspace.json` (`team`) can limit who may review/approve; if `ai` says an action is denied, do not work around it. Review runs in a separate session.
 6. **"Done" means `ai check` is green.** Attach the command and result to the task.
 7. **Record lasting decisions:** `ai decision new "<title>"` (ADR in `docs/decisions/`).
 8. **Respect the mode** in `config/workspace.json`: `lite` or `strict` (human gates at spec, plan, triage).
@@ -79,11 +86,11 @@ the human says so.
 
 ```sh
 ai now [--agent <n>]            ai context [--limit N]         ai doctor        ai check
-ai task new|list|show|ready|next|claim|release|review|done|block|unblock
+ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock
 ai lock acquire|release|heartbeat|status
 ai checkpoint|handoff <id> --agent <n>   ai resume <id>   ai recover [--apply]
 ai git setup|start|commit|verify|finish|begin|end
-ai decision new|list            ai artifact put|list|clean     ai status [--board]
+ai history <id> [--evidence]     ai decision new|list            ai artifact put|list|clean     ai status [--board]
 ```
 
 If `ai` is unavailable, follow the same protocol by editing files directly

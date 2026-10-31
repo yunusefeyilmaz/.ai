@@ -35,6 +35,25 @@ All notable changes to this workspace are documented here.
   `config/workspace.json`. `--force` bypasses and is logged.
 - `ai check` records its result in `runtime/state/last-check.json`.
 
+- **Transition history.** Every state change is a structured line in the task
+  (`<time> | <actor> | <from> -> <to> | <reason> | <proof>`); `ai history <id>`
+  [`--evidence`, `--json`] reads it.
+- **Per-task verification evidence.** `ai check --task <id> --agent <n>` records
+  commands, exit codes, agent and commit in `runtime/state/evidence/<id>.jsonl`.
+  The strict-mode review gate now requires green, full evidence for that task on
+  the current HEAD (new commits make it stale); `ai resume` reports whether
+  recorded evidence is still valid. Replaces the global `last-check` gate.
+- **`changes_requested` status** and `ai task request-changes <id> --agent <r>
+  --reason ...` (reviewer only, never the submitter). The task becomes ready for
+  rework; `ai now` points the producer at it.
+- **Task scope.** `ai task new --allow GLOB --forbid GLOB`; `ai git commit`
+  refuses staged paths outside it and `ai git verify --task <id>` reports them.
+- **Roles.** Optional `team` (agent -> roles) and `roles` in
+  `config/workspace.json` guard `task.new/claim/review/request_changes/done` and
+  `git.finish`; `policy.unknownAgent` is `allow` or `deny`. Default: no table,
+  everything allowed.
+- A reviewer claiming a task in `review` no longer flips it back to `in_progress`.
+
 ### Fixed
 
 - `ai check` no longer runs the workspace's own test suite. The shipped

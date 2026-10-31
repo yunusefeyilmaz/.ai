@@ -15,7 +15,9 @@ from lib.core.paths import (
 )
 from lib.core.timeutil import iso
 from lib.runtime.events import append_event
+from lib.config import roles
 from lib.git import repo
+from lib.tasks import scope as task_scope
 from lib.tasks import board
 from lib.tasks import store
 
@@ -312,6 +314,15 @@ def cmd_git_commit(args) -> int:
             for item in uncovered:
                 print(f"  {item}", file=sys.stderr)
             return 1
+    scope_problems = task_scope.violations(
+        meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+    )
+    if scope_problems and not getattr(args, "force", False):
+        print(f"Refusing commit; staged paths leave the scope of task {task_id}:", file=sys.stderr)
+        for item in scope_problems:
+            print(f"  {item}", file=sys.stderr)
+        print("Unstage them, or widen the task's scope_allowed/scope_forbidden deliberately.", file=sys.stderr)
+        return 1
     ok, owned, error = repo.acquire_git_guard(args.agent, task_id)
     if not ok:
         print(error, file=sys.stderr)
@@ -352,6 +363,10 @@ def cmd_git_finish(args) -> int:
         return 1
     meta, body = store.parse_task(path)
     task_id = str(meta.get("id"))
+    denied = None if args.force else roles.authorize(getattr(args, "agent", None), "git.finish")
+    if denied:
+        print(denied, file=sys.stderr)
+        return 1
     branch = str(meta.get("branch") or "")
     if not branch:
         print(f"Task {task_id} has no branch to merge.", file=sys.stderr)

@@ -53,6 +53,11 @@ def build(agent: str | None = None, history: int = 5) -> dict:
     elif handoffs:
         h = handoffs[0]
         recommended = {"task": h.get("task"), "cmd": f"ai resume {h.get('task')}", "why": f"handoff from {h.get('agent')}: {h.get('reason')}", "extra": []}
+    elif agent and any(
+        t.get("status") == "changes_requested" and t.get("submitted_by") == agent for t in ready_all
+    ):
+        t = next(t for t in ready_all if t.get("status") == "changes_requested" and t.get("submitted_by") == agent)
+        recommended = {"task": t.get("id"), **workflow.next_action(t, agent, state, git_ready)}
     elif review_queue and agent:
         t = review_queue[0]
         recommended = {"task": t.get("id"), **workflow.next_action(t, agent, state, git_ready)}

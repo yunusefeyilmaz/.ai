@@ -26,6 +26,7 @@ from lib.core.timeutil import (
 )
 from lib.runtime.dirs import ensure_dirs
 from lib.git import repo
+from lib.runtime import evidence
 from lib.tasks import store
 
 
@@ -285,6 +286,7 @@ def current_drift(task_id: str) -> dict:
         "dirty": current.get("dirty", []),
         "commits_since": None,
         "files": {},
+        "evidence": evidence.task_status(task_id, current.get("head")),
     }
     old_head = saved_git.get("head")
     if old_head and current.get("head") and old_head != current["head"]:

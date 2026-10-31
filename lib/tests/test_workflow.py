@@ -56,7 +56,7 @@ class GateTest(WorkspaceCase):
         refused = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("ai check", refused.stderr)
-        self.assertEqual(run(workspace, "check").returncode, 0)
+        self.assertEqual(run(workspace, "check", "--task", "0001", "--agent", "alice").returncode, 0)
         accepted = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
 
@@ -90,7 +90,7 @@ class NowTest(WorkspaceCase):
         )
         out = run(workspace, "now", "--agent", "alice").stdout
         self.assertIn("ai check", out)  # nothing uncommitted, no green check yet
-        run(workspace, "check")
+        self.assertEqual(run(workspace, "check", "--agent", "alice").returncode, 0)  # auto-attaches
         out = run(workspace, "now", "--agent", "alice").stdout
         self.assertIn("ai task review 0001 --agent alice", out)
         run(workspace, "task", "review", "0001", "--agent", "alice")

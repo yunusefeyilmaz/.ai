@@ -32,7 +32,9 @@ from lib.runtime.leases import (
     release_lock,
 )
 from lib.specs import spec as spec_lib
+from lib.config import roles
 from lib.tasks import board
+from lib.tasks import history
 from lib.tasks import store
 
 
@@ -77,6 +79,9 @@ def create_task(
     spec: str | None = None,
     depends_on: str | None = None,
     make_spec: bool = True,
+    scope_allowed: str | None = None,
+    scope_forbidden: str | None = None,
+    actor: str | None = None,
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
@@ -99,6 +104,8 @@ def create_task(
             "priority": priority,
             "spec": spec_ref,
             "depends_on": depends_on,
+            "scope_allowed": scope_allowed,
+            "scope_forbidden": scope_forbidden,
             "created": iso(),
             "updated": iso(),
             "lock": None,
@@ -126,7 +133,7 @@ def create_task(
 
 ## Log
 
-- {iso()} created
+{history.line(actor, None, 'todo', 'created')}
 """
         store.write_task(path, meta, body)
         board.write_board(store.load_tasks())
@@ -135,6 +142,9 @@ def create_task(
 
 
 def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    denied = roles.authorize(agent, "task.claim")
+    if denied and not force:
+        return False, denied
     if os.path.dirname(path) != ACTIVE_DIR:
         return False, "This task is already in done/."
     meta, body = store.parse_task(path)
@@ -170,11 +180,13 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     if store.find_task(task_id) != path:
         release_lock(resource, agent=agent, force=True)
         return False, f"Task {task_id} was removed while it was being claimed."
+    previous = meta.get("status")
     meta["owner"] = agent
-    meta["status"] = "in_progress"
+    # A reviewer taking over a task in review keeps it in review.
+    meta["status"] = "review" if previous == "review" else "in_progress"
     meta["updated"] = iso()
     meta["lock"] = resource
-    body = body.rstrip("\n") + f"\n- {iso()} claimed by {agent}\n"
+    body = history.append(body, agent, previous, meta["status"], "claimed")
     store.write_task(path, meta, body)
     board.write_board(store.load_tasks())
     if new_claim:
@@ -189,7 +201,7 @@ def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
     ready = []
     waiting = []
     for task in active:
-        if task.get("status") != "todo":
+        if task.get("status") not in ("todo", "changes_requested"):
             continue
         reasons = store.dependency_blockers(task)
         lock = locks.get(f"task-{task.get('id')}")
@@ -199,5 +211,9 @@ def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
             waiting.append((task, reasons))
         else:
             ready.append(task)
-    ready.sort(key=lambda item: (store.PRIORITY_ORDER.get(str(item.get("priority")), 1), str(item.get("id"))))
+    ready.sort(key=lambda item: (
+        0 if item.get("status") == "changes_requested" else 1,
+        store.PRIORITY_ORDER.get(str(item.get("priority")), 1),
+        str(item.get("id")),
+    ))
     return ready, waiting

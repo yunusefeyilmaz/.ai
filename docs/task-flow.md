@@ -7,10 +7,10 @@ story.
 ## States
 
 ```
-todo ──claim──> in_progress ──handoff──> review ──verify──> done
-  ^                  |                     |
-  |                  v                     |
-  +────release───────+──────blocked────────+
+todo ──claim──> in_progress ──review──> review ──done (other agent)──> done
+  ^                  |  ^                    |
+  |                  |  +──claim────  changes_requested <──request-changes
+  +────release───────+──────blocked─────────+
 ```
 
 | Status | Meaning | Set by |
@@ -18,6 +18,7 @@ todo ──claim──> in_progress ──handoff──> review ──verify─�
 | `todo` | Ready, unclaimed. | author |
 | `in_progress` | An agent owns it and holds `task-<id>`. | `ai task claim` |
 | `review` | Implementation done; independent review needed. | `ai task review` |
+| `changes_requested` | A reviewer sent it back; reason in `ai history`. Ready for rework. | `ai task request-changes` |
 | `blocked` | Waiting on a human or another task; reason in the log. | owner |
 | `done` | Archived to `tasks/done/`; lock released. | `ai task done` |
 
@@ -129,16 +130,23 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 ### 5. Verify and finish
 
 ```sh
-ai check
+ai check --task 0001 --agent implementer     # records verification evidence for the task
 ai task review 0001 --agent implementer      # producer submits
 ai task release 0001 --agent implementer
 ai git finish --task 0001 --agent qa          # a DIFFERENT agent merges
 ai task done 0001 --agent qa                  # ...and marks it done
 ```
 
+A reviewer who finds problems runs
+`ai task request-changes 0001 --agent qa --reason "..."`. The task becomes
+`changes_requested` and ready again; the producer reclaims it, fixes it and
+re-submits. Nothing is lost: every transition stays in the task file.
+
 `ai task done` is refused unless the task is in `review` and the caller is not
 the agent that submitted it (`submitted_by`). In strict mode `ai task review` is
-also refused without a green `ai check` recorded after the claim. Both rules are
+also refused without green evidence recorded **for this task on the current
+HEAD** (`ai check --task <id> --agent <n>`; `--agent` alone attaches to your only
+in-progress task). New commits make older evidence stale. Both rules are
 configured under `workflow` in `config/workspace.json`
 (`requireReview`, `requireCheck`). `ai now` prints the next required command.
 
@@ -146,6 +154,41 @@ In a Git repository, stage only owned files, run `ai git verify --strict`, and
 commit with `ai git commit`. The implementer submits and releases the task for
 independent review; a separate reviewer runs `ai git finish` before the task is
 marked done. Attach the check command and its result to the task.
+
+## History, evidence, scope and roles
+
+**History.** Every transition is one line under `## Log`:
+`<time> | <actor> | <from> -> <to> | <reason> | <proof>`. Read it with
+`ai history <id>` (`--evidence` adds the verification records, `--json` for tools).
+
+**Evidence.** Four things never replace each other: what an agent *claims*,
+the *evidence* `ai check` records (commands, exit codes, commit), the *review*
+by a different agent, and the *merge* (`ai git finish`). Evidence lives in
+`runtime/state/evidence/<id>.jsonl`; `ai resume` tells a new agent whether it is
+still valid for the current HEAD, stale, failed or missing.
+
+**Scope.** A task may declare where it may work:
+
+```sh
+ai task new "Login" --allow "src/auth/**" --allow "tests/auth/**" --forbid "src/payment/**"
+ai git verify --task 0001     # reports staged paths outside the scope
+```
+
+`ai git commit` refuses staged paths that match a forbidden glob or fall outside
+a non-empty allowed list (`--force` overrides). Scope adds to file locks; it does
+not replace them. Front matter: `scope_allowed`, `scope_forbidden`.
+
+**Roles.** Optional agent -> role table in `config/workspace.json`:
+
+```json
+"team": {"claude-1": {"roles": ["implementer"]}, "codex-1": {"roles": ["reviewer"]}},
+"policy": {"unknownAgent": "allow"}
+```
+
+Roles are the cards in `agents/`. Guarded actions: `task.new`, `task.claim`,
+`task.review`, `task.request_changes`, `task.done`, `git.finish`. Override what a
+role may do with a `roles` map. With no `team` table everything is allowed. This
+guards the protocol, not the machine: it is accountability, not a sandbox.
 
 ## Specs
 

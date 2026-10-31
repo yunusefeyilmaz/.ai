@@ -175,6 +175,13 @@ def cmd_resume(args) -> int:
         if drift.get("commits_since") is not None:
             print(f"  commits since checkpoint: {drift['commits_since']}")
         print(f"  files needing attention: {', '.join(changed) if changed else 'none'}")
+        proof = drift.get("evidence") or {}
+        if proof.get("state") in (None, "none"):
+            print("  verification: none recorded; run `ai check --task <id> --agent <n>` before review")
+        elif proof["state"] == "valid":
+            print(f"  verification: still valid for this HEAD ({proof['summary']})")
+        else:
+            print(f"  verification: {proof['state'].upper()}, do not trust it ({proof['summary']})")
         print()
     print("Resume prompt:")
     print("-" * 60)

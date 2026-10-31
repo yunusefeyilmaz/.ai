@@ -5,6 +5,9 @@ status: todo
 owner: null
 priority: medium
 spec: null
+depends_on: null          # "0001, 0002"
+scope_allowed: null        # "src/auth/**, tests/auth/**" (empty = anywhere)
+scope_forbidden: null      # "src/payment/**"
 created: 1970-01-01T00:00:00Z
 updated: 1970-01-01T00:00:00Z
 lock: null
@@ -31,4 +34,4 @@ lock: null
 
 ## Log
 
-- 1970-01-01T00:00:00Z created
+- 1970-01-01T00:00:00Z | author | - -> todo | created

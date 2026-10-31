@@ -9,11 +9,11 @@ folder next to `ai.py`.
 ```
 lib/                                   scripts            data they manage (outside lib)
 ├── core/       paths · fsio · timeutil · findings        -
-├── config/     settings · adopt                          config/workspace.json
+├── config/     settings · adopt · roles                          config/workspace.json
 ├── runtime/    leases · mutex · events · checkpoints     runtime/{artifacts,locks,logs,state}
 │               · evidence · health · reset · overview
 ├── tasks/      store · lifecycle · board · gates         tasks/{active,done}, tasks/BOARD.md
-│               · workflow · discard · links
+│               · workflow · history · scope · discard · links
 ├── specs/      spec                                      specs/{active,done}
 ├── git/        repo · flow                               templates/git/
 ├── decisions/  adr                                       docs/decisions/

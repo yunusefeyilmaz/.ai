@@ -41,6 +41,8 @@ def default_config() -> dict:
         "language": {"documents": "en", "interviews": "en"},
         "agents": ["orchestrator", "planner", "implementer", "reviewer", "qa"],
         "workflow": {"requireReview": True, "requireCheck": "strict"},
+        "team": {},
+        "policy": {"unknownAgent": "allow"},
         "locks": {
             "defaultTtlSeconds": 1800,
             "staleAfterSeconds": 3600,

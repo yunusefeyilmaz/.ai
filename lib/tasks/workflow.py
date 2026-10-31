@@ -24,6 +24,13 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool) -> di
     if status == "blocked":
         return {"cmd": f"ai task unblock {task_id} --agent {a}", "why": "blocked; unblock when the cause is gone", "extra": extra}
 
+    if status == "changes_requested":
+        return {
+            "cmd": f"ai task claim {task_id} --agent {a}",
+            "why": f"{task.get('changes_requested_by') or 'the reviewer'} sent it back: read `ai history {task_id}`, fix, then re-review",
+            "extra": extra,
+        }
+
     if status == "todo":
         if owner:
             return {"cmd": f"ai task claim {task_id} --agent {a}", "why": f"leased by {owner}", "extra": extra}
@@ -63,9 +70,9 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool) -> di
             "why": f"{len(dirty)} uncommitted product path(s); stage your owned paths first",
             "extra": extra,
         }
-    ok, reason = evidence.green_since(None)
+    ok, reason = evidence.task_green(task_id, git.get("head"))
     if not ok:
-        return {"cmd": "ai check", "why": f"done needs a green check ({reason})", "extra": extra}
+        return {"cmd": f"ai check --task {task_id} --agent {a}", "why": f"review needs fresh evidence ({reason})", "extra": extra}
     return {
         "cmd": f"ai task review {task_id} --agent {a}",
         "why": "work is committed and checked; submit for independent review",

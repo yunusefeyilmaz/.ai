@@ -20,6 +20,10 @@
     "requireReview": true,
     "requireCheck": "strict"
   },
+  "team": {},
+  "policy": {
+    "unknownAgent": "allow"
+  },
   "git": {
     "integrationBranch": "develop",
     "productionBranch": "master",

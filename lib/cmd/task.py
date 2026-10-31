@@ -33,7 +33,11 @@ from lib.runtime.mutex import (
     workspace_state_guard,
 )
 from lib.runtime import checkpoints as ckpt
+from lib.config import roles
+from lib.runtime import evidence
 from lib.tasks import gates
+from lib.tasks import history
+from lib.tasks import scope
 from lib.tasks import board
 from lib.tasks import discard
 from lib.tasks import lifecycle
@@ -42,6 +46,10 @@ from lib.tasks import store
 
 
 def cmd_task_new(args) -> int:
+    denied = roles.authorize(getattr(args, "agent", None), "task.new")
+    if denied:
+        print(denied, file=sys.stderr)
+        return 1
     try:
         created = lifecycle.create_task(
             args.title,
@@ -49,6 +57,9 @@ def cmd_task_new(args) -> int:
             args.spec,
             getattr(args, "depends_on", None),
             make_spec=not getattr(args, "no_spec", False),
+            scope_allowed=scope.join_globs(getattr(args, "allow", None)),
+            scope_forbidden=scope.join_globs(getattr(args, "forbid", None)),
+            actor=getattr(args, "agent", None),
         )
     except RuntimeError:
         return 1
@@ -201,10 +212,11 @@ def cmd_task_release(args) -> int:
                 return 1
             meta["owner"] = None
             meta["lock"] = None
-            if meta.get("status") == "in_progress":
+            previous = meta.get("status")
+            if previous == "in_progress":
                 meta["status"] = "todo"
             meta["updated"] = iso()
-            body = body.rstrip("\n") + f"\n- {iso()} released by {args.agent}\n"
+            body = history.append(body, args.agent, previous, meta["status"], "released")
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
@@ -239,14 +251,18 @@ def cmd_task_review(args) -> int:
             if holder.get("agent") != args.agent:
                 print(f"Task {task_id} does not have a live claim for {args.agent}.", file=sys.stderr)
                 return 1
-            gate_error = gates.review_gate(meta, args.agent)
+            denied = roles.authorize(args.agent, "task.review")
+            if denied:
+                print(denied, file=sys.stderr)
+                return 1
+            gate_error, proof = gates.review_gate(meta, args.agent)
             if gate_error:
                 print(gate_error, file=sys.stderr)
                 return 1
             meta["status"] = "review"
             meta["submitted_by"] = args.agent
             meta["updated"] = iso()
-            body = body.rstrip("\n") + f"\n- {iso()} submitted for independent review by {args.agent}\n"
+            body = history.append(body, args.agent, "in_progress", "review", "submitted for independent review", proof)
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
@@ -255,6 +271,45 @@ def cmd_task_review(args) -> int:
     append_event("task_reviewed", task=task_id, agent=args.agent)
     print(f"Task {task_id} is ready for independent review. Release it before reviewer takeover.")
     print(f"Reviewer next: ai git finish --task {task_id} --agent <reviewer>, then ai task done {task_id} --agent <reviewer>")
+    return 0
+
+
+def cmd_task_request_changes(args) -> int:
+    path = store.find_task(args.task_id)
+    if not path or os.path.dirname(path) != ACTIVE_DIR:
+        print(f"No active task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    denied = roles.authorize(args.agent, "task.request_changes")
+    if denied:
+        print(denied, file=sys.stderr)
+        return 1
+    try:
+        with workspace_state_guard():
+            current_path = store.find_task(args.task_id)
+            if current_path != path:
+                print(f"Task {args.task_id} changed before changes could be requested.", file=sys.stderr)
+                return 1
+            meta, body = store.parse_task(current_path)
+            task_id = str(meta.get("id"))
+            gate_error = gates.request_changes_gate(meta, args.agent)
+            if gate_error:
+                print(gate_error, file=sys.stderr)
+                return 1
+            meta["status"] = "changes_requested"
+            meta["changes_requested_by"] = args.agent
+            meta["owner"] = None
+            meta["lock"] = None
+            meta["updated"] = iso()
+            body = history.append(body, args.agent, "review", "changes_requested", args.reason)
+            store.write_task(current_path, meta, body)
+            board.write_board(store.load_tasks())
+        release_lock(f"task-{task_id}", force=True)
+    except RuntimeError as exc:
+        print(f"Cannot request changes on task {args.task_id}: {exc}.", file=sys.stderr)
+        return 1
+    append_event("task_changes_requested", task=task_id, agent=args.agent)
+    print(f"Task {task_id} sent back to its producer ({meta.get('submitted_by')}): {args.reason}")
+    print(f"Producer next: ai task claim {task_id} --agent <producer>")
     return 0
 
 
@@ -270,9 +325,10 @@ def cmd_task_block(args) -> int:
                 print(f"Task {args.task_id} changed before it could be blocked.", file=sys.stderr)
                 return 1
             meta, body = store.parse_task(current_path)
+            previous = meta.get("status")
             meta["status"] = "blocked"
             meta["updated"] = iso()
-            body = body.rstrip("\n") + f"\n- {iso()} blocked by {args.agent}: {args.reason}\n"
+            body = history.append(body, args.agent, previous, "blocked", args.reason)
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
@@ -294,9 +350,10 @@ def cmd_task_unblock(args) -> int:
                 print(f"Task {args.task_id} changed before it could be unblocked.", file=sys.stderr)
                 return 1
             meta, body = store.parse_task(current_path)
+            previous = meta.get("status")
             meta["status"] = "todo"
             meta["updated"] = iso()
-            body = body.rstrip("\n") + f"\n- {iso()} unblocked by {args.agent}\n"
+            body = history.append(body, args.agent, previous, "todo", "unblocked")
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
@@ -316,6 +373,10 @@ def cmd_task_done(args) -> int:
         return 0
     meta, body = store.parse_task(path)
     task_id = str(meta.get("id"))
+    denied = None if args.force else roles.authorize(args.agent, "task.done")
+    if denied:
+        print(denied, file=sys.stderr)
+        return 1
     gate_error = gates.done_gate(meta, args.agent, args.force)
     if gate_error:
         print(gate_error, file=sys.stderr)
@@ -332,12 +393,15 @@ def cmd_task_done(args) -> int:
         append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
         print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
         return 1
+    previous = meta.get("status")
     meta["status"] = "done"
     meta["reviewed_by"] = args.agent
     meta["updated"] = iso()
     meta["lock"] = None
-    forced = " (forced: review gate bypassed)" if args.force and meta.get("submitted_by") in (None, args.agent) else ""
-    body = body.rstrip("\n") + f"\n- {iso()} marked done by {args.agent}{forced}\n"
+    forced = "forced: review gate bypassed" if args.force and meta.get("submitted_by") in (None, args.agent) else "approved"
+    records = evidence.task_records(task_id)
+    proof = evidence.summary(records[-1]) if records else ""
+    body = history.append(body, args.agent, previous, "done", forced, proof)
     store.write_task(path, meta, body)
     target = os.path.join(DONE_DIR, os.path.basename(path))
     os.replace(path, target)
@@ -472,6 +536,11 @@ def register(sub) -> None:
     task_new.add_argument("--no-spec", dest="no_spec", action="store_true",
                           help="do not create a spec skeleton")
     task_new.add_argument("--depends-on", dest="depends_on", default=None)
+    task_new.add_argument("--allow", action="append", default=None, metavar="GLOB",
+                          help="path the task may touch (repeatable, `**` allowed); enforced by git verify/commit")
+    task_new.add_argument("--forbid", action="append", default=None, metavar="GLOB",
+                          help="path the task must not touch (repeatable)")
+    task_new.add_argument("--agent", default=None, help="who creates the task (checked against roles)")
     task_new.set_defaults(func=cmd_task_new)
 
     task_list = task_sub.add_parser("list", help="list tasks and refresh the board")
@@ -517,6 +586,14 @@ def register(sub) -> None:
     task_review.add_argument("task_id")
     task_review.add_argument("--agent", required=True)
     task_review.set_defaults(func=cmd_task_review)
+
+    task_changes = task_sub.add_parser(
+        "request-changes", help="send a task in review back to its producer"
+    )
+    task_changes.add_argument("task_id")
+    task_changes.add_argument("--agent", required=True, help="the reviewer (not the submitter)")
+    task_changes.add_argument("--reason", required=True)
+    task_changes.set_defaults(func=cmd_task_request_changes)
 
     task_done = task_sub.add_parser("done", help="mark a task done and archive it")
     task_done.add_argument("task_id")
