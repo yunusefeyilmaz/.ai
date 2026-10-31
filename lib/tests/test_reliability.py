@@ -158,6 +158,10 @@ class LeaseReliabilityTest(ReliabilityCase):
 class GitReliabilityTest(ReliabilityCase):
     def test_dirty_product_index_blocks_task_branch_start(self) -> None:
         workspace = self.make_workspace(with_git=True)
+        config_path = workspace / "config" / "workspace.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config.setdefault("git", {})["enabled"] = False  # claim must not branch by itself here
+        config_path.write_text(json.dumps(config), encoding="utf-8")
         self.create_claimed_task(workspace)
         (workspace / "README.md").write_text("staged change\n", encoding="utf-8")
         git(workspace, "add", "README.md")

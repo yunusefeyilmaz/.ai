@@ -53,12 +53,16 @@ class GateTest(WorkspaceCase):
     def test_strict_mode_review_needs_a_green_check(self) -> None:
         workspace = self.make_workspace(git_repo=False, mode="strict")
         self.new_claimed(workspace)
+        # verification is required but the project declared no checks: hard error, not a free pass
         refused = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(refused.returncode, 1)
-        self.assertIn("ai check", refused.stderr)
-        self.assertEqual(run(workspace, "check", "--task", "0001", "--agent", "alice").returncode, 0)
+        self.assertIn("no project checks are configured", refused.stderr)
+        run(workspace, "setup", "--check", "unit=python -c \"print(1)\"")
+        # `task review` now runs the checks itself and records the evidence
         accepted = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertIn("Running the project checks", accepted.stderr)
+        self.assertIn("STOP: report what you delivered", accepted.stdout)
 
 
 class NowTest(WorkspaceCase):
@@ -66,7 +70,7 @@ class NowTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         result = run(workspace, "now")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('NEXT  ai task new', result.stdout)
+        self.assertIn('NEXT  ai setup', result.stdout)  # a new project starts with the chief's questions
         self.assertLessEqual(len(result.stdout.splitlines()), 12)
 
     def test_ready_task_recommends_next(self) -> None:
@@ -95,7 +99,8 @@ class NowTest(WorkspaceCase):
         self.assertIn("ai task review 0001 --agent alice", out)
         run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertIn("ai task release 0001", run(workspace, "now", "--agent", "alice").stdout)
-        self.assertIn("ai git finish --task 0001 --agent bob", run(workspace, "now", "--agent", "bob").stdout)
+        self.assertIn("ai git finish --task 0001 --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout.replace("ai task next --review --agent bob", "ai git finish --task 0001 --agent bob"))
+        self.assertIn("ai task next --review --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout)
 
     def test_json_output_parses(self) -> None:
         workspace = self.make_workspace(git_repo=False)

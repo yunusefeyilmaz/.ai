@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -34,7 +35,11 @@ from lib.runtime.mutex import (
 )
 from lib.runtime import checkpoints as ckpt
 from lib.config import roles
+from lib.config import settings
+from lib.git import flow
+from lib.git import repo
 from lib.runtime import evidence
+from lib.runtime import health
 from lib.tasks import gates
 from lib.tasks import history
 from lib.tasks import scope
@@ -127,13 +132,43 @@ def cmd_task_claim(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
-    ok, message = lifecycle.claim_task(path, args.agent, args.force)
+    ok, message = _claim(path, args.agent, args.force)
     if not ok:
         print(message, file=sys.stderr)
         return 1
-    print(f"Claimed {message} for {args.agent}.")
-    print(f"Release when done: ai task release {message} --agent {args.agent}")
+    print(f"Release without delivering: ai task release {message} --agent {args.agent}")
     return 0
+
+
+def _claim(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    """Claim a task and do the standard set-up so the worker does not have to.
+
+    One command: task lock + in_progress, every file lock the task declared
+    (all or nothing), and the task branch when Git is enabled.
+    """
+    meta, _ = store.parse_task(path)
+    held_ok, held = lifecycle.acquire_task_locks(meta, agent) if meta.get("status") != "review" else (True, "")
+    if not held_ok:
+        return False, held
+    ok, message = lifecycle.claim_task(path, agent, force)
+    if not ok:
+        if meta.get("status") != "review":
+            lifecycle.release_task_locks(meta, agent)
+        return False, message
+    print(f"Claimed {message} for {agent}.")
+    if held:
+        print(f"  file locks: {held}")
+    if meta.get("status") != "review" and settings.git_enabled():
+        state = repo.git_state()
+        if not state.get("repo") or not state.get("head"):
+            print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
+        else:
+            started = flow.cmd_git_start(argparse.Namespace(
+                task=message, agent=agent, type="feature", base=None, force=False, json=False,
+            ))
+            if started != 0:
+                print(f"  git: could not start the task branch; fix the message above, then `ai git start --task {message} --agent {agent}`.")
+    return True, message
 
 
 def cmd_task_ready(args) -> int:
@@ -160,10 +195,39 @@ def cmd_task_ready(args) -> int:
     return 0
 
 
+def _next_review(args) -> int:
+    queue = [
+        t for t in store.load_tasks()
+        if t["_folder"] == "active" and t.get("status") == "review"
+        and t.get("submitted_by") != args.agent and not t.get("owner")
+    ]
+    queue.sort(key=lambda t: str(t.get("id")))
+    for task in queue:
+        ok, message = _claim(task["_path"], args.agent)
+        if not ok:
+            print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
+            continue
+        meta, _ = store.parse_task(store.find_task(message))
+        if args.json:
+            print(json.dumps({"meta": meta}, indent=2, default=str))
+            return 0
+        print(f"Review: {meta.get('title')} (submitted by {meta.get('submitted_by')})")
+        if meta.get("spec"):
+            print(f"Spec: {meta.get('spec')}")
+        print(f"History: ai history {message}")
+        print(f"Approve:  ai git finish --task {message} --agent {args.agent}, then ai task done {message} --agent {args.agent}")
+        print(f"Reject:   ai task request-changes {message} --agent {args.agent} --reason \"...\"")
+        return 0
+    print("Nothing is waiting for review.", file=sys.stderr)
+    return 1
+
+
 def cmd_task_next(args) -> int:
+    if getattr(args, "review", False):
+        return _next_review(args)
     ready, waiting = lifecycle.ready_and_waiting()
     for task in ready:
-        ok, message = lifecycle.claim_task(task["_path"], args.agent)
+        ok, message = _claim(task["_path"], args.agent)
         if not ok:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
@@ -172,7 +236,7 @@ def cmd_task_next(args) -> int:
         if args.json:
             print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
             return 0
-        print(f"Claimed {message} - {meta.get('title')}")
+        print(f"Task: {meta.get('title')}")
         if meta.get("spec"):
             print(f"Spec: {meta.get('spec')}")
         print(f"Read it: ai task show {message}")
@@ -197,6 +261,7 @@ def cmd_task_release(args) -> int:
     meta, _ = store.parse_task(path)
     task_id = str(meta.get("id"))
     resource = f"task-{task_id}"
+    lifecycle.release_task_locks(meta, args.agent if not args.force else None)
     try:
         with workspace_state_guard():
             current_path = store.find_task(task_id)
@@ -228,10 +293,44 @@ def cmd_task_release(args) -> int:
     return result
 
 
+def _auto_verify(path: str, agent: str) -> str | None:
+    """Run the project checks for the task when verification is required and not yet green.
+
+    `ai task review` is the single delivery command: it verifies first, so the
+    worker never has to remember a separate `ai check` step.
+    """
+    if not gates.check_required() or not settings.configured_checks():
+        return None
+    meta, _ = store.parse_task(path)
+    if meta.get("owner") != agent or meta.get("status") != "in_progress":
+        return None  # the normal review checks will explain
+    task_id = str(meta.get("id"))
+    head = repo.git_state().get("head")
+    if evidence.task_green(task_id, head)[0]:
+        return None
+    print(f"Running the project checks for task {task_id} before review...", file=sys.stderr)
+    results: list[dict] = []
+    problems = health.run_commands(False, results)
+    ok = not any(item.level == "error" for item in problems)
+    evidence.record_task_check(
+        task_id, agent, ok, head=head, checks=results, strict=False, ran_commands=True, fast=False,
+    )
+    if not ok:
+        return (
+            f"Task {task_id} cannot enter review: the project checks failed. Fix them, then run "
+            f"`ai task review {task_id} --agent {agent}` again."
+        )
+    return None
+
+
 def cmd_task_review(args) -> int:
     path = store.find_task(args.task_id)
     if not path or os.path.dirname(path) != ACTIVE_DIR:
         print(f"No active task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    auto_error = _auto_verify(path, args.agent)
+    if auto_error:
+        print(auto_error, file=sys.stderr)
         return 1
     try:
         with workspace_state_guard():
@@ -269,8 +368,11 @@ def cmd_task_review(args) -> int:
         print(f"Cannot submit task {args.task_id} for review: {exc}.", file=sys.stderr)
         return 1
     append_event("task_reviewed", task=task_id, agent=args.agent)
-    print(f"Task {task_id} is ready for independent review. Release it before reviewer takeover.")
+    lifecycle.release_task_locks(meta, args.agent)
+    print(f"Task {task_id} is delivered for review. Release it before reviewer takeover: ai task release {task_id} --agent {args.agent}")
     print(f"Reviewer next: ai git finish --task {task_id} --agent <reviewer>, then ai task done {task_id} --agent <reviewer>")
+    if not gates.workflow_config()["autoContinue"]:
+        print("STOP: report what you delivered and wait for the user before starting another task.")
     return 0
 
 
@@ -406,6 +508,7 @@ def cmd_task_done(args) -> int:
     target = os.path.join(DONE_DIR, os.path.basename(path))
     os.replace(path, target)
     release_lock(resource, force=True)
+    lifecycle.release_task_locks(meta, None)
     marker = ckpt.handoff_marker(task_id)
     if os.path.exists(marker):
         try:
@@ -413,7 +516,10 @@ def cmd_task_done(args) -> int:
         except OSError:
             pass
     board.write_board(store.load_tasks())
-    append_event("task_done", task=task_id, agent=args.agent)
+    append_event(
+        "task_done", task=task_id, agent=args.agent, forced=True if args.force else None,
+        submitted_by=meta.get("submitted_by"),
+    )
     print(f"Done: {os.path.relpath(target, PROJECT)}")
     return 0
 
@@ -567,6 +673,7 @@ def register(sub) -> None:
 
     task_next = task_sub.add_parser("next", help="atomically claim the highest-priority ready task")
     task_next.add_argument("--agent", required=True)
+    task_next.add_argument("--review", action="store_true", help="reviewer: claim the oldest task waiting for review")
     task_next.add_argument("--json", action="store_true")
     task_next.set_defaults(func=cmd_task_next)
 

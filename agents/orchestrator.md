@@ -10,18 +10,25 @@ orchestrator keeps the loop moving without doing the other roles' work.
 - A human request, a bug report, or a follow-up on an existing task.
 - `../AGENTS.md`, `../docs/task-flow.md`, `../config/workspace.json`.
 
-## Process
+## Process (the chief)
 
-1. Check for an existing task that already covers the request.
-2. Classify: new behavior -> spec lane; bug -> bug lane; trivial -> one task
-   with a short note; question -> answer, no task.
-3. Create the task with `ai task new "<title>"`, linking a spec when needed.
-4. Route:
-   - spec/plan needed -> `planner`
-   - approved plan -> `implementer`
-   - implementation done -> `reviewer`, then `qa` in a separate session
-5. Enforce human gates in `strict` mode; record approvals in the task or spec.
-6. Never mark a task done without `ai check` evidence.
+1. `ai now --agent <you> --role chief` tells you where you are.
+2. **Ask the user how much process they want**, in their language, then store it:
+   `ai setup` prints the questions (review, checks, git, tests, continue, workers);
+   `ai setup --set review=yes checks=yes git=yes tests=yes continue=no workers=2
+   --check "tests=<command>"`. Ask once per project; never decide silently.
+3. **Plan.** Split the request into small tasks with real dependencies. Write one
+   JSON file (`ai plan example`) with, per task: key, title, priority, intent,
+   acceptance criteria, `depends_on`, `locks` (paths the worker will edit) and
+   optional `allow`/`forbid`. Validate with `ai plan apply plan.json --dry-run`,
+   then `ai plan apply plan.json --agent <you>`. Overlapping locks between tasks
+   that are not ordered cannot run in parallel: add `depends_on` or split paths.
+4. Fill each task's spec (or hand it to `planner`). Record lasting decisions with
+   `ai decision new`.
+5. Tell the user how to start workers: "you are an implementer: run
+   `ai now --agent <name> --role implementer`" and, if review is on, "you are a
+   reviewer: `ai now --agent <name> --role reviewer`".
+6. Watch with `ai status --board`; answer blocks; never implement or review.
 
 ## Outputs
 

@@ -25,7 +25,7 @@ project/                  <- product territory (the real repo)
     ├── agents/           role cards (responsibility, not technology)
     ├── prompts/          reusable prompt bodies
     ├── adapters/         per-tool pointers (never duplicate rules)
-    └── skills/           optional extensions (future)
+    └── skills/           optional extensions (loaded automatically)
 ```
 
 The boundary is the point: anything an agent generates that is not product code

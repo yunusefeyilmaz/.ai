@@ -77,22 +77,22 @@ class EvidenceTest(WorkspaceCase):
         self.assertEqual(refused.returncode, 1)
         self.assertIn("failed", refused.stderr)
 
-    def test_evidence_goes_stale_when_head_moves(self) -> None:
+    def test_evidence_goes_stale_when_head_moves_and_review_reverifies(self) -> None:
         workspace = self.make_workspace()
         self.configure_check(workspace)
         run(workspace, "task", "new", "Stale")
-        run(workspace, "task", "claim", "0001", "--agent", "alice")
         run(workspace, "git", "setup", stdin="y\n")
-        run(workspace, "git", "start", "--task", "0001", "--agent", "alice", "--type", "feature")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")  # also starts the task branch
+        run(workspace, "checkpoint", "0001", "--agent", "alice", "--next", "finish")
         self.assertEqual(run(workspace, "check", "--task", "0001", "--agent", "alice").returncode, 0)
         (workspace / "late.txt").write_text("new work\n", encoding="utf-8")
         git(workspace, "add", "late.txt")
         git(workspace, "commit", "-m", "late change")
-        refused = run(workspace, "task", "review", "0001", "--agent", "alice")
-        self.assertEqual(refused.returncode, 1)
-        self.assertIn("code changed since", refused.stderr)
-        self.assertEqual(run(workspace, "check", "--task", "0001", "--agent", "alice").returncode, 0)
-        self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        self.assertIn("STALE", run(workspace, "resume", "0001").stdout)
+        # review never trusts old evidence: it re-runs the checks on the new HEAD
+        review = run(workspace, "task", "review", "0001", "--agent", "alice")
+        self.assertEqual(review.returncode, 0, review.stderr)
+        self.assertIn("Running the project checks", review.stderr)
 
     def test_resume_reports_verification_state(self) -> None:
         workspace = self.make_workspace(git_repo=False)

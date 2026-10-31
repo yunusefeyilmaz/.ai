@@ -20,8 +20,9 @@ def _task_line(task: dict) -> str:
 
 
 def cmd_now(args) -> int:
-    data = overview.build(args.agent)
+    data = overview.build(args.agent, role=args.role)
     if args.json:
+        data["schema"] = 1  # contract version of this payload
         print(json.dumps(data, indent=2, default=str))
         return 0
     git = data["git"]
@@ -34,7 +35,7 @@ def cmd_now(args) -> int:
     for task in data["mine"]:
         lines.append(f"YOU   {_task_line(task)}")
     rec = data["recommended"]
-    lines.append(f"NEXT  {rec['cmd']}")
+    lines.append(f"NEXT  {rec['cmd'] or '(nothing to run)'}")
     lines.append(f"WHY   {rec['why']}")
     for extra in rec.get("extra", []):
         lines.append(f"ALSO  {extra}")
@@ -58,5 +59,7 @@ def cmd_now(args) -> int:
 def register(sub) -> None:
     now = sub.add_parser("now", help="compact state + the single next required command")
     now.add_argument("--agent", default=None, help="your agent name (personalizes NEXT)")
+    now.add_argument("--role", default=None, choices=["chief", "implementer", "reviewer", "orchestrator", "planner", "qa"],
+                     help="the role you were given; overrides the team table")
     now.add_argument("--json", action="store_true")
     now.set_defaults(func=cmd_now)

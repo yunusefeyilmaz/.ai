@@ -19,7 +19,7 @@ lib/                                   scripts            data they manage (outs
 ├── decisions/  adr                                       docs/decisions/
 ├── cmd/        one file per command group                -
 └── tests/      stdlib unittest, black-box via ai.py      -
-skills/ (outside lib)  optional extensions, same register(sub) contract
+skills/ (outside lib)  optional extensions, same register(sub) contract (auto-loaded)
 ```
 
 ## Layers (imports go downward only)

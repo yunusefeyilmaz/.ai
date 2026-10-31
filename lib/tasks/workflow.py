@@ -7,11 +7,12 @@ future skills all give the same answer. It never mutates anything.
 from __future__ import annotations
 
 from lib.runtime import checkpoints as ckpt
+from lib.config.settings import preference
 from lib.git import repo
 from lib.runtime import evidence
 
 
-def next_action(task: dict, agent: str | None, git: dict, git_ready: bool) -> dict:
+def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_on: bool = True) -> dict:
     """Return {"cmd": str, "why": str, "extra": [str]} for the task's current state."""
     task_id = str(task.get("id"))
     status = str(task.get("status"))
@@ -51,19 +52,19 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool) -> di
         }
 
     # in_progress ---------------------------------------------------------
-    if not git_ready:
+    if git_on and not git_ready:
         return {"cmd": "ai git setup", "why": "Gitflow base is missing (skip only if the user said no Git)", "extra": extra}
     branch = task.get("branch")
-    if not branch or git.get("branch") != branch:
+    if git_on and (not branch or git.get("branch") != branch):
         return {
             "cmd": f"ai git start --task {task_id} --agent {a} --type feature",
             "why": "work on the task branch, never on develop/master",
             "extra": extra,
         }
     age = ckpt.checkpoint_age_minutes(task_id)
-    if age is None or age > 30:
+    if age is None or age > preference("handoff.warnAfterMinutes", 30):
         extra.append(f'ai checkpoint {task_id} --agent {a} --next "<step>"   # {"none yet" if age is None else f"{int(age)}m old"}')
-    dirty = [p for p in (git.get("dirty") or []) if not repo.is_workspace_ledger_path(p) and not p.startswith(".ai/")]
+    dirty = [] if not git_on else [p for p in (git.get("dirty") or []) if not repo.is_workspace_ledger_path(p) and not p.startswith(".ai/")]
     if dirty:
         return {
             "cmd": f'ai git verify --strict && ai git commit --task {task_id} --agent {a} --type feat --message "<subject>"',

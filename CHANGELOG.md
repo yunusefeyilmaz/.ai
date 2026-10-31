@@ -54,6 +54,28 @@ All notable changes to this workspace are documented here.
   everything allowed.
 - A reviewer claiming a task in `review` no longer flips it back to `in_progress`.
 
+- **Chief flow.** `ai setup` stores the user's choices in `config/workspace.json`
+  (review, checks, git, tests, continue, workers; `--check NAME=COMMAND`,
+  `--defaults`). `ai plan apply plan.json` creates many linked tasks at once
+  (dependencies, `locks`, scope, intent, acceptance), validating cycles and
+  unknown keys first and warning about overlapping locks between unordered tasks.
+  `ai now` on a new project says `ai setup`, then `ai plan apply`.
+- **One-command worker.** `ai task claim|next` also takes the task's declared
+  file locks (all or nothing) and, when Git is enabled, opens the task branch.
+  `ai task review` runs the project checks itself when verification is required,
+  records the evidence, frees the file locks and prints `STOP` unless
+  `workflow.autoContinue` is on (the worker waits for the user).
+- **Reviewer flow.** `ai task next --review` claims the oldest task waiting for
+  review (never the reviewer's own); `ai now --role implementer|reviewer|chief`
+  tailors the recommendation.
+- Required verification with no configured project checks is now a hard error at
+  review (not a free pass). `git.enabled=false` turns the Git steps off.
+- Forced lock takeovers are recorded as `lock_forced` events; forced `done`
+  records `forced` and `submitted_by` in the event log and the task history.
+- `config/` and `docs/decisions/` no longer count as product changes when
+  starting a task branch. Checkpoint age and `now --json` (`schema: 1`) read
+  their values from config / carry a schema version.
+
 ### Fixed
 
 - `ai check` no longer runs the workspace's own test suite. The shipped

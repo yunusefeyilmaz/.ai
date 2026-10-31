@@ -10,6 +10,8 @@ import sys
 
 from lib.core.paths import (
     BOARD_PATH,
+    CONFIG_DIR,
+    DECISIONS_DIR,
     LOCKS_DIR,
     PROJECT,
     SPECS_DIR,
@@ -145,12 +147,12 @@ def git_commit_id(revision: str) -> str | None:
 
 
 def is_workspace_ledger_path(path: str) -> bool:
-    """True for tasks/ and specs/ files: coordination state, not product code."""
+    """True for tasks/, specs/, config/ and decisions: coordination state, not product code."""
     try:
         absolute = os.path.realpath(os.path.join(PROJECT, path))
     except OSError:
         return False
-    for folder in (TASKS_DIR, SPECS_DIR):
+    for folder in (TASKS_DIR, SPECS_DIR, CONFIG_DIR, DECISIONS_DIR):
         root = os.path.realpath(folder)
         try:
             if os.path.commonpath([absolute, root]) == root:

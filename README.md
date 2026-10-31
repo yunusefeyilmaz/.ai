@@ -46,8 +46,9 @@ those paths and `.ai/` to the host project's `.gitignore`. It creates
 locally. `adopt --check` verifies local pointers and ignore rules;
 `adopt --print` emits a bootstrap prompt for tools that cannot read files.
 
-Python is optional. Without it, the same protocol is followed by editing the
-Markdown and JSON files directly.
+The CLI needs Python 3.8+ (stdlib only). The protocol itself is plain Markdown
+and JSON, so an agent without Python can still follow it by editing the files
+directly (see `docs/task-flow.md`); the CLI is the fast, race-safe path.
 
 ## A short walkthrough
 
@@ -119,7 +120,7 @@ your-project/
     ├── agents/          role cards
     ├── prompts/         reusable prompt bodies
     ├── adapters/        per-tool pointers
-    └── skills/          optional extensions (future)
+    └── skills/          optional extensions (loaded automatically)
 ```
 
 The split matters: `.ai/` is agent territory, the rest is product territory.

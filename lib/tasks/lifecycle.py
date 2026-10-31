@@ -35,6 +35,7 @@ from lib.specs import spec as spec_lib
 from lib.config import roles
 from lib.tasks import board
 from lib.tasks import history
+from lib.tasks import scope as task_scope
 from lib.tasks import store
 
 
@@ -82,6 +83,9 @@ def create_task(
     scope_allowed: str | None = None,
     scope_forbidden: str | None = None,
     actor: str | None = None,
+    locks: str | None = None,
+    intent: str | None = None,
+    acceptance: list[str] | None = None,
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
@@ -106,10 +110,12 @@ def create_task(
             "depends_on": depends_on,
             "scope_allowed": scope_allowed,
             "scope_forbidden": scope_forbidden,
+            "locks": locks,
             "created": iso(),
             "updated": iso(),
             "lock": None,
         }
+        criteria = "\n".join(f"- [ ] {item}" for item in (acceptance or [])) or "- [ ] "
         plan = (
             f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
             if spec_ref
@@ -119,11 +125,11 @@ def create_task(
 
 ## Intent
 
-<!-- What problem does this solve? Who is it for? -->
+{intent or '<!-- What problem does this solve? Who is it for? -->'}
 
 ## Acceptance criteria
 
-- [ ] 
+{criteria}
 
 ## Plan
 
@@ -142,7 +148,8 @@ def create_task(
 
 
 def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
-    denied = roles.authorize(agent, "task.claim")
+    current = store.parse_task(path)[0].get("status")
+    denied = roles.authorize(agent, "task.done" if current == "review" else "task.claim")
     if denied and not force:
         return False, denied
     if os.path.dirname(path) != ACTIVE_DIR:
@@ -217,3 +224,31 @@ def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
         str(item.get("id")),
     ))
     return ready, waiting
+
+
+def file_locks(meta: dict) -> list[str]:
+    """File resources a task declared it will edit (acquired on claim)."""
+    return task_scope.split_globs(meta.get("locks"))
+
+
+def acquire_task_locks(meta: dict, agent: str) -> tuple[bool, str]:
+    """Lock every declared resource for `agent`; all or nothing."""
+    task_id = str(meta.get("id"))
+    taken: list[str] = []
+    for resource in file_locks(meta):
+        result = acquire_lock(resource, agent=agent, task=task_id)
+        if not result["ok"]:
+            for done in taken:
+                release_lock(done, agent=agent, quiet=True)
+            holder = result.get("holder") or {}
+            return False, (
+                f"Resource '{resource}' is locked by {holder.get('agent') or '?'} "
+                f"(task {holder.get('task') or '-'}); task {task_id} stays unclaimed by file locks."
+            )
+        taken.append(resource)
+    return True, ", ".join(taken)
+
+
+def release_task_locks(meta: dict, agent: str | None) -> None:
+    for resource in file_locks(meta):
+        release_lock(resource, agent=agent, force=agent is None, quiet=True)

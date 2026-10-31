@@ -557,7 +557,7 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | `templates/git/` | Commit and PR templates |
 | `docs/` | Flow, concurrency, orchestration, recovery, hygiene, `decisions/` |
 | `agents/`, `prompts/`, `adapters/` | Role cards, prompt bodies, per-tool wiring |
-| `skills/` | Optional extensions (future) |
+| `skills/` | Optional extensions (loaded automatically) |
 
 ## If something looks wrong
 

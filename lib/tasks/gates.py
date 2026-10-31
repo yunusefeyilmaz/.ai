@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 
-from lib.config.settings import load_config
+from lib.config.settings import configured_checks, load_config
 from lib.core.fsio import read_json, safe_name
 from lib.core.paths import LOCKS_DIR
 from lib.git import repo
@@ -38,6 +38,7 @@ def workflow_config() -> dict:
         "mode": str(config.get("mode") or "lite"),
         "requireReview": bool(flow.get("requireReview", True)),
         "requireCheck": flow.get("requireCheck", "strict"),
+        "autoContinue": bool(flow.get("autoContinue", False)),
     }
 
 
@@ -62,6 +63,12 @@ def review_gate(meta: dict, agent: str) -> tuple[str | None, str]:
     proof when there is one, so it can be written into the transition history.
     """
     task_id = str(meta.get("id"))
+    if check_required() and not configured_checks():
+        return (
+            f"Task {task_id} cannot enter review: verification is required but no project checks "
+            'are configured. Add them: `ai setup --check "tests=<command>"` (or choose '
+            "`ai setup --set checks=no` if the user declines verification)."
+        ), ""
     head = repo.git_state().get("head")
     ok, text = evidence.task_green(task_id, head, _claim_started(task_id))
     if check_required() and not ok:
