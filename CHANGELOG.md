@@ -2,6 +2,64 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.8.0] - 2026-10-31
+
+### Added
+
+- **Transition history.** Every state change is a structured line in the task
+  (`<time> | <actor> | <from> -> <to> | <reason> | <proof>`); `ai history <id>`
+  [`--evidence`, `--json`] reads it.
+- **Per-task verification evidence.** `ai check --task <id> --agent <n>` records
+  commands, exit codes, agent and commit in `runtime/state/evidence/<id>.jsonl`.
+  The strict-mode review gate now requires green, full evidence for that task on
+  the current HEAD (new commits make it stale); `ai resume` reports whether
+  recorded evidence is still valid. Replaces the global `last-check` gate.
+- **`changes_requested` status** and `ai task request-changes <id> --agent <r>
+  --reason ...` (reviewer only, never the submitter). The task becomes ready for
+  rework; `ai now` points the producer at it.
+- **Task scope.** `ai task new --allow GLOB --forbid GLOB`; `ai git commit`
+  refuses staged paths outside it and `ai git verify --task <id>` reports them.
+- **Roles.** Optional `team` (agent -> roles) and `roles` in
+  `config/workspace.json` guard `task.new/claim/review/request_changes/done` and
+  `git.finish`; `policy.unknownAgent` is `allow` or `deny`. Default: no table,
+  everything allowed.
+- A reviewer claiming a task in `review` no longer flips it back to `in_progress`.
+
+- **Chief flow.** `ai setup` stores the user's choices in `config/workspace.json`
+  (review, checks, git, tests, continue, workers; `--check NAME=COMMAND`,
+  `--defaults`). `ai plan apply plan.json` creates many linked tasks at once
+  (dependencies, `locks`, scope, intent, acceptance), validating cycles and
+  unknown keys first and warning about overlapping locks between unordered tasks.
+  `ai now` on a new project says `ai setup`, then `ai plan apply`.
+- **One-command worker.** `ai task claim|next` also takes the task's declared
+  file locks (all or nothing) and, when Git is enabled, opens the task branch.
+  `ai task review` runs the project checks itself when verification is required,
+  records the evidence, frees the file locks and prints `STOP` unless
+  `workflow.autoContinue` is on (the worker waits for the user).
+- **Reviewer flow.** `ai task next --review` claims the oldest task waiting for
+  review (never the reviewer's own); `ai now --role implementer|reviewer|chief`
+  tailors the recommendation.
+- Required verification with no configured project checks is now a hard error at
+  review (not a free pass). `git.enabled=false` turns the Git steps off.
+- Forced lock takeovers are recorded as `lock_forced` events; forced `done`
+  records `forced` and `submitted_by` in the event log and the task history.
+- `config/` and `docs/decisions/` no longer count as product changes when
+  starting a task branch. Checkpoint age and `now --json` (`schema: 1`) read
+  their values from config / carry a schema version.
+
+- **Per-task Git worktrees** (`git.isolation = worktree`, set by
+  `ai setup --set workers=N`, N > 1). `ai task claim|next` creates
+  `.ai/worktrees/<branch>/` from `develop`; coordination state stays in the single
+  main workspace. `ai git commit|verify`, `ai check --task`, `ai checkpoint|handoff|resume`
+  and `ai task review` operate in the task's worktree automatically. `ai git finish`
+  verifies there, merges in the main checkout, then removes the worktree and branch.
+  New `ai worktree list|path|prune`; `ai doctor` warns about orphans. The worktrees
+  folder and briefing files are excluded via `info/exclude`, so no checkout is dirtied.
+  A briefing (`AGENTS.md`/`CLAUDE.md`) with the absolute CLI path is written into each
+  worktree.
+- `ai git finish` ignores ledger changes (tasks, specs, config) when checking that
+  the main tree is clean.
+
 ## [0.7.0] - 2026-10-30
 
 ### Changed

@@ -32,7 +32,10 @@ from lib.runtime.leases import (
     release_lock,
 )
 from lib.specs import spec as spec_lib
+from lib.config import roles
 from lib.tasks import board
+from lib.tasks import history
+from lib.tasks import scope as task_scope
 from lib.tasks import store
 
 
@@ -77,6 +80,12 @@ def create_task(
     spec: str | None = None,
     depends_on: str | None = None,
     make_spec: bool = True,
+    scope_allowed: str | None = None,
+    scope_forbidden: str | None = None,
+    actor: str | None = None,
+    locks: str | None = None,
+    intent: str | None = None,
+    acceptance: list[str] | None = None,
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
@@ -99,10 +108,14 @@ def create_task(
             "priority": priority,
             "spec": spec_ref,
             "depends_on": depends_on,
+            "scope_allowed": scope_allowed,
+            "scope_forbidden": scope_forbidden,
+            "locks": locks,
             "created": iso(),
             "updated": iso(),
             "lock": None,
         }
+        criteria = "\n".join(f"- [ ] {item}" for item in (acceptance or [])) or "- [ ] "
         plan = (
             f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
             if spec_ref
@@ -112,11 +125,11 @@ def create_task(
 
 ## Intent
 
-<!-- What problem does this solve? Who is it for? -->
+{intent or '<!-- What problem does this solve? Who is it for? -->'}
 
 ## Acceptance criteria
 
-- [ ] 
+{criteria}
 
 ## Plan
 
@@ -126,7 +139,7 @@ def create_task(
 
 ## Log
 
-- {iso()} created
+{history.line(actor, None, 'todo', 'created')}
 """
         store.write_task(path, meta, body)
         board.write_board(store.load_tasks())
@@ -135,6 +148,10 @@ def create_task(
 
 
 def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    current = store.parse_task(path)[0].get("status")
+    denied = roles.authorize(agent, "task.done" if current == "review" else "task.claim")
+    if denied and not force:
+        return False, denied
     if os.path.dirname(path) != ACTIVE_DIR:
         return False, "This task is already in done/."
     meta, body = store.parse_task(path)
@@ -170,11 +187,13 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     if store.find_task(task_id) != path:
         release_lock(resource, agent=agent, force=True)
         return False, f"Task {task_id} was removed while it was being claimed."
+    previous = meta.get("status")
     meta["owner"] = agent
-    meta["status"] = "in_progress"
+    # A reviewer taking over a task in review keeps it in review.
+    meta["status"] = "review" if previous == "review" else "in_progress"
     meta["updated"] = iso()
     meta["lock"] = resource
-    body = body.rstrip("\n") + f"\n- {iso()} claimed by {agent}\n"
+    body = history.append(body, agent, previous, meta["status"], "claimed")
     store.write_task(path, meta, body)
     board.write_board(store.load_tasks())
     if new_claim:
@@ -189,7 +208,7 @@ def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
     ready = []
     waiting = []
     for task in active:
-        if task.get("status") != "todo":
+        if task.get("status") not in ("todo", "changes_requested"):
             continue
         reasons = store.dependency_blockers(task)
         lock = locks.get(f"task-{task.get('id')}")
@@ -199,5 +218,37 @@ def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
             waiting.append((task, reasons))
         else:
             ready.append(task)
-    ready.sort(key=lambda item: (store.PRIORITY_ORDER.get(str(item.get("priority")), 1), str(item.get("id"))))
+    ready.sort(key=lambda item: (
+        0 if item.get("status") == "changes_requested" else 1,
+        store.PRIORITY_ORDER.get(str(item.get("priority")), 1),
+        str(item.get("id")),
+    ))
     return ready, waiting
+
+
+def file_locks(meta: dict) -> list[str]:
+    """File resources a task declared it will edit (acquired on claim)."""
+    return task_scope.split_globs(meta.get("locks"))
+
+
+def acquire_task_locks(meta: dict, agent: str) -> tuple[bool, str]:
+    """Lock every declared resource for `agent`; all or nothing."""
+    task_id = str(meta.get("id"))
+    taken: list[str] = []
+    for resource in file_locks(meta):
+        result = acquire_lock(resource, agent=agent, task=task_id)
+        if not result["ok"]:
+            for done in taken:
+                release_lock(done, agent=agent, quiet=True)
+            holder = result.get("holder") or {}
+            return False, (
+                f"Resource '{resource}' is locked by {holder.get('agent') or '?'} "
+                f"(task {holder.get('task') or '-'}); task {task_id} stays unclaimed by file locks."
+            )
+        taken.append(resource)
+    return True, ", ".join(taken)
+
+
+def release_task_locks(meta: dict, agent: str | None) -> None:
+    for resource in file_locks(meta):
+        release_lock(resource, agent=agent, force=agent is None, quiet=True)

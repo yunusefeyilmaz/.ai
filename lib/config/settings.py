@@ -40,7 +40,22 @@ def default_config() -> dict:
         "mode": "lite",
         "language": {"documents": "en", "interviews": "en"},
         "agents": ["orchestrator", "planner", "implementer", "reviewer", "qa"],
-        "workflow": {"requireReview": True, "requireCheck": "strict"},
+        "workflow": {"requireReview": True, "requireCheck": "strict", "autoContinue": False},
+        "team": {},
+        "orchestration": {"maxParallel": 3},
+        "git": {
+            "enabled": True,
+            "integrationBranch": "develop",
+            "productionBranch": "master",
+            "branchTypes": ["feature", "fix", "chore", "docs", "refactor", "hotfix"],
+            "commitTemplate": "templates/git/commit-template.txt",
+            "merge": "no-ff",
+            "deleteAfterMerge": True,
+            "isolation": "branch",
+        },
+        "testing": {"writeTests": True},
+        "preferences": {"confirmed": False, "answered": []},
+        "policy": {"unknownAgent": "allow"},
         "locks": {
             "defaultTtlSeconds": 1800,
             "staleAfterSeconds": 3600,
@@ -62,3 +77,29 @@ def default_config() -> dict:
         "security": {"warnTrackedSecrets": True},
         "checks": [],
     }
+
+
+def configured_checks() -> list[dict]:
+    """Project check commands that actually have a command to run."""
+    try:
+        checks = load_config().get("checks") or []
+    except (OSError, ValueError):
+        return []
+    return [c for c in checks if isinstance(c, dict) and c.get("command")]
+
+
+def preference(path: str, default=None):
+    """Read a dotted config value, e.g. preference("git.enabled", True)."""
+    try:
+        node = load_config()
+    except (OSError, ValueError):
+        return default
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return default
+        node = node[part]
+    return node
+
+
+def git_enabled() -> bool:
+    return bool(preference("git.enabled", True))

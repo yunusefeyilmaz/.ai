@@ -39,3 +39,17 @@ session that did not produce it.
 
 Set `status: review` (awaiting triage) or `blocked` with the verdict and the
 first three things to address.
+
+## Reviewer loop
+
+```sh
+ai now --agent <n> --role reviewer        # what is waiting
+ai task next --review --agent <n>         # claims the oldest task waiting for review (never your own)
+ai history <id>                           # what was done, by whom, on which proof
+ai git finish --task <id> --agent <n>     # approve: checks, merge into develop
+ai task done <id> --agent <n>
+# or send it back with concrete findings:
+ai task request-changes <id> --agent <n> --reason "what is missing"
+```
+
+You never review work you produced. After one review, stop and report.

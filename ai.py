@@ -52,6 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except KeyboardInterrupt:
         return 130
+    except BrokenPipeError:  # e.g. `ai ... | head`
+        try:
+            sys.stdout = open(os.devnull, "w")
+        except OSError:
+            pass
+        return 0
 
 
 if __name__ == "__main__":

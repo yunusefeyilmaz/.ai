@@ -11,6 +11,8 @@ from lib.runtime.leases import (
 )
 from lib.git import flow
 from lib.git import repo
+from lib.tasks import scope as task_scope
+from lib.tasks import store
 
 
 def cmd_git(args) -> int:
@@ -39,9 +41,24 @@ def cmd_git(args) -> int:
     if not state.get("repo"):
         print("Not a git repository; nothing to verify.")
         return 0
+    out_of_scope: list[str] = []
+    meta: dict = {}
+    if getattr(args, "task", None):
+        path = store.find_task(args.task)
+        if not path:
+            print(f"No task with id {args.task}.", file=sys.stderr)
+            return 1
+        meta, _ = store.parse_task(path)
+        with repo.in_task(meta):
+            state = repo.git_state()
     uncovered, locks = repo.uncovered_staged(state)
+    if getattr(args, "task", None):
+        out_of_scope = task_scope.violations(
+            meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+        )
     if args.json:
-        print(json.dumps({"staged": state.get("staged", []), "uncovered": uncovered, "locks": locks}, indent=2))
+        print(json.dumps({"staged": state.get("staged", []), "uncovered": uncovered,
+                          "out_of_scope": out_of_scope, "locks": locks}, indent=2))
     else:
         if uncovered:
             print("Staged paths with no held file lock:")
@@ -49,7 +66,13 @@ def cmd_git(args) -> int:
                 print(f"  {path}")
         else:
             print("All staged paths are covered by a held lock.")
-    return 1 if (args.strict and uncovered) else 0
+        if out_of_scope:
+            print(f"Staged paths outside the scope of task {args.task}:")
+            for item in out_of_scope:
+                print(f"  {item}")
+        elif getattr(args, "task", None):
+            print(f"All staged paths are inside the scope of task {args.task}.")
+    return 1 if ((args.strict and uncovered) or out_of_scope) else 0
 
 
 ORDER = 110
@@ -100,5 +123,6 @@ def register(sub) -> None:
     git_end.set_defaults(func=cmd_git)
     git_verify = git_sub.add_parser("verify", help="verify staged paths are covered by a held lock")
     git_verify.add_argument("--strict", action="store_true")
+    git_verify.add_argument("--task", default=None, help="also check staged paths against this task's scope")
     git_verify.add_argument("--json", action="store_true")
     git_verify.set_defaults(func=cmd_git)

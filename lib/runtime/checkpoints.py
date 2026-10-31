@@ -10,7 +10,6 @@ from lib.core.paths import (
     CHECKPOINT_ARCHIVE,
     CHECKPOINT_DIR,
     HANDOFF_DIR,
-    PROJECT,
     ws_prefix,
     ws_rel,
 )
@@ -26,11 +25,12 @@ from lib.core.timeutil import (
 )
 from lib.runtime.dirs import ensure_dirs
 from lib.git import repo
+from lib.runtime import evidence
 from lib.tasks import store
 
 
 def fingerprint_file(relative: str) -> dict | None:
-    path = os.path.join(PROJECT, relative.replace("\\", "/"))
+    path = os.path.join(repo.current_root(), relative.replace("\\", "/"))
     if not os.path.isfile(path):
         return None
     try:
@@ -285,6 +285,7 @@ def current_drift(task_id: str) -> dict:
         "dirty": current.get("dirty", []),
         "commits_since": None,
         "files": {},
+        "evidence": evidence.task_status(task_id, current.get("head")),
     }
     old_head = saved_git.get("head")
     if old_head and current.get("head") and old_head != current["head"]:

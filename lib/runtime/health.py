@@ -36,9 +36,28 @@ from lib.runtime.leases import (
     lock_is_stale,
 )
 from lib.config import adopt as config_adopt
+from lib.config import roles
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
+
+
+def worktree_findings() -> list[Finding]:
+    """Worktrees left behind by finished or discarded tasks."""
+    from lib.git import worktrees
+
+    try:
+        rows = worktrees.listing(store.load_tasks())
+    except OSError:
+        return []
+    return [
+        Finding(
+            "warn",
+            f"worktree {row['name']} has no active task",
+            "remove it with `ai worktree prune`" + (" (it has uncommitted changes; check them first)" if row["dirty"] else ""),
+        )
+        for row in rows if row["orphan"]
+    ]
 
 
 def adapter_findings() -> list[Finding]:
@@ -119,6 +138,14 @@ def collect_checks() -> list[Finding]:
         )
         config = {}
     if config:
+        known_roles = set(roles.role_table(config))
+        for name, entry in (config.get("team") or {}).items():
+            for role in (entry or {}).get("roles") or []:
+                if role not in known_roles:
+                    problems.append(Finding(
+                        "warn", f"agent '{name}' has unknown role '{role}'",
+                        f"define it under `roles` or use one of: {', '.join(sorted(known_roles))}",
+                    ))
         if config.get("mode") not in ("lite", "strict"):
             problems.append(
                 Finding(
@@ -349,6 +376,7 @@ def collect_checks() -> list[Finding]:
                 )
 
     problems.extend(adapter_findings())
+    problems.extend(worktree_findings())
     return problems
 
 
@@ -366,7 +394,8 @@ def report_problems(problems: list[Finding]) -> int:
     return 1 if errors else 0
 
 
-def run_commands(fast_only: bool) -> list[Finding]:
+def run_commands(fast_only: bool, results: list | None = None) -> list[Finding]:
+    """Run configured checks; append {name, command, exit_code} to `results` if given."""
     problems: list[Finding] = []
     config = load_config()
     checks = config.get("checks", [])
@@ -385,7 +414,9 @@ def run_commands(fast_only: bool) -> list[Finding]:
         if not command:
             continue
         print(f"\n$ {command}")
-        result = subprocess.run(command, shell=True, cwd=PROJECT)
+        result = subprocess.run(command, shell=True, cwd=repo.current_root())
+        if results is not None:
+            results.append({"name": name, "command": command, "exit_code": result.returncode})
         if result.returncode != 0:
             problems.append(
                 Finding(

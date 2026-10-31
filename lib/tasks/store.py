@@ -63,7 +63,7 @@ def parse_task(path: str) -> tuple[dict, str]:
 
 
 def write_task(path: str, meta: dict, body: str) -> None:
-    order = ["id", "title", "status", "owner", "priority", "spec", "created", "updated", "lock"]
+    order = ["id", "title", "status", "owner", "priority", "spec", "depends_on", "scope_allowed", "scope_forbidden", "locks", "created", "updated", "lock"]
     keys = [key for key in order if key in meta] + [key for key in meta if key not in order]
     lines = ["---"]
     for key in keys:

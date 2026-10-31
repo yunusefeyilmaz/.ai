@@ -49,3 +49,20 @@ Leave the tree cleaner than you found it.
 
 Leave the task in `review` with: diff summary, `ai check` result, and any residual
 risk the reviewer should look at first.
+
+## Worker loop (the `ai` library does the bookkeeping)
+
+```sh
+ai now --agent <n> --role implementer     # what to do
+ai task next --agent <n>                  # ONE command: claim, in_progress, the task's file locks, task branch
+# ...implement; commit with `ai git commit`; checkpoint when asked...
+ai task review <id> --agent <n>           # ONE command: runs the project checks, records evidence, delivers, frees locks
+```
+
+If `claim` printed a `worktree:` path, work **only** inside it and call the CLI by the absolute path it
+printed (the worktree has no `.ai/`).
+
+After delivering, **stop**: report what you did and wait for the user, unless the
+project allows `continue` (see `ai setup`). If a reviewer sends the task back,
+`ai now` shows it: reclaim with `ai task claim`, fix what `ai history <id>` lists,
+deliver again.

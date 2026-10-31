@@ -16,10 +16,12 @@ from lib.core.fsio import write_json_atomic
 from lib.core.timeutil import iso
 from lib.runtime.events import append_event
 from lib.runtime.mutex import workspace_state_guard
+from lib.cmd._taskroot import task_scoped
 from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 
+@task_scoped
 def cmd_checkpoint(args) -> int:
     task_id = store.resolve_task_id(args.task_id)
     if not task_id:
@@ -71,6 +73,7 @@ def cmd_checkpoint(args) -> int:
     return 0
 
 
+@task_scoped
 def cmd_handoff(args) -> int:
     task_id = store.resolve_task_id(args.task_id)
     if not task_id:
@@ -126,6 +129,7 @@ def cmd_handoff(args) -> int:
     return 0
 
 
+@task_scoped
 def cmd_resume(args) -> int:
     task_id = store.resolve_task_id(args.task_id)
     if not task_id:
@@ -175,6 +179,13 @@ def cmd_resume(args) -> int:
         if drift.get("commits_since") is not None:
             print(f"  commits since checkpoint: {drift['commits_since']}")
         print(f"  files needing attention: {', '.join(changed) if changed else 'none'}")
+        proof = drift.get("evidence") or {}
+        if proof.get("state") in (None, "none"):
+            print("  verification: none recorded; run `ai check --task <id> --agent <n>` before review")
+        elif proof["state"] == "valid":
+            print(f"  verification: still valid for this HEAD ({proof['summary']})")
+        else:
+            print(f"  verification: {proof['state'].upper()}, do not trust it ({proof['summary']})")
         print()
     print("Resume prompt:")
     print("-" * 60)

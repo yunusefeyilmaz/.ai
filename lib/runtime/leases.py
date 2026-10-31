@@ -27,7 +27,7 @@ from lib.core.timeutil import (
     parse_iso,
 )
 from lib.runtime.dirs import ensure_dirs
-from lib.runtime.events import read_events
+from lib.runtime.events import append_event, read_events
 from lib.runtime.mutex import registry_mutex
 
 
@@ -106,6 +106,7 @@ def acquire_lock(
         "updated_at": iso(),
         "ttl_seconds": ttl,
     }
+    forced: list[dict] = []  # emitted after the registry mutex is released
     try:
         with registry_mutex():
             for name in os.listdir(LOCKS_DIR):
@@ -139,6 +140,12 @@ def acquire_lock(
                         os.remove(other_path)
                     except OSError:
                         pass
+                    # A forced takeover of a live lease must leave a trail.
+                    forced.append(dict(
+                        resource=resource, agent=agent, task=task,
+                        previous_agent=other.get("agent"), previous_task=other.get("task"),
+                        previous_resource=other_resource,
+                    ))
                     continue
                 return {"ok": False, "holder": other, "path": other_path}
             try:
@@ -151,6 +158,9 @@ def acquire_lock(
             return {"ok": True, "lock": payload, "path": path}
     except TimeoutError as exc:
         return {"ok": False, "holder": None, "error": str(exc)}
+    finally:
+        for fields in forced:
+            append_event("lock_forced", **fields)
 
 
 def release_lock(

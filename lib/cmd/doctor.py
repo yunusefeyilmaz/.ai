@@ -15,6 +15,7 @@ from lib.core.findings import Finding
 from lib.runtime import evidence
 from lib.git import repo
 from lib.runtime import health
+from lib.tasks import store
 
 
 def cmd_doctor(args) -> int:
@@ -62,11 +63,37 @@ def cmd_doctor(args) -> int:
     return code
 
 
+def _evidence_task(args) -> str | None:
+    """Task the evidence belongs to: --task, or the agent's only in-progress task."""
+    if getattr(args, "task", None):
+        path = store.find_task(args.task)
+        return str(store.parse_task(path)[0].get("id")) if path else None
+    agent = getattr(args, "agent", None)
+    if not agent:
+        return None
+    mine = [
+        t for t in store.load_tasks()
+        if t["_folder"] == "active" and t.get("owner") == agent and t.get("status") == "in_progress"
+    ]
+    return str(mine[0].get("id")) if len(mine) == 1 else None
+
+
 def cmd_check(args) -> int:
+    task_id = _evidence_task(args)
+    meta: dict = {}
+    if task_id:
+        meta = store.parse_task(store.find_task(task_id))[0]
+    # checks and the recorded HEAD belong to the task's own checkout when it has one
+    with repo.in_task(meta):
+        return _check(args, task_id)
+
+
+def _check(args, task_id) -> int:
     problems = health.collect_checks()
+    results: list[dict] = []
     if not args.no_commands:
         try:
-            problems.extend(health.run_commands(args.fast))
+            problems.extend(health.run_commands(args.fast, results))
         except (OSError, ValueError) as exc:
             problems.append(
                 Finding("error", f"could not run configured checks: {exc}", "fix config/workspace.json")
@@ -79,6 +106,14 @@ def cmd_check(args) -> int:
             code == 0, strict=bool(args.strict), ran_commands=not args.no_commands,
             fast=bool(args.fast), head=repo.git_state().get("head"),
         )
+        if task_id:
+            record = evidence.record_task_check(
+                task_id, getattr(args, "agent", None), code == 0,
+                head=repo.git_state().get("head"), checks=results, strict=bool(args.strict),
+                ran_commands=not args.no_commands, fast=bool(args.fast),
+            )
+            if not args.json:
+                print(f"Evidence recorded for task {task_id}: {evidence.summary(record)}", file=sys.stderr)
     except OSError as exc:  # evidence is best-effort; never mask the check result
         print(f"WARN  could not record the check result: {exc}", file=sys.stderr)
     if args.json:
@@ -106,5 +141,7 @@ def register(sub) -> None:
     check.add_argument("--fast", action="store_true", help="run only fast checks")
     check.add_argument("--no-commands", action="store_true", help="structure/state checks only")
     check.add_argument("--strict", action="store_true", help="treat warnings as failures")
+    check.add_argument("--task", default=None, help="attach the result to this task as verification evidence")
+    check.add_argument("--agent", default=None, help="who runs the check (auto-attaches to your only in-progress task)")
     check.add_argument("--json", action="store_true")
     check.set_defaults(func=cmd_check)

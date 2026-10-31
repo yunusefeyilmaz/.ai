@@ -1,6 +1,7 @@
 # skills
 
-Reserved for optional extensions (data/prompts live here; shared scripts stay in `lib/`). Nothing here is required by the core.
+Optional extensions. Each folder with a `skill.py` that defines `register(sub)` is
+loaded automatically by `ai.py` (data/prompts live here; shared scripts stay in `lib/`). Nothing here is required by the core.
 
 A skill is a folder with a `skill.py`:
 

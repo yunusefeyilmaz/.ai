@@ -15,7 +15,7 @@ import os
 import socket
 import sys
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 HOST = socket.gethostname()
 
 CORE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -73,6 +73,7 @@ SPECS_DONE_DIR = os.path.join(SPECS_DIR, "done")
 SPECS_TEMPLATE = os.path.join(SPECS_DIR, "TEMPLATE.md")
 
 DECISIONS_DIR = os.path.join(WORKSPACE, "docs", "decisions")
+WORKTREES_DIR = os.path.join(WORKSPACE, "worktrees")  # one checkout per task (git.isolation=worktree)
 GIT_TEMPLATES_DIR = os.path.join(WORKSPACE, "templates", "git")
 SKILLS_DIR = os.path.join(WORKSPACE, "skills")
 TESTS_DIR = os.path.join(LIB_DIR, "tests")
@@ -89,6 +90,7 @@ LOGS_DIR = os.path.join(RUNTIME_DIR, "logs")
 COUNTER_PATH = os.path.join(STATE_DIR, "task-counter.json")
 MANIFEST_PATH = os.path.join(ARTIFACTS_DIR, "MANIFEST.json")
 LAST_CHECK_PATH = os.path.join(STATE_DIR, "last-check.json")
+EVIDENCE_DIR = os.path.join(STATE_DIR, "evidence")
 REGISTRY_MUTEX = os.path.join(LOCKS_DIR, ".registry.mutex")
 
 REQUIRED_PATHS = [
@@ -113,7 +115,7 @@ REQUIRED_PATHS = [
     "agents/README.md",
 ]
 
-TASK_STATUSES = {"todo", "in_progress", "review", "blocked", "done"}
+TASK_STATUSES = {"todo", "in_progress", "review", "changes_requested", "blocked", "done"}
 
 SCAN_SKIP = {
     ".ai", ".git", ".github", "node_modules", "vendor", "dist", "build",
