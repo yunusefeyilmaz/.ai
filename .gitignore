@@ -12,3 +12,6 @@ __pycache__/
 *.pyc
 
 # Runtime state is transient (see runtime/.gitignore)
+
+# Task worktrees (git.isolation=worktree) are local checkouts
+/worktrees/

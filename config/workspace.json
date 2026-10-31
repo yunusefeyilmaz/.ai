@@ -39,7 +39,8 @@
     ],
     "commitTemplate": "templates/git/commit-template.txt",
     "merge": "no-ff",
-    "deleteAfterMerge": true
+    "deleteAfterMerge": true,
+    "isolation": "branch"
   },
   "locks": {
     "defaultTtlSeconds": 1800,

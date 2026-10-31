@@ -79,9 +79,18 @@ def _evidence_task(args) -> str | None:
 
 
 def cmd_check(args) -> int:
+    task_id = _evidence_task(args)
+    meta: dict = {}
+    if task_id:
+        meta = store.parse_task(store.find_task(task_id))[0]
+    # checks and the recorded HEAD belong to the task's own checkout when it has one
+    with repo.in_task(meta):
+        return _check(args, task_id)
+
+
+def _check(args, task_id) -> int:
     problems = health.collect_checks()
     results: list[dict] = []
-    task_id = _evidence_task(args)
     if not args.no_commands:
         try:
             problems.extend(health.run_commands(args.fast, results))

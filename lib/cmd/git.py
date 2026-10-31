@@ -41,14 +41,18 @@ def cmd_git(args) -> int:
     if not state.get("repo"):
         print("Not a git repository; nothing to verify.")
         return 0
-    uncovered, locks = repo.uncovered_staged(state)
     out_of_scope: list[str] = []
+    meta: dict = {}
     if getattr(args, "task", None):
         path = store.find_task(args.task)
         if not path:
             print(f"No task with id {args.task}.", file=sys.stderr)
             return 1
         meta, _ = store.parse_task(path)
+        with repo.in_task(meta):
+            state = repo.git_state()
+    uncovered, locks = repo.uncovered_staged(state)
+    if getattr(args, "task", None):
         out_of_scope = task_scope.violations(
             meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
         )

@@ -25,7 +25,8 @@ orchestrator keeps the loop moving without doing the other roles' work.
    that are not ordered cannot run in parallel: add `depends_on` or split paths.
 4. Fill each task's spec (or hand it to `planner`). Record lasting decisions with
    `ai decision new`.
-5. Tell the user how to start workers: "you are an implementer: run
+5. For parallel workers set `workers` above 1 in `ai setup` (each task then gets its own Git worktree).
+   Tell the user how to start workers: "you are an implementer: run
    `ai now --agent <name> --role implementer`" and, if review is on, "you are a
    reviewer: `ai now --agent <name> --role reviewer`".
 6. Watch with `ai status --board`; answer blocks; never implement or review.

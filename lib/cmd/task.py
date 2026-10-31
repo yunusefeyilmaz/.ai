@@ -305,12 +305,13 @@ def _auto_verify(path: str, agent: str) -> str | None:
     if meta.get("owner") != agent or meta.get("status") != "in_progress":
         return None  # the normal review checks will explain
     task_id = str(meta.get("id"))
-    head = repo.git_state().get("head")
-    if evidence.task_green(task_id, head)[0]:
-        return None
-    print(f"Running the project checks for task {task_id} before review...", file=sys.stderr)
-    results: list[dict] = []
-    problems = health.run_commands(False, results)
+    with repo.in_task(meta):  # verify the task's own checkout
+        head = repo.git_state().get("head")
+        if evidence.task_green(task_id, head)[0]:
+            return None
+        print(f"Running the project checks for task {task_id} before review...", file=sys.stderr)
+        results: list[dict] = []
+        problems = health.run_commands(False, results)
     ok = not any(item.level == "error" for item in problems)
     evidence.record_task_check(
         task_id, agent, ok, head=head, checks=results, strict=False, ran_commands=True, fast=False,

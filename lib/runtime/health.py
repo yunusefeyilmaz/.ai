@@ -42,6 +42,24 @@ from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 
+def worktree_findings() -> list[Finding]:
+    """Worktrees left behind by finished or discarded tasks."""
+    from lib.git import worktrees
+
+    try:
+        rows = worktrees.listing(store.load_tasks())
+    except OSError:
+        return []
+    return [
+        Finding(
+            "warn",
+            f"worktree {row['name']} has no active task",
+            "remove it with `ai worktree prune`" + (" (it has uncommitted changes; check them first)" if row["dirty"] else ""),
+        )
+        for row in rows if row["orphan"]
+    ]
+
+
 def adapter_findings() -> list[Finding]:
     """A subfolder install works only when its host points at the workspace."""
     if workspace_shape() != "subfolder":
@@ -358,6 +376,7 @@ def collect_checks() -> list[Finding]:
                 )
 
     problems.extend(adapter_findings())
+    problems.extend(worktree_findings())
     return problems
 
 
@@ -395,7 +414,7 @@ def run_commands(fast_only: bool, results: list | None = None) -> list[Finding]:
         if not command:
             continue
         print(f"\n$ {command}")
-        result = subprocess.run(command, shell=True, cwd=PROJECT)
+        result = subprocess.run(command, shell=True, cwd=repo.current_root())
         if results is not None:
             results.append({"name": name, "command": command, "exit_code": result.returncode})
         if result.returncode != 0:

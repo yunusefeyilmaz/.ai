@@ -10,7 +10,6 @@ from lib.core.paths import (
     CHECKPOINT_ARCHIVE,
     CHECKPOINT_DIR,
     HANDOFF_DIR,
-    PROJECT,
     ws_prefix,
     ws_rel,
 )
@@ -31,7 +30,7 @@ from lib.tasks import store
 
 
 def fingerprint_file(relative: str) -> dict | None:
-    path = os.path.join(PROJECT, relative.replace("\\", "/"))
+    path = os.path.join(repo.current_root(), relative.replace("\\", "/"))
     if not os.path.isfile(path):
         return None
     try:

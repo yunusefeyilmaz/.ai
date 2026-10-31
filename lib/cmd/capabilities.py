@@ -27,6 +27,7 @@ CAPABILITIES = {
         "now": "10-line state + the single next required command; --agent, --json",
         "context": "project memory: open/shipped work, ADRs, recent activity; --limit, --json",
         "decision": "new | list architecture decision records",
+        "worktree": "list | path <task> | prune [--force]: per-task Git worktrees (git.isolation=worktree)",
         "history": "<id> [--evidence] [--json]: transition log (who, when, from -> to, why, proof) and verification evidence",
         "start": "one-command first run: prepare, detect Git, create or claim a task; --agent, --json, --no-demo",
         "adopt": "wire root adapters for every AI tool",

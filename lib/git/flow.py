@@ -17,6 +17,7 @@ from lib.core.timeutil import iso
 from lib.runtime.events import append_event
 from lib.config import roles
 from lib.git import repo
+from lib.git import worktrees
 from lib.tasks import scope as task_scope
 from lib.tasks import board
 from lib.tasks import store
@@ -210,7 +211,8 @@ def cmd_git_start(args) -> int:
     if not state.get("repo"):
         print("Not a git repository.", file=sys.stderr)
         return 1
-    if not repo.git_clean(ignore_ledger=True):
+    isolated = repo.git_config()["isolation"] == "worktree"
+    if not isolated and not repo.git_clean(ignore_ledger=True):
         print(
             "Working tree has product changes. Commit or stash them before "
             "starting a task branch (only tasks/ and specs/ may stay uncommitted).",
@@ -240,20 +242,29 @@ def cmd_git_start(args) -> int:
         print(error, file=sys.stderr)
         return 1
     try:
-        current = repo.git_state().get("branch")
-        if repo.branch_exists(branch):
-            if current != branch:
-                code, _, err = repo.run_git(["checkout", branch])
-                if code != 0:
-                    print(f"Could not switch to {branch}: {err}", file=sys.stderr)
-                    return 1
-            action = "switched to"
-        else:
-            code, _, err = repo.run_git(["checkout", "-b", branch, base])
-            if code != 0:
-                print(f"Could not create {branch}: {err}", file=sys.stderr)
+        worktree_path = None
+        if isolated:
+            made, worktree_path, note = worktrees.create(meta, branch, base)
+            if not made:
+                print(f"Could not create the worktree for {branch}: {note}", file=sys.stderr)
                 return 1
-            action = "created"
+            meta["worktree"] = worktrees.relative(worktree_path)
+            action = f"{note} worktree on"
+        else:
+            current = repo.git_state().get("branch")
+            if repo.branch_exists(branch):
+                if current != branch:
+                    code, _, err = repo.run_git(["checkout", branch])
+                    if code != 0:
+                        print(f"Could not switch to {branch}: {err}", file=sys.stderr)
+                        return 1
+                action = "switched to"
+            else:
+                code, _, err = repo.run_git(["checkout", "-b", branch, base])
+                if code != 0:
+                    print(f"Could not create {branch}: {err}", file=sys.stderr)
+                    return 1
+                action = "created"
         meta["branch"] = branch
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} {action} branch {branch} from {base} by {args.agent}\n"
@@ -262,14 +273,27 @@ def cmd_git_start(args) -> int:
     finally:
         repo.release_git_guard(owned, args.agent)
     if args.json:
-        print(json.dumps({"task": task_id, "branch": branch, "base": base, "action": action}, indent=2))
+        print(json.dumps({"task": task_id, "branch": branch, "base": base, "action": action,
+                          "worktree": worktree_path}, indent=2))
     else:
         print(f"{action.capitalize()} {branch} from {base}.")
-        print(f"Task {task_id} now points at that branch. Commit only files you own.")
+        if worktree_path:
+            print(f"  worktree: {worktree_path}")
+            print("  Edit product files ONLY there (cd into it). Run the workspace CLI by absolute path:")
+            print(f"  {worktrees.cli_command()} now --agent {args.agent}")
+        else:
+            print(f"Task {task_id} now points at that branch. Commit only files you own.")
     return 0
 
 
 def cmd_git_commit(args) -> int:
+    path = store.find_task(args.task)
+    meta = store.parse_task(path)[0] if path else {}
+    with repo.in_task(meta):
+        return _git_commit(args)
+
+
+def _git_commit(args) -> int:
     path = store.find_task(args.task)
     if not path:
         print(f"No task with id {args.task}.", file=sys.stderr)
@@ -379,10 +403,18 @@ def cmd_git_finish(args) -> int:
             file=sys.stderr,
         )
         return 1
-    state = repo.git_state()
-    if state.get("dirty"):
-        print("Working tree is dirty. Commit or stash before merging.", file=sys.stderr)
+    if not repo.git_clean(ignore_ledger=True):
+        print("Working tree has product changes. Commit or stash before merging.", file=sys.stderr)
         return 1
+    worktree = repo.task_root(meta)
+    if worktree:
+        with repo.working_in(worktree):
+            leftover = [p for p in repo.git_state().get("dirty", [])
+                        if p not in worktrees.BRIEFING_FILES]
+        if leftover:
+            print(f"The task worktree has uncommitted changes ({', '.join(leftover[:5])}). "
+                  "The producer must commit them before the merge.", file=sys.stderr)
+            return 1
     if not repo.branch_exists(branch):
         print(f"Task branch '{branch}' does not exist.", file=sys.stderr)
         return 1
@@ -397,14 +429,15 @@ def cmd_git_finish(args) -> int:
         return 1
     try:
         check = subprocess.run(
-            [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict"],
-            cwd=PROJECT,
+            [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict", "--task", task_id]
+            + (["--agent", args.agent] if getattr(args, "agent", None) else []),
+            cwd=worktree or PROJECT,
         )
         if check.returncode != 0:
             print("ai check --strict failed; refusing to merge.", file=sys.stderr)
             return 1
         current = repo.git_state().get("branch")
-        if current != branch:
+        if current != branch and not worktree:
             code, _, err = repo.run_git(["checkout", branch])
             if code != 0:
                 print(f"Could not switch to {branch}: {err}", file=sys.stderr)
@@ -421,6 +454,12 @@ def cmd_git_finish(args) -> int:
             return 1
         _, merged_head, _ = repo.run_git(["rev-parse", "--short", "HEAD"])
         deleted = False
+        if worktree:
+            freed, note = worktrees.remove(worktree, force=True)  # only briefing files are left
+            if not freed:
+                print(f"WARN  merged, but could not remove the worktree: {note}", file=sys.stderr)
+            else:
+                meta["worktree"] = None
         if config["deleteAfterMerge"]:
             code, _, err = repo.run_git(["branch", "-d", branch])
             if code == 0:

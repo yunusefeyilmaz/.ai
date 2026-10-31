@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import os
 import re
 import subprocess
@@ -38,13 +39,46 @@ from lib.runtime.leases import (
 )
 
 
+_ROOT: list[str | None] = [None]  # active override of the git working directory
+
+
+def current_root() -> str:
+    """Directory git commands run in: the main project, or a task's worktree."""
+    return _ROOT[0] or PROJECT
+
+
+@contextlib.contextmanager
+def working_in(path: str | None):
+    """Run the enclosed git/check operations inside `path` (no-op when None)."""
+    previous = _ROOT[0]
+    _ROOT[0] = path or previous
+    try:
+        yield
+    finally:
+        _ROOT[0] = previous
+
+
+def task_root(meta: dict) -> str | None:
+    """Absolute path of the task's worktree when it has one and it exists."""
+    rel = meta.get("worktree")
+    if not rel:
+        return None
+    absolute = os.path.join(WORKSPACE, str(rel))
+    return absolute if os.path.isdir(absolute) else None
+
+
+def in_task(meta: dict):
+    """Context manager: operate in the task's worktree if it has one."""
+    return working_in(task_root(meta))
+
+
 def run_git(
     args: list[str], cwd: str | None = None, input_text: str | None = None
 ) -> tuple[int, str, str]:
     try:
         result = subprocess.run(
             ["git"] + args,
-            cwd=cwd or PROJECT,
+            cwd=cwd or current_root(),
             input=input_text,
             capture_output=True,
             text=True,
@@ -61,7 +95,7 @@ def run_git_stdout(args: list[str]) -> str:
     try:
         result = subprocess.run(
             ["git"] + args,
-            cwd=PROJECT,
+            cwd=current_root(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -120,6 +154,7 @@ def git_config() -> dict:
         "branchTypes": [str(item) for item in branch_types],
         "template": str(config.get("commitTemplate") or "templates/git/commit-template.txt"),
         "merge": str(config.get("merge") or "no-ff"),
+        "isolation": "worktree" if config.get("isolation") == "worktree" else "branch",
         "deleteAfterMerge": bool(config.get("deleteAfterMerge", True)),
     }
 

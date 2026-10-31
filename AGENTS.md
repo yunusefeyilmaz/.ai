@@ -43,6 +43,12 @@ Read task and spec files only when `NEXT` or the task asks you to.
 approves its own work. `--force` is an operator escape hatch; use it only when
 the human says so.
 
+## Parallel workers (worktrees)
+
+If `ai task claim|next` prints `worktree: <path>`, that directory is **your** checkout: `cd` into it and edit
+files only there. It has no `.ai/`; run the shared CLI by the absolute path it printed. `ai git commit`,
+`ai check --task`, `ai task review` find your worktree on their own. Never edit the main checkout.
+
 ## Reading a task
 
 `ai history <id>` shows who moved it, when, why and on which proof; `ai resume <id>` says whether
@@ -95,7 +101,7 @@ the recorded verification is still valid. A task may declare `scope_allowed`/`sc
 
 ```sh
 ai now [--agent <n>] [--role r] ai context [--limit N]         ai doctor        ai check
-ai setup [--set k=v ...]        ai plan apply|example
+ai setup [--set k=v ...]        ai plan apply|example         ai worktree list|path|prune
 ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock
 ai lock acquire|release|heartbeat|status
 ai checkpoint|handoff <id> --agent <n>   ai resume <id>   ai recover [--apply]

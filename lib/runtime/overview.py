@@ -72,7 +72,11 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
 
     if mine:
         task = sorted(mine, key=lambda t: str(t.get("updated") or ""), reverse=True)[0]
-        recommended = {"task": task.get("id"), **workflow.next_action(task, agent, state, git_ready, git_on)}
+        with repo.in_task(task):
+            task_state = repo.git_state()
+        recommended = {"task": task.get("id"), **workflow.next_action(task, agent, task_state, git_ready, git_on)}
+        if repo.task_root(task):
+            recommended.setdefault("extra", []).insert(0, f"cd {repo.task_root(task)}   # your isolated worktree; edit files only there")
     elif handoffs and role != "chief":
         h = handoffs[0]
         recommended = {"task": h.get("task"), "cmd": f"ai resume {h.get('task')}", "why": f"handoff from {h.get('agent')}: {h.get('reason')}", "extra": []}

@@ -7,9 +7,10 @@ future skills all give the same answer. It never mutates anything.
 from __future__ import annotations
 
 from lib.runtime import checkpoints as ckpt
-from lib.config.settings import preference
+from lib.config.settings import configured_checks, preference
 from lib.git import repo
 from lib.runtime import evidence
+from lib.tasks import gates
 
 
 def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_on: bool = True) -> dict:
@@ -71,9 +72,13 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
             "why": f"{len(dirty)} uncommitted product path(s); stage your owned paths first",
             "extra": extra,
         }
-    ok, reason = evidence.task_green(task_id, git.get("head"))
-    if not ok:
-        return {"cmd": f"ai check --task {task_id} --agent {a}", "why": f"review needs fresh evidence ({reason})", "extra": extra}
+    if gates.check_required():
+        if not configured_checks():
+            return {"cmd": 'ai setup --check "tests=<command>"', "why": "verification is required but no project checks are configured", "extra": extra}
+        ok, reason = evidence.task_green(task_id, git.get("head"))
+        if not ok:
+            # `ai task review` would run the checks itself; running them first shows failures early
+            return {"cmd": f"ai check --task {task_id} --agent {a}", "why": f"review needs fresh evidence ({reason})", "extra": extra}
     return {
         "cmd": f"ai task review {task_id} --agent {a}",
         "why": "work is committed and checked; submit for independent review",

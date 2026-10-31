@@ -29,7 +29,7 @@ QUESTIONS = [
     ("continue", "workflow.autoContinue", "bool", False,
      "After delivering a task, may a worker start the next one without asking you?"),
     ("workers", "orchestration.maxParallel", "int", 1,
-     "How many workers may run at the same time?"),
+     "How many workers may run at the same time? (more than 1 gives every task its own Git worktree)"),
 ]
 REQUIRED_KEYS = ("review", "checks", "git", "tests")
 _TRUE, _FALSE = {"yes", "y", "true", "1", "on"}, {"no", "n", "false", "0", "off"}
@@ -99,6 +99,9 @@ def apply(answers: dict[str, str], checks: list[str] | None = None) -> dict:
         dotted, kind = known[key]
         _set(config, dotted, parse_value(kind, raw))
         answered.add(key)
+    if "workers" in answers:
+        # parallel workers cannot share one working directory: give each task its own checkout
+        _set(config, "git.isolation", "worktree" if parse_value("int", answers["workers"]) > 1 else "branch")
     for item in checks or []:
         name, sep, command = item.partition("=")
         if not sep or not name.strip() or not command.strip():

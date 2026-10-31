@@ -76,6 +76,19 @@ All notable changes to this workspace are documented here.
   starting a task branch. Checkpoint age and `now --json` (`schema: 1`) read
   their values from config / carry a schema version.
 
+- **Per-task Git worktrees** (`git.isolation = worktree`, set by
+  `ai setup --set workers=N`, N > 1). `ai task claim|next` creates
+  `.ai/worktrees/<branch>/` from `develop`; coordination state stays in the single
+  main workspace. `ai git commit|verify`, `ai check --task`, `ai checkpoint|handoff|resume`
+  and `ai task review` operate in the task's worktree automatically. `ai git finish`
+  verifies there, merges in the main checkout, then removes the worktree and branch.
+  New `ai worktree list|path|prune`; `ai doctor` warns about orphans. The worktrees
+  folder and briefing files are excluded via `info/exclude`, so no checkout is dirtied.
+  A briefing (`AGENTS.md`/`CLAUDE.md`) with the absolute CLI path is written into each
+  worktree.
+- `ai git finish` ignores ledger changes (tasks, specs, config) when checking that
+  the main tree is clean.
+
 ### Fixed
 
 - `ai check` no longer runs the workspace's own test suite. The shipped

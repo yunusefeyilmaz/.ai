@@ -73,6 +73,7 @@ SPECS_DONE_DIR = os.path.join(SPECS_DIR, "done")
 SPECS_TEMPLATE = os.path.join(SPECS_DIR, "TEMPLATE.md")
 
 DECISIONS_DIR = os.path.join(WORKSPACE, "docs", "decisions")
+WORKTREES_DIR = os.path.join(WORKSPACE, "worktrees")  # one checkout per task (git.isolation=worktree)
 GIT_TEMPLATES_DIR = os.path.join(WORKSPACE, "templates", "git")
 SKILLS_DIR = os.path.join(WORKSPACE, "skills")
 TESTS_DIR = os.path.join(LIB_DIR, "tests")

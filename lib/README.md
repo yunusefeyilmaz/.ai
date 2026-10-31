@@ -15,7 +15,7 @@ lib/                                   scripts            data they manage (outs
 ├── tasks/      store · lifecycle · board · gates         tasks/{active,done}, tasks/BOARD.md
 │               · workflow · history · scope · discard · links
 ├── specs/      spec                                      specs/{active,done}
-├── git/        repo · flow                               templates/git/
+├── git/        repo · flow · worktrees                   templates/git/, worktrees/ (per task)
 ├── decisions/  adr                                       docs/decisions/
 ├── cmd/        one file per command group                -
 └── tests/      stdlib unittest, black-box via ai.py      -

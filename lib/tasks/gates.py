@@ -69,7 +69,8 @@ def review_gate(meta: dict, agent: str) -> tuple[str | None, str]:
             'are configured. Add them: `ai setup --check "tests=<command>"` (or choose '
             "`ai setup --set checks=no` if the user declines verification)."
         ), ""
-    head = repo.git_state().get("head")
+    with repo.in_task(meta):
+        head = repo.git_state().get("head")
     ok, text = evidence.task_green(task_id, head, _claim_started(task_id))
     if check_required() and not ok:
         return (

@@ -132,13 +132,52 @@ fix/0012-empty-vat-id
 hotfix/0015-login-500
 ```
 
-The slug is derived from the task title. Branch names are local to the clone;
-with several agents, use git worktrees so they do not share a checkout:
+The slug is derived from the task title. Branch names are local to the clone.
 
-```sh
-git worktree add ../proj-0007 -b feature/0007-csv-export develop
-git worktree add ../proj-0008 -b feature/0008-import develop
+## Worktrees (parallel workers)
+
+Two workers cannot share one checkout: a branch switch changes every file under
+both. With `git.isolation = worktree` (set automatically by
+`ai setup --set workers=N`, N > 1) each claimed task gets its own checkout:
+
 ```
+project/
+├── .ai/                      <- the single shared workspace (tasks, locks, runtime, config)
+│   ├── ai.py
+│   └── worktrees/
+│       ├── feature-0001-login/      <- task 0001, branch feature/0001-login
+│       └── feature-0002-payment/    <- task 0002, branch feature/0002-payment
+└── src/ ...                  <- main checkout: develop, never edited by workers
+```
+
+| Data | Where |
+|------|-------|
+| Task definitions, ownership, locks, checkpoints, evidence | the one main `.ai/` |
+| Product files being edited, Git index and branch | the task's worktree |
+| Project checks (`ai check`, `ai task review`) | run inside the task's worktree |
+
+How it works:
+
+- `ai task claim|next` (or `ai git start`) runs `git worktree add` from `develop`,
+  records `worktree:` in the task and prints the path. The main checkout is not
+  touched, so it does not need to be clean.
+- A worktree has no `.ai/` of its own (the workspace is git-ignored in the host).
+  The worker runs the shared CLI by absolute path (printed at claim time, also in
+  the `AGENTS.md`/`CLAUDE.md` briefing the workspace drops into the worktree).
+  `ai git commit|verify`, `ai check --task`, `ai checkpoint|resume` and
+  `ai task review` find the task's worktree themselves, whatever the caller's
+  directory.
+- The worktrees folder and the briefing files are added to `info/exclude`, so
+  neither the main checkout nor the worktree shows them in `git status`.
+- `ai git finish` (the reviewer) requires a committed worktree, runs the checks
+  there, merges the branch into `develop` in the main checkout, then removes the
+  worktree and the branch.
+- `ai worktree list` shows each worktree and its task; `ai worktree prune`
+  removes those of finished or discarded tasks (it keeps any with uncommitted
+  changes unless `--force`); `ai doctor` warns about orphans.
+- File locks and scope still apply: two workers cannot lock overlapping paths, so
+  they rarely conflict at merge time. When they do, the second `ai git finish`
+  fails safely (merge aborted); the producer rebases and the reviewer retries.
 
 ## Commit rules
 

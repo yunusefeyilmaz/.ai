@@ -51,6 +51,7 @@ def default_config() -> dict:
             "commitTemplate": "templates/git/commit-template.txt",
             "merge": "no-ff",
             "deleteAfterMerge": True,
+            "isolation": "branch",
         },
         "testing": {"writeTests": True},
         "preferences": {"confirmed": False, "answered": []},

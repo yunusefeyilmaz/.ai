@@ -43,17 +43,13 @@ task or a review file; it does not edit the code.
 
 ### 3. Parallel implementers
 
-Only for genuinely independent tasks. Each agent needs a separate working tree:
-
-```sh
-git worktree add ../proj-a -b task/0007-export
-git worktree add ../proj-b -b task/0008-import
-```
-
-Each worktree has its own `.ai/runtime/` (locks and checkpoints are local, not
-shared). Task files are committed to the branch, so ownership travels with the
-work. Merge after review. Without worktrees, agents share one index and one
-checkout; use `ai git begin/end` and expect conflicts.
+Only for genuinely independent tasks. Each agent needs its own working tree, and
+the workspace creates it: set `workers` above 1 (`ai setup --set workers=3`,
+which sets `git.isolation = worktree`) and every `ai task claim|next` opens
+`.ai/worktrees/<branch>/` on the task's own branch. See `docs/git-workflow.md`
+(Worktrees) for the model. Workers edit files only inside their worktree and run
+the one shared workspace CLI by absolute path. Without worktrees, agents share
+one index and one checkout; use `ai git begin/end` and expect conflicts.
 
 ### 4. Orchestrator + workers
 

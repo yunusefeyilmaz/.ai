@@ -159,8 +159,8 @@ finished. The exact transitions are in `docs/task-flow.md`.
   `src/billing/invoice.py` conflict.
 - Acquire in a fixed order: task lease, file leases, then the git index.
 - Review in a separate session; the producer does not sign off on its own work.
-- Prefer `git worktree` for parallel implementation. It removes most contention;
-  leases still apply inside each worktree.
+- Parallel workers get one `git worktree` each, created by `ai task claim`
+  (`ai setup --set workers=N`); leases still apply inside each worktree.
 
 `ai git begin/end` serializes the shared index, and `ai git verify --strict`
 refuses to call a staged set safe when a path has no held lease. Details:
