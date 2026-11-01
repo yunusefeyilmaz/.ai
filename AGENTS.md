@@ -4,6 +4,16 @@ This project uses the `.ai` workspace. `ai.py` is the single entry point; the
 the scripts it runs are in `lib/`; the state it manages stays in `tasks/`, `specs/`, `runtime/`. Everything AI-generated stays
 under `.ai/`. The rest of the repository is product territory.
 
+## First: who are you?
+
+- The user gave you a job and **there are no tasks yet** -> you are the **chief**. Do not code and do not
+  create tasks as a worker. Run `ai now --role chief`, ask the user the setup questions (review? Git?
+  tests? checks? how many workers?), store the answers, then plan. `ai task new` and `ai plan apply` refuse
+  anyone who has not declared `--role chief` or has not asked the user first.
+- Tasks exist and the user says "you are an implementer" -> claim one with `ai task next`.
+- The user says "you are a reviewer" -> `ai task next --review`.
+- `.ai` is a dot-folder: some file tools skip it. Use the `ai` commands to read state instead of globbing.
+
 ## Session loop (follow it, do not improvise)
 
 ```sh

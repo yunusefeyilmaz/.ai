@@ -72,6 +72,12 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
             "why": f"{len(dirty)} uncommitted product path(s); stage your owned paths first",
             "extra": extra,
         }
+    if git_on and git.get("ahead") == 0:
+        return {
+            "cmd": f"ai task show {task_id}",
+            "why": "nothing is committed yet: read the spec, do the work, checkpoint, then `ai git commit` (checks come at the end)",
+            "extra": extra,
+        }
     if gates.check_required():
         if not configured_checks():
             return {"cmd": 'ai setup --check "tests=<command>"', "why": "verification is required but no project checks are configured", "extra": extra}

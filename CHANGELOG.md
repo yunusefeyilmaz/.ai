@@ -2,6 +2,60 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.0] - 2026-11-01
+
+### Changed
+
+- **Restructure.** The 4,800-line `scripts/ai.py` is split into `lib/`, which
+  holds scripts only: `lib/{core,config,runtime,tasks,specs,git,decisions,cmd,tests}`.
+  `ai.py` is now a thin entry point at the workspace root (launchers `ai` and
+  `ai.cmd` moved with it). Data stays where it was: `tasks/`, `specs/`,
+  `runtime/`, `config/`, `templates/git/`, `docs/decisions/`. See `lib/README.md`.
+  Command behavior is unchanged.
+- Commands are auto-discovered from `lib/cmd/*.py` (and future
+  `skills/*/skill.py`); adding a command is one file.
+- `ai.py` keeps bytecode out of the workspace (cached under the system temp
+  dir) and imports only the module of the invoked command: ~100 ms -> ~45 ms
+  per call.
+- `python lib/tests/run.py` runs the test modules in parallel (one process per
+  module, `-j N`); `unittest discover` still works serially.
+
+### Added
+
+- `ai now [--agent <n>]`: ~10 lines with the state and the single next required
+  command (derived from task status, Git, checkpoints and the last check).
+- `ai context`: compact project memory (open work with next steps, shipped
+  work, ADRs, recent activity).
+- `ai decision new|list`: numbered ADRs in `docs/decisions/`.
+- Workflow gates (`lib/tasks/gates.py`): `ai task done` requires the task to be
+  in `review` and approved by a different agent than the submitter
+  (`submitted_by` / `reviewed_by` are recorded). In strict mode `ai task review`
+  requires a green full `ai check` recorded after the claim. Configure with
+  `workflow.requireReview` and `workflow.requireCheck` in
+  `config/workspace.json`. `--force` bypasses and is logged.
+- `ai check` records its result in `runtime/state/last-check.json`.
+
+- **Chief-only task creation.** `ai task new` and `ai plan apply` refuse unless the
+  caller declares `--role chief` (or `AI_ROLE=chief`) **and** the user's setup
+  answers are stored (`workflow.chiefOnlyTasks`, default on). `ai start` no longer
+  sets Git up before the user chose, and its next step on an empty project is
+  `ai setup` / `ai plan apply`, never `ai task new`. The pointer files written by
+  `ai adopt` and `AGENTS.md` now start with "who are you?".
+- `ai git setup --yes`: confirms the baseline commit without a terminal (lists the
+  files, refuses secret-looking ones such as `.env`, `*.pem`, `id_rsa`).
+  `ai git start --carry` starts the branch with uncommitted product files; the
+  refusal message now says so.
+- `ai task new --lock GLOB`; a task's `--allow` paths are locked when it is claimed.
+  A manual `ai lock acquire` inside the agent's own broader lock for the same task
+  is accepted as covered instead of refused.
+- `ai task review` and `done` free **every** lock tagged with the task, also the
+  hand-taken ones; `done` moves the spec to `specs/done/` and updates the task.
+- `ai now` right after a claim says "read the spec and do the work" instead of
+  suggesting `ai check`; evidence lines read `unit passed` (not `unit=0`, which
+  looked like a test count); `ai setup --set ...` confirms in one line.
+- README rewritten: copy-paste install for macOS/Linux, Windows PowerShell and
+  Windows cmd, ready-made prompts for the chief, implementers and reviewers.
+
 ## [0.8.0] - 2026-10-31
 
 ### Added
@@ -15,7 +69,7 @@ All notable changes to this workspace are documented here.
   the current HEAD (new commits make it stale); `ai resume` reports whether
   recorded evidence is still valid. Replaces the global `last-check` gate.
 - **`changes_requested` status** and `ai task request-changes <id> --agent <r>
-  --reason ...` (reviewer only, never the submitter). The task becomes ready for
+--reason ...` (reviewer only, never the submitter). The task becomes ready for
   rework; `ai now` points the producer at it.
 - **Task scope.** `ai task new --allow GLOB --forbid GLOB`; `ai git commit`
   refuses staged paths outside it and `ai git verify --task <id>` reports them.

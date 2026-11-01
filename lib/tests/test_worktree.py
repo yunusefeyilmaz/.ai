@@ -164,7 +164,7 @@ class HostLayoutTest(WorktreeCase):
         git_do(host, "add", ".gitignore")
         git_do(host, "commit", "-qm", "ignore the workspace")
         self.assertEqual(run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no", "workers=2").returncode, 0)
-        self.assertEqual(run(workspace, "task", "new", "Hosted", "--allow", "src/**").returncode, 0)
+        self.assertEqual(run(workspace, "task", "new", "Hosted", "--allow", "src/**", "--role", "chief").returncode, 0)
         self.assertEqual(run(workspace, "git", "setup", stdin="y\n").returncode, 0)
         claimed = run(workspace, "task", "claim", "0001", "--agent", "w1")
         self.assertEqual(claimed.returncode, 0, claimed.stdout + claimed.stderr)

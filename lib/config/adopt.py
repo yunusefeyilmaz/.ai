@@ -23,6 +23,12 @@ Start every session with `.ai/ai now --agent <name>`: it prints the state and
 the single next required command. `.ai/ai context` gives the project memory
 (open work, shipped work, decisions) when you are new here.
 
+Who you are decides what you may do. If the user gave you a job and there are no
+tasks yet, you are the **chief**: do not write code and do not create tasks
+yourself first. Run `.ai/ai now --agent <name> --role chief`, ask the user the
+setup questions, then plan. Only the chief creates tasks; implementers claim
+existing ones and reviewers review.
+
 Before any file-changing task, use Gitflow unless the user explicitly asks not
 to use Git:
 1. Read `.ai/AGENTS.md`, `.ai/GUIDE.md`, `.ai/docs/task-flow.md` and

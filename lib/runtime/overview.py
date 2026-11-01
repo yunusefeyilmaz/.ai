@@ -74,6 +74,7 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
         task = sorted(mine, key=lambda t: str(t.get("updated") or ""), reverse=True)[0]
         with repo.in_task(task):
             task_state = repo.git_state()
+            task_state["ahead"] = repo.commits_ahead(branches["integration"]) if git_on else None
         recommended = {"task": task.get("id"), **workflow.next_action(task, agent, task_state, git_ready, git_on)}
         if repo.task_root(task):
             recommended.setdefault("extra", []).insert(0, f"cd {repo.task_root(task)}   # your isolated worktree; edit files only there")

@@ -7,7 +7,9 @@ import re
 
 from lib.core.paths import (
     PROJECT,
+    SPECS_ACTIVE_DIR,
     SPECS_DIR,
+    SPECS_DONE_DIR,
     SPECS_TEMPLATE,
     WORKSPACE,
 )
@@ -69,6 +71,23 @@ def spec_from_template(title: str, task_id: str) -> str:
     text = text.replace("task: null", f"task: {task_id}", 1)
     text = text.replace("# <title>", f"# {title}", 1)
     return text
+
+
+def archive_spec(meta: dict) -> str | None:
+    """Move a finished task's spec from specs/active to specs/done; return its new reference."""
+    ref = str(meta.get("spec") or "")
+    if not ref:
+        return None
+    absolute = os.path.normpath(os.path.join(WORKSPACE, ref))
+    active = os.path.normpath(SPECS_ACTIVE_DIR)
+    if os.path.dirname(absolute) != active or not os.path.isfile(absolute):
+        return None
+    os.makedirs(SPECS_DONE_DIR, exist_ok=True)
+    target = os.path.join(SPECS_DONE_DIR, os.path.basename(absolute))
+    if os.path.exists(target):
+        return None
+    os.replace(absolute, target)
+    return os.path.relpath(target, WORKSPACE).replace(os.sep, "/")
 
 
 def resolve_spec_path(meta: dict | None) -> str | None:

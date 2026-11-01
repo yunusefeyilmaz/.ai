@@ -212,10 +212,12 @@ def cmd_git_start(args) -> int:
         print("Not a git repository.", file=sys.stderr)
         return 1
     isolated = repo.git_config()["isolation"] == "worktree"
-    if not isolated and not repo.git_clean(ignore_ledger=True):
+    if not isolated and not getattr(args, "carry", False) and not repo.git_clean(ignore_ledger=True):
         print(
-            "Working tree has product changes. Commit or stash them before "
-            "starting a task branch (only tasks/ and specs/ may stay uncommitted).",
+            "Working tree has product changes (uncommitted or untracked files outside tasks/specs/config). "
+            "If they belong to this task, carry them onto the new branch: "
+            f"`ai git start --task {args.task} --agent {args.agent} --carry`. "
+            "Otherwise commit or stash them first.",
             file=sys.stderr,
         )
         return 1

@@ -72,7 +72,10 @@ def task_records(task_id: str) -> list[dict]:
 
 
 def summary(record: dict) -> str:
-    names = ", ".join(f"{c.get('name')}={c.get('exit_code')}" for c in record.get("checks", [])) or "no commands"
+    names = ", ".join(
+        f"{c.get('name')} {'passed' if c.get('exit_code') == 0 else 'FAILED (exit ' + str(c.get('exit_code')) + ')'}"
+        for c in record.get("checks", [])
+    ) or "no commands"
     head = (record.get("head") or "no-git")[:8]
     return f"check {record.get('result')} @{head} by {record.get('agent') or '-'} ({names})"
 

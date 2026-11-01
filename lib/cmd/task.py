@@ -39,6 +39,7 @@ from lib.config import settings
 from lib.git import flow
 from lib.git import repo
 from lib.runtime import evidence
+from lib.specs import spec as spec_lib
 from lib.runtime import health
 from lib.tasks import gates
 from lib.tasks import history
@@ -51,6 +52,10 @@ from lib.tasks import store
 
 
 def cmd_task_new(args) -> int:
+    blocked = gates.creation_gate(getattr(args, "role", None))
+    if blocked:
+        print(blocked, file=sys.stderr)
+        return 1
     denied = roles.authorize(getattr(args, "agent", None), "task.new")
     if denied:
         print(denied, file=sys.stderr)
@@ -64,6 +69,7 @@ def cmd_task_new(args) -> int:
             make_spec=not getattr(args, "no_spec", False),
             scope_allowed=scope.join_globs(getattr(args, "allow", None)),
             scope_forbidden=scope.join_globs(getattr(args, "forbid", None)),
+            locks=scope.join_globs(getattr(args, "lock", None)),
             actor=getattr(args, "agent", None),
         )
     except RuntimeError:
@@ -164,7 +170,7 @@ def _claim(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
             print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
         else:
             started = flow.cmd_git_start(argparse.Namespace(
-                task=message, agent=agent, type="feature", base=None, force=False, json=False,
+                task=message, agent=agent, type="feature", base=None, force=False, json=False, carry=False,
             ))
             if started != 0:
                 print(f"  git: could not start the task branch; fix the message above, then `ai git start --task {message} --agent {agent}`.")
@@ -505,6 +511,9 @@ def cmd_task_done(args) -> int:
     records = evidence.task_records(task_id)
     proof = evidence.summary(records[-1]) if records else ""
     body = history.append(body, args.agent, previous, "done", forced, proof)
+    archived_spec = spec_lib.archive_spec(meta)
+    if archived_spec:
+        meta["spec"] = archived_spec
     store.write_task(path, meta, body)
     target = os.path.join(DONE_DIR, os.path.basename(path))
     os.replace(path, target)
@@ -647,7 +656,11 @@ def register(sub) -> None:
                           help="path the task may touch (repeatable, `**` allowed); enforced by git verify/commit")
     task_new.add_argument("--forbid", action="append", default=None, metavar="GLOB",
                           help="path the task must not touch (repeatable)")
+    task_new.add_argument("--lock", action="append", default=None, metavar="GLOB",
+                          help="paths locked when the task is claimed (default: the --allow paths)")
     task_new.add_argument("--agent", default=None, help="who creates the task (checked against roles)")
+    task_new.add_argument("--role", default=None, choices=["chief", "orchestrator", "planner"],
+                          help="only the chief creates tasks (see `ai setup`, `ai plan`)")
     task_new.set_defaults(func=cmd_task_new)
 
     task_list = task_sub.add_parser("list", help="list tasks and refresh the board")

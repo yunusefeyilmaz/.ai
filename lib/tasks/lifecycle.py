@@ -110,7 +110,7 @@ def create_task(
             "depends_on": depends_on,
             "scope_allowed": scope_allowed,
             "scope_forbidden": scope_forbidden,
-            "locks": locks,
+            "locks": locks if locks is not None else scope_allowed,  # a task that may edit X locks X
             "created": iso(),
             "updated": iso(),
             "lock": None,
@@ -250,5 +250,17 @@ def acquire_task_locks(meta: dict, agent: str) -> tuple[bool, str]:
 
 
 def release_task_locks(meta: dict, agent: str | None) -> None:
-    for resource in file_locks(meta):
+    """Free the file locks of a task: the declared ones and any taken by hand for it.
+
+    `agent=None` (the reviewer closing the task) frees all of them; otherwise only
+    the caller's own.
+    """
+    task_id = str(meta.get("id"))
+    resources = set(file_locks(meta))
+    for lock in list_locks(ensure=False):
+        resource = str(lock.get("resource") or "")
+        if resource and not resource.startswith("task-") and str(lock.get("task")) == task_id:
+            if agent is None or lock.get("agent") == agent:
+                resources.add(resource)
+    for resource in sorted(resources):
         release_lock(resource, agent=agent, force=agent is None, quiet=True)

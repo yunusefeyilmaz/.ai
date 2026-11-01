@@ -6,7 +6,7 @@ import json
 import sys
 
 from lib.config import preferences, roles
-from lib.tasks import plan
+from lib.tasks import gates, plan
 
 ORDER = 7
 
@@ -26,6 +26,10 @@ def cmd_plan(args) -> int:
         print("Plan rejected; nothing was created:", file=sys.stderr)
         for item in errors:
             print(f"  - {item}", file=sys.stderr)
+        return 1
+    blocked = None if args.dry_run else gates.creation_gate(args.role)
+    if blocked:
+        print(blocked, file=sys.stderr)
         return 1
     denied = roles.authorize(args.agent, "task.new")
     if denied:
@@ -56,6 +60,8 @@ def register(sub) -> None:
     apply_ = actions.add_parser("apply", help="validate and create the tasks")
     apply_.add_argument("file", help="plan JSON path, or - for stdin")
     apply_.add_argument("--agent", default=None, help="the chief creating the tasks")
+    apply_.add_argument("--role", default=None, choices=["chief", "orchestrator", "planner"],
+                        help="declare that you are the chief (required to create tasks)")
     apply_.add_argument("--dry-run", action="store_true")
     apply_.add_argument("--json", action="store_true")
     apply_.set_defaults(func=cmd_plan)

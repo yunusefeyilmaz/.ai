@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 
+from lib.config import preferences
 from lib.config.settings import configured_checks, load_config
 from lib.core.fsio import read_json, safe_name
 from lib.core.paths import LOCKS_DIR
@@ -39,7 +40,33 @@ def workflow_config() -> dict:
         "requireReview": bool(flow.get("requireReview", True)),
         "requireCheck": flow.get("requireCheck", "strict"),
         "autoContinue": bool(flow.get("autoContinue", False)),
+        "chiefOnlyTasks": bool(flow.get("chiefOnlyTasks", True)),
     }
+
+
+def creation_gate(role: str | None) -> str | None:
+    """Only the chief creates tasks, and only after the user chose the workflow.
+
+    Workers that "just start" skip the planning and the user's questions, which
+    is exactly what the chief exists to prevent. `--role chief` (or AI_ROLE=chief)
+    is a deliberate declaration; implementers and reviewers never make it.
+    """
+    if not workflow_config()["chiefOnlyTasks"]:
+        return None
+    role = role or os.environ.get("AI_ROLE")
+    if role not in ("chief", "orchestrator", "planner"):
+        return (
+            "Only the chief creates tasks. If the user asked you to plan or build something and "
+            "there are no tasks yet, you are the chief: run `ai now --agent <name> --role chief` and "
+            "follow it. Implementers claim existing tasks (`ai task next`); they never create them."
+        )
+    if not preferences.status()["confirmed"]:
+        return (
+            "Ask the user how much process they want before planning: run `ai setup`, ask them "
+            "the questions (review, checks, git, tests, continue, workers) and store the answers "
+            "with `ai setup --set ...`."
+        )
+    return None
 
 
 def check_required() -> bool:

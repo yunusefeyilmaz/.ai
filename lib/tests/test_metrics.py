@@ -56,6 +56,7 @@ class MetricsCase(unittest.TestCase):
         config_path = workspace / "config" / "workspace.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["checks"] = []
+        config.setdefault("workflow", {})["chiefOnlyTasks"] = False
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         if with_git:
             git(workspace, "init", "-q", "--initial-branch=develop")

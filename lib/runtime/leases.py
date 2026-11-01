@@ -31,6 +31,13 @@ from lib.runtime.events import append_event, read_events
 from lib.runtime.mutex import registry_mutex
 
 
+def path_covers(pattern: str, resource: str) -> bool:
+    """Does the lock `pattern` (maybe a glob or a directory) cover `resource`?"""
+    from lib.tasks.scope import matches
+
+    return matches(pattern, resource) or resource.startswith(pattern.rstrip("/") + "/")
+
+
 def lock_is_stale(payload: dict | None, stale_after: int) -> bool:
     # Staleness is TTL-based on purpose. A task claim outlives the CLI process
     # that created it, so PID liveness would mark every held task lock stale.
@@ -135,6 +142,14 @@ def acquire_lock(
                     overlaps = False
                 if not overlaps:
                     continue
+                # Already covered by a broader lock the same agent holds for the same
+                # task (e.g. the task's declared `locks`): nothing more to take.
+                if (
+                    other.get("agent") == agent
+                    and str(other.get("task") or "") == str(task or "")
+                    and path_covers(other_resource, resource)
+                ):
+                    return {"ok": True, "lock": other, "path": other_path, "covered_by": other_resource}
                 if force:
                     try:
                         os.remove(other_path)

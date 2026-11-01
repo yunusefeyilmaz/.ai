@@ -84,6 +84,8 @@ def register(sub) -> None:
     git_sub = git.add_subparsers(dest="action", required=True)
     git_setup = git_sub.add_parser("setup", help="initialize Gitflow branches and commit template")
     git_setup.add_argument("--json", action="store_true")
+    git_setup.add_argument("--yes", action="store_true",
+                           help="confirm the initial baseline commit without a terminal (the user agreed to Git in `ai setup`); lists the files, refuses secrets")
     git_setup.set_defaults(func=cmd_git)
     git_start = git_sub.add_parser("start", help="create or switch to a task branch")
     git_start.add_argument("--task", required=True)
@@ -91,6 +93,8 @@ def register(sub) -> None:
     git_start.add_argument("--type", default="feature")
     git_start.add_argument("--base", default=None)
     git_start.add_argument("--force", action="store_true")
+    git_start.add_argument("--carry", action="store_true",
+                           help="start the branch even though product files are uncommitted: they move with you")
     git_start.add_argument("--json", action="store_true")
     git_start.set_defaults(func=cmd_git)
     git_commit = git_sub.add_parser("commit", help="commit staged files with a Conventional Commit message")
