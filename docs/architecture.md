@@ -41,7 +41,9 @@ Instructions in prose are weak. Three mechanisms carry the design:
 2. **A cheap gate.** `ai check` must be fast enough to run often. Expensive
    verification gets skipped and replaced by confident claims.
 3. **Refusals that do not depend on memory.** Lease creation is atomic, live
-   leases are rejected, and CI runs the same gate. These survive a new session.
+   leases are rejected, and CI runs the same gate. (In `lite` mode `ai check` is not
+   forced before review unless you chose `checks` in `ai setup`; `ai git finish` and CI
+   always run it.) These survive a new session.
 
 ## Ceremony levels
 

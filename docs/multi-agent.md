@@ -140,6 +140,6 @@ ai task claim 0007 --agent implementer     # atomic; refused if owned
 ai lock acquire src/billing --agent implementer --task 0007
 # edit only src/billing
 ai lock release src/billing --agent implementer
-ai check
-ai task release 0007 --agent implementer   # or: ai task done 0007 --agent implementer
+ai task review 0007 --agent implementer    # runs the checks and hands the task over
+# a different agent then runs: ai git finish --task 0007 --agent qa && ai task done 0007 --agent qa
 ```

@@ -112,6 +112,31 @@ files and names anything it cannot fix.
 Use `ai <group> --help` for every flag. The groups are stable; the shortcuts are
 the ones below.
 
+### Chief: workflow choices and planning
+
+```sh
+ai setup [--set review=yes checks=yes git=yes tests=yes continue=no workers=2] [--check "tests=<cmd>"] [--defaults] [--json]
+ai plan example                         # print a plan skeleton
+ai plan apply <plan.json> --role chief [--agent <name>] [--dry-run] [--json]
+ai task new "<title>" --role chief [--allow GLOB] [--forbid GLOB] [--lock GLOB]
+```
+
+Only the chief creates tasks, and only after the user's answers are stored.
+
+### Where am I / what happened
+
+```sh
+ai now [--agent <name>] [--role chief|implementer|reviewer] [--json]
+ai context [--limit N] [--json]
+ai history <task> [--evidence] [--json]
+ai decision new "<title>" | list [--json]
+ai worktree list [--json] | path <task> | prune [--force]
+ai version
+ai init [--wire]                        # create state in a fresh checkout
+ai task link <id> --issue <url> --pr <url>
+ai task discard <id>                    # destructive; only when the user directs it
+```
+
 ### First run
 
 ```sh
@@ -183,8 +208,10 @@ ai task show <id> [--json]
 ai task ready [--json]                 # claimable: todo, deps done, no live lease
 ai task next --agent <name> [--json]   # atomic claim of the best ready task
 ai task claim <id> --agent <name> [--force]
-ai task release <id> --agent <name> [--force]
-ai task review <id> --agent <name>
+ai task release <id> --agent <name> [--force]   # give a task back before delivering
+ai task review <id> --agent <name>   # runs the checks when required, delivers, hands the task over
+ai task request-changes <id> --agent <reviewer> --reason "..."
+ai task next --review --agent <reviewer>   # claim the oldest delivery
 ai task block <id> --agent <name> --reason "<why>"
 ai task unblock <id> --agent <name>
 ai task done <id> --agent <name> [--force]
@@ -251,9 +278,8 @@ erased.
 ai git setup
 ai git start --task <id> --agent <name> --type <branch-type>
 ai git commit --task <id> --agent <name> --type <commit-type> --message "<subject>"
-ai task review <id> --agent <name>
-ai task release <id> --agent <name>
-ai git finish --task <id> --agent <reviewer>
+ai task review <id> --agent <name>        # delivery also hands the task over
+ai git finish --task <id> --agent <reviewer>   # a different agent than the producer
 ai git begin  --agent <name> --task <id> [--ttl 300]
 ai git end    --agent <name> [--force]
 ai git verify [--strict] [--json]

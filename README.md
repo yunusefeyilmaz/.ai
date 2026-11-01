@@ -1,104 +1,147 @@
 # .ai
 
-A small, self-contained workspace that lets coding agents share one task ledger,
-one set of file leases, and one definition of "finished" — without a server, a
-database, or a package install.
+A small, self-contained workspace that lets AI coding agents work on a project like
+a professional team: a **chief** plans, **implementers** build, **reviewers**
+approve. It adds one task ledger, file locks, standard Git handling and one
+definition of "finished" — with no server, no database and no package install.
 
-Copy it into a repository. An agent can then answer four questions from files
-alone: what should I work on, may I touch this file, how do I prove it works, and
-where do my notes go. Humans get the same answers, which makes review and
-recovery much cheaper.
+You give your AI one short request. The chief asks you how much process you want
+(review? Git? tests?), splits the work into linked tasks, and the workers pick them
+up. The `ai` command does the bookkeeping, so the agents spend their effort on the
+code.
+
+## 1. Install (copy and paste)
+
+Run these in your **project folder**. You need Git and Python 3.8+ (nothing else).
+
+**macOS / Linux**
+
+```sh
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+python3 .ai/ai.py adopt
+python3 .ai/ai.py doctor
+```
+
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+.\.ai\ai.cmd adopt
+.\.ai\ai.cmd doctor
+```
+
+**Windows (Command Prompt)**
+
+```bat
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+.ai\ai.cmd adopt
+.ai\ai.cmd doctor
+```
+
+`adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
+`CLAUDE.md`, Cursor and Copilot rules) and adds them and `.ai/` to `.gitignore`, so
+nothing from the workspace ends up in your product history. Run it once per clone.
+`doctor` should end with `0 error(s)`.
+
+Optional: type `ai ...` instead of the long path. In the examples below, `ai` means
+this launcher:
+
+| System | Launcher | One-time shortcut for this terminal |
+| ------ | -------- | ----------------------------------- |
+| macOS / Linux | `.ai/ai` | `alias ai=.ai/ai` |
+| Windows PowerShell | `.\.ai\ai.cmd` | `Set-Alias ai .\.ai\ai.cmd` |
+| Windows cmd | `.ai\ai.cmd` | `doskey ai=.ai\ai.cmd $*` |
+
+## 2. Give your AI a job
+
+Open your AI tool in the project and paste **one** of these. The agent reads the
+workspace rules itself.
+
+**Start a new job (the chief plans it):**
+
+```text
+Read .ai/AGENTS.md. You are the chief. Do not write code. First run
+`ai now --agent chief --role chief`, then ask me the setup questions it prints,
+store my answers, split this job into linked tasks, and tell me when the workers
+can start.
+
+Job: <describe what you want built in a few sentences>
+```
+
+**Start a worker (once tasks exist; one session per worker):**
+
+```text
+Read .ai/AGENTS.md. You are an implementer named <name>. Run
+`ai now --agent <name> --role implementer` and follow it. Deliver one task, then
+stop and report; wait for my go-ahead before taking another.
+```
+
+**Start a reviewer (if you chose reviews):**
+
+```text
+Read .ai/AGENTS.md. You are a reviewer named <name>. Run
+`ai now --agent <name> --role reviewer` and follow it. Review one task: approve and
+merge it, or send it back with what is missing.
+```
+
+Use the launcher for your system from the table above (`.ai/ai` on macOS/Linux,
+`.ai\ai.cmd` on Windows); the agent adapts the command to its shell.
+
+## 3. What happens
+
+```
+ you ──job──> CHIEF ──asks──> you: review? git? tests? checks? how many workers?
+                 │  (answers are saved in .ai/config/workspace.json)
+                 └──plans──> tasks with dependencies, file locks and acceptance criteria
+                                 │
+        IMPLEMENTER  `ai task next`    claims a ready task: locks, branch (or worktree) are set up for it
+                     ...writes code and tests...
+                     `ai task review`  runs the project checks, delivers, stops and waits for you
+                                 │
+        REVIEWER     `ai task next --review`  takes the oldest delivery
+                     `ai git finish` + `ai task done`   merges into develop, closes the task
+                     or `ai task request-changes`        sends it back with a reason
+```
+
+- **Only the chief creates tasks**, and only after you answered the setup questions.
+  Workers claim what exists.
+- **After delivering, a worker stops** and waits for you (unless you allowed
+  `continue` in the setup).
+- **One worker or many.** With one worker, every task gets its own Git branch. With
+  several (`workers` greater than 1) every task also gets its own checkout under
+  `.ai/worktrees/`, so workers never step on each other. Worktrees are *not*
+  required for a single worker.
+- **Git is your choice.** If you say no to Git in the setup, the Git steps are
+  skipped. If yes, the agent sets up Gitflow (`ai git setup --yes` for an agent with
+  no terminal; it lists the files and refuses anything that looks like a secret).
+- If a session ends midway, the next agent continues from `ai resume <task>`.
+
+## 4. Commands you will actually use
+
+| You want to | Run |
+| ----------- | --- |
+| see what is going on | `ai status --board` or `ai context` |
+| see why a task is where it is | `ai history <task>` |
+| change a workflow answer | `ai setup --set review=no` (keys: review, checks, git, tests, continue, workers) |
+| add your test command | `ai setup --check "tests=npm test"` |
+| fix a broken workspace | `ai doctor --fix` |
+| clean up finished worktrees | `ai worktree prune` |
+
+The full list is in `GUIDE.md`. Rules for agents are in `AGENTS.md`.
 
 ## The guarantees
 
 - **A durable task ledger.** Every piece of work is a Markdown file with an id,
-  owner, status and log. It survives the session that created it.
-- **Ownership with leases.** A task claim and any file lock are JSON leases with
-  a TTL. A live lease is a refusal; an expired one can be reclaimed.
-- **One verification command.** `ai check` is the gate locally and in CI. It
-  never depends on an agent's confidence.
-- **A place for operational state.** Checkpoints, handoff markers, locks and
-  scratch artifacts live under `.ai/runtime/` and never enter the product tree.
-- **A continuation record.** If a context window ends, the next session resumes
-  from a checkpoint and a drift report instead of from memory.
-
-## Pick an install shape
-
-| Shape         | What you do                                           | Result                                                            |
-| ------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
-| **Template**  | Copy this repository's contents into the project root | Works immediately; root `AGENTS.md` is the entry point            |
-| **Subfolder** | Clone into `.ai/` and run `ai adopt`                  | `.ai/` and local root pointers are ignored; each clone runs adopt |
-
-The subfolder shape is the common one:
-
-```sh
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-.ai/scripts/ai adopt              # Windows: .ai\ai.cmd adopt
-```
-
-Run `ai start` instead to do this wiring automatically while creating the first
-task.
-
-`adopt` writes a managed pointer block into `AGENTS.md`, `CLAUDE.md`,
-`.cursor/rules/ai-workspace.mdc` and `.github/copilot-instructions.md`, then adds
-those paths and `.ai/` to the host project's `.gitignore`. It creates
-`.gitignore` if needed and appends only missing rules. Each clone runs `adopt`
-locally. `adopt --check` verifies local pointers and ignore rules;
-`adopt --print` emits a bootstrap prompt for tools that cannot read files.
-
-The CLI needs Python 3.8+ (stdlib only). The protocol itself is plain Markdown
-and JSON, so an agent without Python can still follow it by editing the files
-directly (see `docs/task-flow.md`); the CLI is the fast, race-safe path.
-
-## A short walkthrough
-
-From a clone to a claimed task:
-
-```sh
-ai start --agent <your-name>
-```
-
-`ai start` creates missing runtime state, wires the local pointers in a subfolder
-install, detects the Git layout (running `ai git setup` when the repository
-already has a commit), creates the starter task with its spec, and claims it. It
-prints only the commands that come next. On a project with existing tasks it
-never adds a demo task; `--no-demo` also skips it on a fresh workspace.
-
-Then run the loop:
-
-```sh
-ai git start --task 0001 --agent <your-name> --type feature
-# ... edit the task's files ...
-git add <files-you-own>
-ai git verify --strict
-ai git commit --task 0001 --agent <your-name> --type feat --message "add CSV export"
-ai checkpoint 0001 --agent <your-name> --percent 70 --next "write the CSV writer"
-ai check --strict                          # required before review
-ai task review 0001 --agent <your-name>    # records review state
-ai task release 0001 --agent <your-name>   # reviewer takes over
-ai git finish --task 0001 --agent reviewer # guarded no-ff merge
-ai task done 0001 --agent reviewer         # a different agent, after review + merge
-```
-
-If the session ends before `done`, run `ai handoff`; a fresh session starts with
-`ai resume` and a drift report. The full command surface is in `GUIDE.md`.
-
-Every file-changing task must follow the local Gitflow loop unless the user
-explicitly asks not to use Git. `ai git setup` initializes Git if needed and
-creates a baseline for the branches. With no existing commit, it previews all
-non-ignored project files and asks before creating the initial commit. Start
-from a task branch on `develop` (hotfixes from `master`), use
-task/agent commit trailers, and have a separate reviewer merge with guarded
-no-ff. Agents must start the task branch before editing. Read-only work needs no
-branch. Ask approval if Git rejects the checkout's ownership. See
-[`docs/git-workflow.md`](docs/git-workflow.md)
-for setup, branch naming and the full review flow.
-
-When `.ai` itself is a standalone Git checkout, setup uses that checkout as the
-project root. When `.ai` is adopted inside a host project, setup uses the host
-root. New repositories start on the configured production branch regardless
-of Git's default branch name; unborn branch names are not treated as
-commit-backed Gitflow bases.
+  owner, status and a log of who moved it and why. It survives the session that
+  created it.
+- **Ownership with leases.** A task claim and any file lock are JSON leases with a
+  TTL. A live lease is a refusal; an expired one can be reclaimed.
+- **Verification as evidence.** `ai check` records what ran and its exit codes
+  against the commit; review requires it when you asked for checks.
+- **A reviewer who is not the author.** `done` needs a different agent than the one
+  that delivered.
+- **A place for operational state.** Checkpoints, locks and scratch artifacts live
+  under `.ai/runtime/` and never enter the product tree.
 
 ## How the pieces fit
 
@@ -145,10 +188,12 @@ the remaining `findings`.
 
 ## Work states
 
-A task moves `todo -> in_progress -> review -> done`, and can be `blocked` at any
-point. Claiming is what creates ownership; `done` archives the file and releases
-the lease. `depends_on` prevents a task from starting before its predecessor is
-finished. The exact transitions are in `docs/task-flow.md`.
+`todo -> in_progress -> review -> done`. A reviewer can send a task in review back
+(`changes_requested`, then the producer reclaims it), and any task can be `blocked`.
+Claiming creates ownership; `done` (by a different agent than the producer)
+archives the task and its spec and frees every lock. `depends_on` keeps a task from
+starting before its predecessor is finished. The exact transitions are in
+`docs/task-flow.md`.
 
 ## Running more than one agent
 

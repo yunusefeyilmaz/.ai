@@ -36,7 +36,7 @@ class HistoryTest(WorkspaceCase):
         out = run(workspace, "history", "0001").stdout
         for needle in (
             "planner-1", "-> todo", "todo -> in_progress", "in_progress -> review",
-            "review -> review", "review -> done", "bob",
+            "review -> done", "bob",
         ):
             self.assertIn(needle, out)
         payload = json.loads(run(workspace, "history", "0001", "--json").stdout)
@@ -65,7 +65,7 @@ class EvidenceTest(WorkspaceCase):
         self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
         history = run(workspace, "history", "0001", "--evidence").stdout
         self.assertIn("proof: check passed", history)
-        self.assertIn("unit=0", history)
+        self.assertIn("unit passed", history)
 
     def test_failed_check_blocks_review(self) -> None:
         workspace = self.make_workspace(git_repo=False)

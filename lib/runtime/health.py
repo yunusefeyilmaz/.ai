@@ -216,6 +216,15 @@ def collect_checks() -> list[Finding]:
                     f"set `status: done` in {path}",
                 )
             )
+        spec_ref = str(task.get("spec") or "")
+        if task["_folder"] == "done" and spec_ref.startswith("specs/active/"):
+            problems.append(
+                Finding(
+                    "warn",
+                    f"{path}: task is done but its spec is still in specs/active/",
+                    f"move {spec_ref} to specs/done/ and update `spec:` in {path}",
+                )
+            )
         if task["_folder"] == "active" and status == "done":
             problems.append(
                 Finding(
@@ -394,7 +403,7 @@ def report_problems(problems: list[Finding]) -> int:
     return 1 if errors else 0
 
 
-def run_commands(fast_only: bool, results: list | None = None) -> list[Finding]:
+def run_commands(fast_only: bool, results: list | None = None, out=None) -> list[Finding]:
     """Run configured checks; append {name, command, exit_code} to `results` if given."""
     problems: list[Finding] = []
     config = load_config()
@@ -413,8 +422,9 @@ def run_commands(fast_only: bool, results: list | None = None) -> list[Finding]:
         command = item.get("command")
         if not command:
             continue
-        print(f"\n$ {command}")
-        result = subprocess.run(command, shell=True, cwd=repo.current_root())
+        # `out` (e.g. stderr in --json mode) keeps stdout machine-readable
+        print(f"\n$ {command}", file=out or sys.stdout)
+        result = subprocess.run(command, shell=True, cwd=repo.current_root(), stdout=out)
         if results is not None:
             results.append({"name": name, "command": command, "exit_code": result.returncode})
         if result.returncode != 0:

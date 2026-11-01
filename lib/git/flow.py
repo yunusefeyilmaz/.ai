@@ -212,10 +212,12 @@ def cmd_git_start(args) -> int:
         print("Not a git repository.", file=sys.stderr)
         return 1
     isolated = repo.git_config()["isolation"] == "worktree"
-    if not isolated and not repo.git_clean(ignore_ledger=True):
+    if not isolated and not getattr(args, "carry", False) and not repo.git_clean(ignore_ledger=True):
         print(
-            "Working tree has product changes. Commit or stash them before "
-            "starting a task branch (only tasks/ and specs/ may stay uncommitted).",
+            "Working tree has product changes (uncommitted or untracked files outside tasks/specs/config). "
+            "If they belong to this task, carry them onto the new branch: "
+            f"`ai git start --task {args.task} --agent {args.agent} --carry`. "
+            "Otherwise commit or stash them first.",
             file=sys.stderr,
         )
         return 1
@@ -391,6 +393,14 @@ def cmd_git_finish(args) -> int:
     if denied:
         print(denied, file=sys.stderr)
         return 1
+    submitter = meta.get("submitted_by")
+    if not args.force and submitter and submitter == getattr(args, "agent", None):
+        print(
+            f"Task {task_id} was submitted by {submitter}; the producer never merges its own work. "
+            "A different agent must run `ai git finish`.",
+            file=sys.stderr,
+        )
+        return 1
     branch = str(meta.get("branch") or "")
     if not branch:
         print(f"Task {task_id} has no branch to merge.", file=sys.stderr)
@@ -432,6 +442,7 @@ def cmd_git_finish(args) -> int:
             [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict", "--task", task_id]
             + (["--agent", args.agent] if getattr(args, "agent", None) else []),
             cwd=worktree or PROJECT,
+            stdout=sys.stderr if getattr(args, "json", False) else None,  # keep --json parseable
         )
         if check.returncode != 0:
             print("ai check --strict failed; refusing to merge.", file=sys.stderr)

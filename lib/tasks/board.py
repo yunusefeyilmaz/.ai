@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 
 from lib.core.paths import (
     BOARD_PATH,

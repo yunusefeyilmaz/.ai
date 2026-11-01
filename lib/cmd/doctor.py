@@ -93,7 +93,7 @@ def _check(args, task_id) -> int:
     results: list[dict] = []
     if not args.no_commands:
         try:
-            problems.extend(health.run_commands(args.fast, results))
+            problems.extend(health.run_commands(args.fast, results, sys.stderr if args.json else None))
         except (OSError, ValueError) as exc:
             problems.append(
                 Finding("error", f"could not run configured checks: {exc}", "fix config/workspace.json")
@@ -102,10 +102,6 @@ def _check(args, task_id) -> int:
     if args.strict and any(finding.level == "warn" for finding in problems):
         code = 1
     try:
-        evidence.record_check(
-            code == 0, strict=bool(args.strict), ran_commands=not args.no_commands,
-            fast=bool(args.fast), head=repo.git_state().get("head"),
-        )
         if task_id:
             record = evidence.record_task_check(
                 task_id, getattr(args, "agent", None), code == 0,
@@ -117,7 +113,12 @@ def _check(args, task_id) -> int:
     except OSError as exc:  # evidence is best-effort; never mask the check result
         print(f"WARN  could not record the check result: {exc}", file=sys.stderr)
     if args.json:
-        print(json.dumps(health.problems_to_dict(problems), indent=2))
+        payload = health.problems_to_dict(problems)
+        payload["results"] = results
+        if task_id:
+            payload["task"] = task_id
+            payload["evidence"] = evidence.task_status(task_id, repo.git_state().get("head")).get("state")
+        print(json.dumps(payload, indent=2))
         return code
     health.report_problems(problems)
     return code

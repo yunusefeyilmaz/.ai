@@ -13,7 +13,6 @@ from lib.core.paths import (
     BOARD_PATH,
     CONFIG_DIR,
     DECISIONS_DIR,
-    LOCKS_DIR,
     PROJECT,
     SPECS_DIR,
     TASKS_DIR,
@@ -24,9 +23,9 @@ from lib.config.settings import (
     lock_settings,
 )
 from lib.core.fsio import (
+    lock_path,
     normalize_id,
     read_json,
-    safe_name,
     slugify,
 )
 from lib.runtime.events import append_event
@@ -56,6 +55,12 @@ def working_in(path: str | None):
         yield
     finally:
         _ROOT[0] = previous
+
+
+def commits_ahead(base: str) -> int | None:
+    """Commits on the current branch that `base` does not have (None if unknown)."""
+    code, out, _ = run_git(["rev-list", "--count", f"{base}..HEAD"])
+    return int(out) if code == 0 and out.strip().isdigit() else None
 
 
 def task_root(meta: dict) -> str | None:
@@ -263,7 +268,7 @@ def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> s
 def release_git_guard(owned: bool, agent: str) -> None:
     if not owned:
         return
-    path = os.path.join(LOCKS_DIR, safe_name(normalize_resource("@git/index")) + ".lock")
+    path = lock_path(normalize_resource("@git/index"))
     holder = read_json(path) or {}
     if holder.get("agent") == agent:
         try:
@@ -294,13 +299,36 @@ def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
     return uncovered, locks
 
 
+SENSITIVE = re.compile(
+    r"(^|/)(\.env(\..*)?|.*\.(pem|key|p12|pfx)|id_(rsa|dsa|ecdsa|ed25519)|credentials(\..*)?|secrets?(\..*)?)$",
+    re.IGNORECASE,
+)
+
+
 def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
     code, listed, err = run_git(["ls-files", "--cached", "--others", "--exclude-standard"])
     if code != 0:
         print(f"Could not list files for the initial Git baseline: {err}", file=sys.stderr)
         return False, 1
     files = [line for line in listed.splitlines() if line]
-    if args.json:
+    assume_yes = bool(getattr(args, "yes", False))
+    if assume_yes:
+        # The user already agreed to Git during `ai setup`; an agent cannot type the phrase.
+        risky = [path for path in files if SENSITIVE.search(path)]
+        if risky:
+            print(
+                "Refusing --yes: the baseline would commit files that look like secrets: "
+                + ", ".join(risky[:8])
+                + ". Add them to .gitignore (or review in a terminal without --yes).",
+                file=sys.stderr,
+            )
+            return False, 1
+        print(f"Committing the initial baseline ({len(files)} file(s), confirmed with --yes):")
+        for path in files[:30]:
+            print(f"  {path}")
+        if len(files) > 30:
+            print(f"  ... and {len(files) - 30} more")
+    elif args.json:
         print(json.dumps({
             "repo": True,
             "baselineConfirmationRequired": True,
@@ -308,27 +336,29 @@ def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
             "files": files,
         }, indent=2))
         return False, 2
-    if not sys.stdin.isatty():
+    if not assume_yes and not sys.stdin.isatty():
         print(
-            "Initial Git baseline requires interactive confirmation. Rerun `ai git setup` "
-            "in a terminal to review the file list and confirm.",
+            "Initial Git baseline needs the user's confirmation and no terminal is attached. "
+            "If the user already agreed to Git (ai setup), run `ai git setup --yes`; it lists "
+            "the files and refuses secrets. Otherwise run `ai git setup` in a terminal.",
             file=sys.stderr,
         )
         return False, 1
-    print("Gitflow needs an initial production commit so task branches can start cleanly.")
-    print("The following non-ignored project files will be included:")
-    for path in files:
-        print(f"  {path}")
-    if not files:
-        print("  (no files; an empty baseline commit will be created)")
-    expected = "commit project baseline"
-    try:
-        confirmation = input(f"Type '{expected}' to continue: ").strip()
-    except EOFError:
-        confirmation = ""
-    if confirmation != expected:
-        print("Confirmation did not match; no project files were staged or committed.", file=sys.stderr)
-        return False, 1
+    if not assume_yes:
+        print("Gitflow needs an initial production commit so task branches can start cleanly.")
+        print("The following non-ignored project files will be included:")
+        for path in files:
+            print(f"  {path}")
+        if not files:
+            print("  (no files; an empty baseline commit will be created)")
+        expected = "commit project baseline"
+        try:
+            confirmation = input(f"Type '{expected}' to continue: ").strip()
+        except EOFError:
+            confirmation = ""
+        if confirmation != expected:
+            print("Confirmation did not match; no project files were staged or committed.", file=sys.stderr)
+            return False, 1
     code, _, err = run_git(["add", "-A"])
     if code != 0:
         print(f"Could not stage the initial project baseline: {err}", file=sys.stderr)

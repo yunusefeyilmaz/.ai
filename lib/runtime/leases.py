@@ -17,8 +17,8 @@ from lib.config.settings import (
     max_lock_ttl,
 )
 from lib.core.fsio import (
+    lock_path,
     read_json,
-    safe_name,
     write_json_atomic,
 )
 from lib.core.timeutil import (
@@ -29,6 +29,13 @@ from lib.core.timeutil import (
 from lib.runtime.dirs import ensure_dirs
 from lib.runtime.events import append_event, read_events
 from lib.runtime.mutex import registry_mutex
+
+
+def path_covers(pattern: str, resource: str) -> bool:
+    """Does the lock `pattern` (maybe a glob or a directory) cover `resource`?"""
+    from lib.tasks.scope import matches
+
+    return matches(pattern, resource) or resource.startswith(pattern.rstrip("/") + "/")
 
 
 def lock_is_stale(payload: dict | None, stale_after: int) -> bool:
@@ -95,7 +102,7 @@ def acquire_lock(
     ttl = ttl or default_ttl
     if ttl > max_lock_ttl():
         return {"ok": False, "holder": None, "error": f"ttl must be <= {max_lock_ttl()} seconds"}
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     payload = {
         "resource": resource,
         "agent": agent or "unknown",
@@ -135,6 +142,14 @@ def acquire_lock(
                     overlaps = False
                 if not overlaps:
                     continue
+                # Already covered by a broader lock the same agent holds for the same
+                # task (e.g. the task's declared `locks`): nothing more to take.
+                if (
+                    other.get("agent") == agent
+                    and str(other.get("task") or "") == str(task or "")
+                    and path_covers(other_resource, resource)
+                ):
+                    return {"ok": True, "lock": other, "path": other_path, "covered_by": other_resource}
                 if force:
                     try:
                         os.remove(other_path)
@@ -171,8 +186,10 @@ def release_lock(
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     holder = read_json(path)
+    if holder is not None and holder.get("resource") not in (None, resource):
+        holder = None  # a different resource that merely shares the file name
     if holder is None:
         if not quiet:
             print(f"No lock held for '{resource}'.")
@@ -199,8 +216,10 @@ def heartbeat_lock(resource: str, agent: str | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     holder = read_json(path)
+    if holder is not None and holder.get("resource") not in (None, resource):
+        holder = None  # a different resource that merely shares the file name
     if holder is None:
         print(f"No lock held for '{resource}'.", file=sys.stderr)
         return 1

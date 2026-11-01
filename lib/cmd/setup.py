@@ -27,7 +27,17 @@ def cmd_setup(args) -> int:
         if args.json:
             print(json.dumps(result, indent=2))
             return 0
-        print("Saved to config/workspace.json:")
+        shown = {r["key"]: r["current"] for r in result["questions"] if r["answered"]}
+        pretty = ", ".join(f"{k}={'yes' if v is True else 'no' if v is False else v}" for k, v in shown.items())
+        print(f"Saved to config/workspace.json: {pretty}")
+        if result["checks"]:
+            print(f"project checks: {', '.join(result['checks'])}")
+        if result["confirmed"]:
+            print("Preferences confirmed. Next: plan the work (`ai plan example`, then `ai plan apply plan.json --role chief`).")
+        else:
+            missing = [r["key"] for r in result["questions"] if r["key"] in preferences.REQUIRED_KEYS and not r["answered"]]
+            print(f"Still to ask the user: {', '.join(missing)}")
+        return 0
     else:
         result = preferences.status()
         if args.json:

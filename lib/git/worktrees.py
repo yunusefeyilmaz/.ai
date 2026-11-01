@@ -17,7 +17,6 @@ checkout's `git status` never sees them.
 from __future__ import annotations
 
 import os
-import sys
 
 from lib.core.fsio import write_text_atomic
 from lib.core.paths import PROJECT, WORKSPACE, WORKTREES_DIR

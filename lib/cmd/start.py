@@ -23,6 +23,8 @@ from lib.config.settings import (
 from lib.core.fsio import write_json_atomic
 from lib.runtime.dirs import ensure_dirs
 from lib.config import adopt as config_adopt
+from lib.cmd.task import _claim
+from lib.config import preferences, settings
 from lib.git import flow
 from lib.git import repo
 from lib.tasks import lifecycle
@@ -49,7 +51,9 @@ def cmd_start(args) -> int:
 
     state = repo.git_state()
     setup_error = ""
-    if state.get("repo") and state.get("head"):
+    confirmed = preferences.status()["confirmed"]
+    # Never set Git up behind the user's back: only after they chose the workflow.
+    if confirmed and settings.git_enabled() and state.get("repo") and state.get("head"):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             setup_code = flow.cmd_git_setup(argparse.Namespace(json=False))
@@ -73,7 +77,10 @@ def cmd_start(args) -> int:
     active_tasks = [task for task in tasks if task["_folder"] == "active"]
     if not active_tasks and args.demo:
         try:
-            created = lifecycle.create_task("Try the workspace")
+            created = lifecycle.create_task(
+                "Try the workspace",
+                acceptance=["`ai doctor` reports 0 errors", "`ai task show` prints this task"],
+            )
         except RuntimeError:
             created = None
         if created:
@@ -84,7 +91,9 @@ def cmd_start(args) -> int:
     claimed = False
     claim_error = None
     if target and args.agent and not target.get("owner"):
-        ok, message = lifecycle.claim_task(target["_path"], args.agent)
+        # the same one-command claim workers use (file locks, branch); chatter off stdout for --json
+        with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
+            ok, message = _claim(target["_path"], args.agent)
         if ok:
             claimed = True
             target = next(
@@ -95,7 +104,7 @@ def cmd_start(args) -> int:
             claim_error = message
 
     next_steps: list[str] = []
-    if not git_ready:
+    if settings.git_enabled() and not git_ready:
         next_steps.append("ai git setup")
     if target:
         owner = target.get("owner") or (args.agent if claimed else None)
@@ -108,9 +117,12 @@ def cmd_start(args) -> int:
             )
         else:
             next_steps.append(f"ai task claim {target.get('id')} --agent <name>")
+    elif not confirmed:
+        next_steps.append("ai setup   # you are the chief: ask the user which workflow features they want")
     else:
-        next_steps.append('ai task new "<title>"')
-    next_steps.append("ai check --fast")
+        next_steps.append("ai plan apply plan.json --role chief   # split the request into linked tasks (`ai plan example`)")
+    if target:
+        next_steps.append("ai check --fast")
 
     if claim_error:
         print(claim_error, file=sys.stderr)

@@ -26,7 +26,10 @@ def cmd_lock(args) -> int:
             force=args.force,
         )
         if result["ok"]:
-            print(f"Acquired '{args.resource}' for {args.agent}.")
+            if result.get("covered_by"):
+                print(f"'{args.resource}' is already covered by {args.agent}'s lock '{result['covered_by']}'.")
+            else:
+                print(f"Acquired '{args.resource}' for {args.agent}.")
             return 0
         holder = result["holder"] or {}
         print(

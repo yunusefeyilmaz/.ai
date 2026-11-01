@@ -7,7 +7,9 @@ import re
 
 from lib.core.paths import (
     PROJECT,
+    SPECS_ACTIVE_DIR,
     SPECS_DIR,
+    SPECS_DONE_DIR,
     SPECS_TEMPLATE,
     WORKSPACE,
 )
@@ -56,7 +58,15 @@ approved_on: null
 """
 
 
-def spec_from_template(title: str, task_id: str) -> str:
+PLACEHOLDER_CRITERIA = (
+    "criterion one", "criterion two", "existing behavior x still holds",
+    "observable criterion one", "observable criterion two",
+)
+
+
+def spec_from_template(
+    title: str, task_id: str, intent: str | None = None, acceptance: list[str] | None = None
+) -> str:
     """Fill the repository spec template, or a compatible fallback."""
     text = None
     if os.path.isfile(SPECS_TEMPLATE):
@@ -68,7 +78,61 @@ def spec_from_template(title: str, task_id: str) -> str:
         text = FALLBACK_SPEC
     text = text.replace("task: null", f"task: {task_id}", 1)
     text = text.replace("# <title>", f"# {title}", 1)
+    if intent:
+        text = re.sub(r"(## Intent\n\n)<!--.*?-->", lambda m: m.group(1) + intent, text, count=1, flags=re.S)
+    if acceptance:
+        block = "\n".join(f"- [ ] {item}" for item in acceptance)
+        text = re.sub(
+            r"(## Acceptance criteria\n\n).*?(\n## )", lambda m: m.group(1) + block + "\n" + m.group(2),
+            text, count=1, flags=re.S,
+        )
     return text
+
+
+def spec_problem(meta: dict) -> str | None:
+    """Why this task's spec is not ready for work ("no spec, no code"), or None.
+
+    A task created with `--no-spec` (spec: null) is exempt on purpose. Otherwise the
+    spec must exist and carry at least one acceptance criterion that is not the
+    template's placeholder.
+    """
+    ref = str(meta.get("spec") or "")
+    if not ref or ref == "null":
+        return None
+    absolute = os.path.normpath(os.path.join(WORKSPACE, ref))
+    if not os.path.isfile(absolute):
+        return f"spec {ref} does not exist"
+    try:
+        text = read_text(absolute)
+    except OSError:
+        return f"spec {ref} cannot be read"
+    match = re.search(r"## Acceptance criteria\n(.*?)(?:\n## |\Z)", text, flags=re.S)
+    criteria = [
+        line[5:].strip() if line.lstrip().startswith("- [") else line.strip()
+        for line in (match.group(1).splitlines() if match else [])
+        if line.lstrip().startswith("- [")
+    ]
+    real = [c for c in criteria if c and not c.lower().startswith(PLACEHOLDER_CRITERIA)]
+    if not real:
+        return f"spec {ref} has no acceptance criteria yet (it is still the template)"
+    return None
+
+
+def archive_spec(meta: dict) -> str | None:
+    """Move a finished task's spec from specs/active to specs/done; return its new reference."""
+    ref = str(meta.get("spec") or "")
+    if not ref:
+        return None
+    absolute = os.path.normpath(os.path.join(WORKSPACE, ref))
+    active = os.path.normpath(SPECS_ACTIVE_DIR)
+    if os.path.dirname(absolute) != active or not os.path.isfile(absolute):
+        return None
+    os.makedirs(SPECS_DONE_DIR, exist_ok=True)
+    target = os.path.join(SPECS_DONE_DIR, os.path.basename(absolute))
+    if os.path.exists(target):
+        return None
+    os.replace(absolute, target)
+    return os.path.relpath(target, WORKSPACE).replace(os.sep, "/")
 
 
 def resolve_spec_path(meta: dict | None) -> str | None:

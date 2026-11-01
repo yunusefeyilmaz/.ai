@@ -17,7 +17,7 @@ ORDER = 6
 def cmd_context(args) -> int:
     data = overview.build(args.agent, history=args.limit)
     if args.json:
-        print(json.dumps(data, indent=2, default=str))
+        print(json.dumps(overview.compact(data), indent=2, default=str))
         return 0
     out = ["# Project context"]
     out.append(f"mode {data['mode']} | {len(data['active'])} active | {data['done_total']} done")

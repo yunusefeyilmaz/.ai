@@ -6,8 +6,7 @@ Four different things must never stand in for each other:
   review approval        a different agent       (tasks/gates.py)
   integration approval   merge to the mainline   (`ai git finish`)
 
-`ai check` always records the last global result (`last-check.json`). With
-`--task <id>` it also appends a record to `runtime/state/evidence/<id>.jsonl`:
+`ai check --task <id>` appends a record to `runtime/state/evidence/<id>.jsonl`:
 which commands ran, their exit codes, who ran them and on which commit. A
 record is only valid for the HEAD it was taken on, so new commits make older
 evidence stale. The review gate (tasks/gates.py) and `ai resume` read it.
@@ -18,22 +17,9 @@ from __future__ import annotations
 import json
 import os
 
-from lib.core.fsio import read_json, safe_name, write_json_atomic
-from lib.core.paths import EVIDENCE_DIR, LAST_CHECK_PATH
+from lib.core.fsio import safe_name
+from lib.core.paths import EVIDENCE_DIR
 from lib.core.timeutil import iso, parse_iso
-
-
-def record_check(ok: bool, *, strict: bool, ran_commands: bool, fast: bool, head: str | None) -> None:
-    write_json_atomic(
-        LAST_CHECK_PATH,
-        {"at": iso(), "ok": ok, "strict": strict, "ran_commands": ran_commands,
-         "fast": fast, "head": head},
-    )
-
-
-def last_check() -> dict | None:
-    data = read_json(LAST_CHECK_PATH)
-    return data if isinstance(data, dict) else None
 
 
 def _task_file(task_id: str) -> str:
@@ -55,6 +41,13 @@ def record_task_check(
     return record
 
 
+def invalidate(task_id: str, reason: str) -> None:
+    """Void earlier evidence (e.g. after changes were requested): it must be re-earned."""
+    os.makedirs(EVIDENCE_DIR, exist_ok=True)
+    with open(_task_file(task_id), "a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps({"task": task_id, "at": iso(), "invalidated": True, "reason": reason}) + "\n")
+
+
 def task_records(task_id: str) -> list[dict]:
     path = _task_file(task_id)
     if not os.path.isfile(path):
@@ -72,7 +65,12 @@ def task_records(task_id: str) -> list[dict]:
 
 
 def summary(record: dict) -> str:
-    names = ", ".join(f"{c.get('name')}={c.get('exit_code')}" for c in record.get("checks", [])) or "no commands"
+    if record.get("invalidated"):
+        return f"evidence invalidated: {record.get('reason')}"
+    names = ", ".join(
+        f"{c.get('name')} {'passed' if c.get('exit_code') == 0 else 'FAILED (exit ' + str(c.get('exit_code')) + ')'}"
+        for c in record.get("checks", [])
+    ) or "no commands"
     head = (record.get("head") or "no-git")[:8]
     return f"check {record.get('result')} @{head} by {record.get('agent') or '-'} ({names})"
 
@@ -83,6 +81,8 @@ def task_status(task_id: str, head: str | None) -> dict:
     if not records:
         return {"state": "none"}
     latest = records[-1]
+    if latest.get("invalidated"):
+        return {"state": "invalidated", "record": latest, "summary": summary(latest)}
     state = "valid" if latest.get("head") == head else "stale"
     if not latest.get("ok"):
         state = "failed"
@@ -95,6 +95,8 @@ def task_green(task_id: str, head: str | None, since_iso: str | None = None) -> 
     if not records:
         return False, f"no verification evidence is recorded for task {task_id}"
     latest = records[-1]
+    if latest.get("invalidated"):
+        return False, f"the earlier evidence was invalidated ({latest.get('reason')}); run the checks again"
     if not latest.get("ok"):
         return False, f"the latest check for task {task_id} failed ({latest.get('at')})"
     if latest.get("fast") or not latest.get("ran_commands"):

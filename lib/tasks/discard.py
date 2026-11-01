@@ -6,7 +6,6 @@ import os
 
 from lib.core.paths import (
     CHECKPOINT_ARCHIVE,
-    LOCKS_DIR,
     PROJECT,
     SPECS_ACTIVE_DIR,
     SPECS_DONE_DIR,
@@ -14,9 +13,9 @@ from lib.core.paths import (
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    lock_path,
     normalize_id,
     read_json,
-    safe_name,
 )
 from lib.runtime.leases import (
     list_locks,
@@ -77,7 +76,7 @@ def task_discard_targets(task_path: str, spec_path: str | None, task_id: str) ->
 
 
 def task_discard_lock_error(task_id: str, targets: list[str]) -> str | None:
-    lock_path = os.path.join(LOCKS_DIR, safe_name(f"task-{task_id}") + ".lock")
+    lock_path = lock_path(f"task-{task_id}")
     holder = read_json(lock_path)
     if holder:
         return (

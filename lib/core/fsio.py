@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import tempfile
@@ -50,6 +51,19 @@ def write_text_atomic(path: str, text: str) -> None:
 
 def safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip("-") or "resource"
+
+
+def lock_path(resource: str) -> str:
+    """Lock file of a resource.
+
+    `safe_name` alone maps `src/a` and `src-a` to the same name, so two different
+    resources would share one lock file. A short digest of the exact resource
+    keeps names readable and unique.
+    """
+    from lib.core.paths import LOCKS_DIR
+
+    digest = hashlib.sha1(resource.encode("utf-8")).hexdigest()[:8]
+    return os.path.join(LOCKS_DIR, f"{safe_name(resource)}-{digest}.lock")
 
 
 def slugify(title: str) -> str:

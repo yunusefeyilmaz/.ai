@@ -42,8 +42,14 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
         submitter = task.get("submitted_by")
         if agent and submitter and agent == submitter:
             return {
-                "cmd": f"ai task release {task_id} --agent {a}",
-                "why": "you submitted it; a different agent must review. Release so the reviewer can take over",
+                "cmd": None,
+                "why": "you delivered it; a different agent must review. Report to the user and wait",
+                "extra": extra,
+            }
+        if not git_on:
+            return {
+                "cmd": f"ai task done {task_id} --agent {a}",
+                "why": f"independent review (producer: {submitter or '?'}); Git is off, so approving is just `done`. Or `ai task request-changes`",
                 "extra": extra,
             }
         return {
@@ -70,6 +76,12 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
         return {
             "cmd": f'ai git verify --strict && ai git commit --task {task_id} --agent {a} --type feat --message "<subject>"',
             "why": f"{len(dirty)} uncommitted product path(s); stage your owned paths first",
+            "extra": extra,
+        }
+    if git_on and git.get("ahead") == 0:
+        return {
+            "cmd": f"ai task show {task_id}",
+            "why": "nothing is committed yet: read the spec, do the work, checkpoint, then `ai git commit` (checks come at the end)",
             "extra": extra,
         }
     if gates.check_required():

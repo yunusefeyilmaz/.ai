@@ -31,11 +31,14 @@ to the log. A task owned by another agent is off limits.
 ## Finish
 
 ```sh
-ai check
+ai task review 0001 --agent implementer   # runs the project checks, delivers, hands over
+ai git finish --task 0001 --agent qa       # a different agent merges (Git on)
 ai task done 0001 --agent qa
 ```
 
-`done` archives the file into `tasks/done/` and releases the lock. Do not edit a
+`done` needs a task in `review` and a different agent than the producer. It
+archives the file into `tasks/done/`, moves the spec to `specs/done/` and frees
+every lock of the task. Do not edit a
 done task; create a new one and link it.
 
 ## Manual operation

@@ -45,7 +45,7 @@ class GateTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         path = workspace / "config" / "workspace.json"
         config = json.loads(path.read_text(encoding="utf-8"))
-        config["workflow"] = {"requireReview": False}
+        config["workflow"]["requireReview"] = False
         path.write_text(json.dumps(config), encoding="utf-8")
         self.new_claimed(workspace)
         self.assertEqual(run(workspace, "task", "done", "0001", "--agent", "alice").returncode, 0)
@@ -93,12 +93,15 @@ class NowTest(WorkspaceCase):
             run(workspace, "git", "start", "--task", "0001", "--agent", "alice", "--type", "feature").returncode, 0
         )
         out = run(workspace, "now", "--agent", "alice").stdout
-        self.assertIn("ai check", out)  # nothing uncommitted, no green check yet
+        # nothing committed yet: the next step is the work itself, not a premature check
+        self.assertIn("ai task show 0001", out)
+        self.assertNotIn("ai check", out.split("NEXT")[1].split("WHY")[0])
+        git(workspace, "commit", "--allow-empty", "-m", "feat: the work")
         self.assertEqual(run(workspace, "check", "--agent", "alice").returncode, 0)  # auto-attaches
         out = run(workspace, "now", "--agent", "alice").stdout
         self.assertIn("ai task review 0001 --agent alice", out)
         run(workspace, "task", "review", "0001", "--agent", "alice")
-        self.assertIn("ai task release 0001", run(workspace, "now", "--agent", "alice").stdout)
+        self.assertIn("you delivered 0001", run(workspace, "now", "--agent", "alice").stdout)  # handed over by review itself
         self.assertIn("ai git finish --task 0001 --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout.replace("ai task next --review --agent bob", "ai git finish --task 0001 --agent bob"))
         self.assertIn("ai task next --review --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout)
 

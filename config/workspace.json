@@ -19,7 +19,9 @@
   "workflow": {
     "requireReview": true,
     "requireCheck": "strict",
-    "autoContinue": false
+    "autoContinue": false,
+    "chiefOnlyTasks": true,
+    "requireSpec": true
   },
   "team": {},
   "policy": {

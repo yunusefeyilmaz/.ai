@@ -40,7 +40,7 @@ def default_config() -> dict:
         "mode": "lite",
         "language": {"documents": "en", "interviews": "en"},
         "agents": ["orchestrator", "planner", "implementer", "reviewer", "qa"],
-        "workflow": {"requireReview": True, "requireCheck": "strict", "autoContinue": False},
+        "workflow": {"requireReview": True, "requireCheck": "strict", "autoContinue": False, "chiefOnlyTasks": True, "requireSpec": True},
         "team": {},
         "orchestration": {"maxParallel": 3},
         "git": {

@@ -2,6 +2,76 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.0] - 2026-11-01
+
+### Added
+
+- **Chief-only task creation.** `ai task new` and `ai plan apply` refuse unless the
+  caller declares `--role chief` (or `AI_ROLE=chief`) **and** the user's setup
+  answers are stored (`workflow.chiefOnlyTasks`, default on). `ai start` no longer
+  sets Git up before the user chose, and its next step on an empty project is
+  `ai setup` / `ai plan apply`, never `ai task new`. The pointer files written by
+  `ai adopt` and `AGENTS.md` now start with "who are you?".
+- **"No spec, no code" is enforced.** A task cannot be claimed while its spec is
+  still the template (`workflow.requireSpec`, default on; `--no-spec` tasks are
+  exempt). `ai plan apply` writes each task's intent and acceptance criteria into
+  its spec. `ai doctor` warns about done tasks whose spec stayed in `specs/active/`.
+- `ai git setup --yes`: confirms the baseline commit without a terminal (lists the
+  files, refuses secret-looking ones such as `.env`, `*.pem`, `id_rsa`).
+  `ai git start --carry` starts the branch with uncommitted product files; the
+  refusal message now says so.
+- `ai task new --lock GLOB`; a task's `--allow` paths are locked when it is claimed.
+  A manual `ai lock acquire` inside the agent's own broader lock for the same task
+  is accepted as covered instead of refused.
+- README rewritten: copy-paste install for macOS/Linux, Windows PowerShell and
+  Windows cmd, ready-made prompts for the chief, implementers and reviewers.
+- Smoke tests for commands that had none (`block`/`unblock`, `link`, `discard`,
+  `brief`, `artifact`, `clean`, `git begin`/`end`, ADR numbering).
+- Documentation tests (`lib/tests/test_docs.py`): every `ai ...` command written in
+  a guide must exist in the parser, stale paths fail the build, `capabilities`
+  must list every command, the version must match the changelog, and `lib/` may
+  not contain unused imports.
+
+### Changed
+
+- **Delivery hands the task over.** `ai task review` runs the project checks when
+  required, records the evidence, frees every lock of the task and clears the
+  owner, so a reviewer can take it at once. The separate `ai task release` step is
+  gone from the flow (`release` after delivery is a harmless no-op).
+- A reviewer sees the same queue `ai now` shows: only delivered, unowned tasks.
+- Without Git (`git.enabled=false`) the reviewer is told `ai task done`, never
+  `ai git finish`; `ai start` respects the same switch and claims through the same
+  one-command path as `ai task claim` (file locks, branch).
+- `ai now` right after a claim says "read the spec and do the work" instead of
+  suggesting `ai check`; evidence lines read `unit passed` (not `unit=0`, which
+  looked like a test count); `ai setup --set ...` confirms in one line.
+- `ai task review` and `done` free **every** lock tagged with the task, also the
+  hand-taken ones; `done` moves the spec to `specs/done/` and updates the task.
+- `ai now --json` and `ai context --json` return compact task records (no bodies).
+  `ai check --json` adds `results`, `task` and the evidence state; `ai check`,
+  `ai task next` and `ai git finish` keep stdout a single JSON document in
+  `--json` mode (check output and claim chatter go to stderr).
+- `ai artifact put` no longer crashes on a path from another Windows drive;
+  `ai clean` without flags says what to pass instead of "Cleaned 0 item(s)";
+  concurrent `ai decision new` calls get distinct numbers.
+- `docs/`, GUIDE, `tasks/README.md`, conventions and the roadmap were brought in
+  line with the CLI (command surface, branch names, review flow).
+
+### Fixed
+
+- Rework after `request-changes` could never re-enter review in strict mode:
+  returning the task now invalidates earlier evidence and the next `ai task review`
+  re-runs the checks.
+- Lock file names collided for resources differing only in `/` versus `-`
+  (`src/a`, `src-a`): the file name now carries a digest of the resource, and
+  `release`/`heartbeat` verify the resource, so one lock can no longer free another.
+- A producer could merge its own work with `ai git finish`; it is now refused
+  (`--force` overrides, as for `done`).
+- `tasks/TEMPLATE.md` front matter no longer carries inline `# comments` that the
+  parser read as values.
+- `ai check` records its per-task evidence only; the unread `last-check.json` and
+  its code are removed.
+
 ## [0.8.0] - 2026-10-31
 
 ### Added
@@ -23,8 +93,6 @@ All notable changes to this workspace are documented here.
   `config/workspace.json` guard `task.new/claim/review/request_changes/done` and
   `git.finish`; `policy.unknownAgent` is `allow` or `deny`. Default: no table,
   everything allowed.
-- A reviewer claiming a task in `review` no longer flips it back to `in_progress`.
-
 - **Chief flow.** `ai setup` stores the user's choices in `config/workspace.json`
   (review, checks, git, tests, continue, workers; `--check NAME=COMMAND`,
   `--defaults`). `ai plan apply plan.json` creates many linked tasks at once
@@ -39,14 +107,6 @@ All notable changes to this workspace are documented here.
 - **Reviewer flow.** `ai task next --review` claims the oldest task waiting for
   review (never the reviewer's own); `ai now --role implementer|reviewer|chief`
   tailors the recommendation.
-- Required verification with no configured project checks is now a hard error at
-  review (not a free pass). `git.enabled=false` turns the Git steps off.
-- Forced lock takeovers are recorded as `lock_forced` events; forced `done`
-  records `forced` and `submitted_by` in the event log and the task history.
-- `config/` and `docs/decisions/` no longer count as product changes when
-  starting a task branch. Checkpoint age and `now --json` (`schema: 1`) read
-  their values from config / carry a schema version.
-
 - **Per-task Git worktrees** (`git.isolation = worktree`, set by
   `ai setup --set workers=N`, N > 1). `ai task claim|next` creates
   `.ai/worktrees/<branch>/` from `develop`; coordination state stays in the single
@@ -57,8 +117,22 @@ All notable changes to this workspace are documented here.
   folder and briefing files are excluded via `info/exclude`, so no checkout is dirtied.
   A briefing (`AGENTS.md`/`CLAUDE.md`) with the absolute CLI path is written into each
   worktree.
-- `ai git finish` ignores ledger changes (tasks, specs, config) when checking that
-  the main tree is clean.
+- Forced lock takeovers are recorded as `lock_forced` events; forced `done`
+  records `forced` and `submitted_by` in the event log and the task history.
+
+### Changed
+
+- Required verification with no configured project checks is now a hard error at
+  review (not a free pass). `git.enabled=false` turns the Git steps off.
+- `config/` and `docs/decisions/` no longer count as product changes when
+  starting a task branch; `ai git finish` ignores ledger changes (tasks, specs,
+  config) when checking that the main tree is clean.
+- Checkpoint age and `now --json` (`schema: 1`) read their values from config /
+  carry a schema version.
+
+### Fixed
+
+- A reviewer claiming a task in `review` no longer flips it back to `in_progress`.
 
 ## [0.7.0] - 2026-10-30
 
@@ -70,8 +144,8 @@ All notable changes to this workspace are documented here.
   `ai.cmd` moved with it). Data stays where it was: `tasks/`, `specs/`,
   `runtime/`, `config/`, `templates/git/`, `docs/decisions/`. See `lib/README.md`.
   Command behavior is unchanged.
-- Commands are auto-discovered from `lib/cmd/*.py` (and future
-  `skills/*/skill.py`); adding a command is one file.
+- Commands are auto-discovered from `lib/cmd/*.py` (and `skills/*/skill.py`);
+  adding a command is one file.
 - `ai.py` keeps bytecode out of the workspace (cached under the system temp
   dir) and imports only the module of the invoked command: ~100 ms -> ~45 ms
   per call.
@@ -88,10 +162,9 @@ All notable changes to this workspace are documented here.
 - Workflow gates (`lib/tasks/gates.py`): `ai task done` requires the task to be
   in `review` and approved by a different agent than the submitter
   (`submitted_by` / `reviewed_by` are recorded). In strict mode `ai task review`
-  requires a green full `ai check` recorded after the claim. Configure with
-  `workflow.requireReview` and `workflow.requireCheck` in
-  `config/workspace.json`. `--force` bypasses and is logged.
-- `ai check` records its result in `runtime/state/last-check.json`.
+  requires a green full `ai check`. Configure with `workflow.requireReview` and
+  `workflow.requireCheck` in `config/workspace.json`. `--force` bypasses and is
+  logged.
 
 ### Fixed
 
@@ -101,7 +174,6 @@ All notable changes to this workspace are documented here.
   stderr. The workspace's self-tests run via `python lib/tests/run.py` (and in
   this repository's CI).
 - Agent docs no longer tell agents to run `ai check --strict` (CI-only flag).
-
 - The generated board no longer writes a mojibake dash for done tasks.
 
 ### Migration
@@ -161,13 +233,6 @@ Move `scripts/ai*` to the workspace root, add `lib/`, and move the old
 ## [0.5.1] - 2026-10-29
 
 ### Fixed
-
-- `ai check` no longer runs the workspace's own test suite. The shipped
-  `config/workspace.json` has an empty `checks` list; projects add their own
-  test/lint commands. With no checks configured, `ai check` prints a note on
-  stderr. The workspace's self-tests run via `python lib/tests/run.py` (and in
-  this repository's CI).
-- Agent docs no longer tell agents to run `ai check --strict` (CI-only flag).
 
 - `ai doctor` and `ai check` no longer create runtime directories while
   diagnosing; only `--fix` writes. A missing state tree now stays visible until
