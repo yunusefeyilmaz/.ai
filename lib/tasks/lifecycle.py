@@ -9,14 +9,13 @@ import sys
 from lib.core.paths import (
     ACTIVE_DIR,
     COUNTER_PATH,
-    LOCKS_DIR,
     SPECS_ACTIVE_DIR,
     WORKSPACE,
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    lock_path,
     read_json,
-    safe_name,
     slugify,
     write_json_atomic,
     write_text_atomic,
@@ -34,6 +33,7 @@ from lib.runtime.leases import (
 from lib.specs import spec as spec_lib
 from lib.config import roles
 from lib.tasks import board
+from lib.tasks import gates
 from lib.tasks import history
 from lib.tasks import scope as task_scope
 from lib.tasks import store
@@ -60,7 +60,7 @@ def task_index_guard():
 def allocate_task_number() -> int:
     """Allocate an ID while the caller holds task_index_guard()."""
     resource = "tasks.index"
-    holder = read_json(os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")) or {}
+    holder = read_json(lock_path(resource)) or {}
     if holder.get("agent") != "task-index":
         raise RuntimeError("task ID allocation requires the tasks.index lock")
     state = read_json(COUNTER_PATH) or {"last": 0}
@@ -98,7 +98,7 @@ def create_task(
         spec_ref = spec
         if not spec_ref and make_spec:
             spec_path = os.path.join(SPECS_ACTIVE_DIR, f"{task_id}-{slug}.md")
-            write_text_atomic(spec_path, spec_lib.spec_from_template(title, task_id))
+            write_text_atomic(spec_path, spec_lib.spec_from_template(title, task_id, intent, acceptance))
             spec_ref = os.path.relpath(spec_path, WORKSPACE).replace(os.sep, "/")
         meta = {
             "id": task_id,
@@ -148,10 +148,15 @@ def create_task(
 
 
 def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
-    current = store.parse_task(path)[0].get("status")
+    current_meta = store.parse_task(path)[0]
+    current = current_meta.get("status")
     denied = roles.authorize(agent, "task.done" if current == "review" else "task.claim")
     if denied and not force:
         return False, denied
+    if current != "review" and not force:
+        unready = gates.spec_gate(current_meta)
+        if unready:
+            return False, unready
     if os.path.dirname(path) != ACTIVE_DIR:
         return False, "This task is already in done/."
     meta, body = store.parse_task(path)

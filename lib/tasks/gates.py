@@ -23,10 +23,13 @@ import os
 
 from lib.config import preferences
 from lib.config.settings import configured_checks, load_config
-from lib.core.fsio import read_json, safe_name
-from lib.core.paths import LOCKS_DIR
+from lib.core.fsio import (
+    lock_path,
+    read_json,
+)
 from lib.git import repo
 from lib.runtime import evidence
+from lib.specs import spec as spec_lib
 
 
 def workflow_config() -> dict:
@@ -41,6 +44,7 @@ def workflow_config() -> dict:
         "requireCheck": flow.get("requireCheck", "strict"),
         "autoContinue": bool(flow.get("autoContinue", False)),
         "chiefOnlyTasks": bool(flow.get("chiefOnlyTasks", True)),
+        "requireSpec": bool(flow.get("requireSpec", True)),
     }
 
 
@@ -69,6 +73,20 @@ def creation_gate(role: str | None) -> str | None:
     return None
 
 
+def spec_gate(meta: dict) -> str | None:
+    """No spec, no code: a task cannot be claimed while its spec is still the template."""
+    if not workflow_config()["requireSpec"]:
+        return None
+    problem = spec_lib.spec_problem(meta)
+    if not problem:
+        return None
+    return (
+        f"Task {meta.get('id')} cannot be claimed: {problem}. The chief fills the spec "
+        "(intent, behavior, acceptance criteria) before any worker starts. Ask the chief, or "
+        "write the criteria yourself only if the user told you to."
+    )
+
+
 def check_required() -> bool:
     flow = workflow_config()
     value = flow["requireCheck"]
@@ -77,8 +95,8 @@ def check_required() -> bool:
     return bool(value)
 
 
-def _claim_started(task_id: str) -> str | None:
-    holder = read_json(os.path.join(LOCKS_DIR, safe_name(f"task-{task_id}") + ".lock")) or {}
+def claim_started(task_id: str) -> str | None:
+    holder = read_json(lock_path(f"task-{task_id}")) or {}
     return holder.get("started_at")
 
 
@@ -98,7 +116,7 @@ def review_gate(meta: dict, agent: str) -> tuple[str | None, str]:
         ), ""
     with repo.in_task(meta):
         head = repo.git_state().get("head")
-    ok, text = evidence.task_green(task_id, head, _claim_started(task_id))
+    ok, text = evidence.task_green(task_id, head, claim_started(task_id))
     if check_required() and not ok:
         return (
             f"Task {task_id} cannot enter review: {text}. "

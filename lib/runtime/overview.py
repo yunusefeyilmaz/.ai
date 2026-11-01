@@ -56,7 +56,10 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
         ready_all, waiting_all = lifecycle.ready_and_waiting()
     except (OSError, ValueError):  # state may be mid-write; never crash the overview
         ready_all, waiting_all = [], []
-    review_queue = [t for t in active if t.get("status") == "review" and (not agent or t.get("submitted_by") != agent)]
+    review_queue = [
+        t for t in active
+        if t.get("status") == "review" and not t.get("owner") and (not agent or t.get("submitted_by") != agent)
+    ]
     others = [t for t in active if t.get("status") == "in_progress" and t.get("owner") != agent]
     blocked = [t for t in active if t.get("status") == "blocked"]
     handoffs = ckpt.list_handoff_markers(ensure=False)
@@ -124,3 +127,20 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
         "active": active, "done": last_done, "done_total": len(done),
         "events": events, "decisions": adr.list_decisions(),
     }
+
+
+_KEEP = ("id", "title", "status", "owner", "priority", "spec", "depends_on", "branch",
+         "worktree", "submitted_by", "reviewed_by", "changes_requested_by", "updated")
+
+
+def _slim(task: dict) -> dict:
+    return {key: task.get(key) for key in _KEEP if task.get(key) is not None}
+
+
+def compact(data: dict) -> dict:
+    """JSON-safe, token-cheap copy: task bodies and internal fields are dropped."""
+    out = dict(data)
+    for key in ("mine", "ready", "review_queue", "others", "blocked", "active", "done"):
+        out[key] = [_slim(task) for task in data.get(key, [])]
+    out["waiting"] = [{"task": _slim(task), "reasons": reasons} for task, reasons in data.get("waiting", [])]
+    return out

@@ -20,7 +20,8 @@
     "requireReview": true,
     "requireCheck": "strict",
     "autoContinue": false,
-    "chiefOnlyTasks": true
+    "chiefOnlyTasks": true,
+    "requireSpec": true
   },
   "team": {},
   "policy": {

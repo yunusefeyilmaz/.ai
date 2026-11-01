@@ -36,7 +36,7 @@ class HistoryTest(WorkspaceCase):
         out = run(workspace, "history", "0001").stdout
         for needle in (
             "planner-1", "-> todo", "todo -> in_progress", "in_progress -> review",
-            "review -> review", "review -> done", "bob",
+            "review -> done", "bob",
         ):
             self.assertIn(needle, out)
         payload = json.loads(run(workspace, "history", "0001", "--json").stdout)

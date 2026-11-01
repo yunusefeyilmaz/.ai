@@ -42,8 +42,14 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
         submitter = task.get("submitted_by")
         if agent and submitter and agent == submitter:
             return {
-                "cmd": f"ai task release {task_id} --agent {a}",
-                "why": "you submitted it; a different agent must review. Release so the reviewer can take over",
+                "cmd": None,
+                "why": "you delivered it; a different agent must review. Report to the user and wait",
+                "extra": extra,
+            }
+        if not git_on:
+            return {
+                "cmd": f"ai task done {task_id} --agent {a}",
+                "why": f"independent review (producer: {submitter or '?'}); Git is off, so approving is just `done`. Or `ai task request-changes`",
                 "extra": extra,
             }
         return {

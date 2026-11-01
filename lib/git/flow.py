@@ -393,6 +393,14 @@ def cmd_git_finish(args) -> int:
     if denied:
         print(denied, file=sys.stderr)
         return 1
+    submitter = meta.get("submitted_by")
+    if not args.force and submitter and submitter == getattr(args, "agent", None):
+        print(
+            f"Task {task_id} was submitted by {submitter}; the producer never merges its own work. "
+            "A different agent must run `ai git finish`.",
+            file=sys.stderr,
+        )
+        return 1
     branch = str(meta.get("branch") or "")
     if not branch:
         print(f"Task {task_id} has no branch to merge.", file=sys.stderr)
@@ -434,6 +442,7 @@ def cmd_git_finish(args) -> int:
             [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict", "--task", task_id]
             + (["--agent", args.agent] if getattr(args, "agent", None) else []),
             cwd=worktree or PROJECT,
+            stdout=sys.stderr if getattr(args, "json", False) else None,  # keep --json parseable
         )
         if check.returncode != 0:
             print("ai check --strict failed; refusing to merge.", file=sys.stderr)

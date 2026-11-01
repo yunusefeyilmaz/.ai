@@ -17,8 +17,8 @@ from lib.config.settings import (
     max_lock_ttl,
 )
 from lib.core.fsio import (
+    lock_path,
     read_json,
-    safe_name,
     write_json_atomic,
 )
 from lib.core.timeutil import (
@@ -102,7 +102,7 @@ def acquire_lock(
     ttl = ttl or default_ttl
     if ttl > max_lock_ttl():
         return {"ok": False, "holder": None, "error": f"ttl must be <= {max_lock_ttl()} seconds"}
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     payload = {
         "resource": resource,
         "agent": agent or "unknown",
@@ -186,8 +186,10 @@ def release_lock(
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     holder = read_json(path)
+    if holder is not None and holder.get("resource") not in (None, resource):
+        holder = None  # a different resource that merely shares the file name
     if holder is None:
         if not quiet:
             print(f"No lock held for '{resource}'.")
@@ -214,8 +216,10 @@ def heartbeat_lock(resource: str, agent: str | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    path = os.path.join(LOCKS_DIR, safe_name(resource) + ".lock")
+    path = lock_path(resource)
     holder = read_json(path)
+    if holder is not None and holder.get("resource") not in (None, resource):
+        holder = None  # a different resource that merely shares the file name
     if holder is None:
         print(f"No lock held for '{resource}'.", file=sys.stderr)
         return 1

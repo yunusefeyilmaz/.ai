@@ -89,7 +89,6 @@ ARTIFACTS_DIR = os.path.join(RUNTIME_DIR, "artifacts")
 LOGS_DIR = os.path.join(RUNTIME_DIR, "logs")
 COUNTER_PATH = os.path.join(STATE_DIR, "task-counter.json")
 MANIFEST_PATH = os.path.join(ARTIFACTS_DIR, "MANIFEST.json")
-LAST_CHECK_PATH = os.path.join(STATE_DIR, "last-check.json")
 EVIDENCE_DIR = os.path.join(STATE_DIR, "evidence")
 REGISTRY_MUTEX = os.path.join(LOCKS_DIR, ".registry.mutex")
 
@@ -112,7 +111,15 @@ REQUIRED_PATHS = [
     "docs/artifact-hygiene.md",
     "docs/recovery.md",
     "docs/orchestration.md",
+    "docs/roadmap.md",
+    "docs/conventions.md",
+    "specs/TEMPLATE.md",
     "agents/README.md",
+    "agents/orchestrator.md",
+    "agents/planner.md",
+    "agents/implementer.md",
+    "agents/reviewer.md",
+    "agents/qa.md",
 ]
 
 TASK_STATUSES = {"todo", "in_progress", "review", "changes_requested", "blocked", "done"}

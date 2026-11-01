@@ -57,6 +57,7 @@ class MetricsCase(unittest.TestCase):
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["checks"] = []
         config.setdefault("workflow", {})["chiefOnlyTasks"] = False
+        config["workflow"]["requireSpec"] = False
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         if with_git:
             git(workspace, "init", "-q", "--initial-branch=develop")
@@ -125,7 +126,7 @@ class WorkflowMetricsTest(MetricsCase):
             [
                 "task_created", "task_claimed", "task_released", "task_claimed",
                 "checkpoint", "resume", "lock_refused", "task_reviewed",
-                "task_released", "task_merged", "task_done",
+                "task_merged", "task_done",
             ],
         )
 
@@ -135,7 +136,7 @@ class WorkflowMetricsTest(MetricsCase):
         self.assertEqual(metrics["lock_refusals"], 1)
         self.assertEqual(metrics["retries"], 1)
         self.assertEqual(metrics["resumes"], 1)
-        self.assertEqual(metrics["per_agent"]["alice"], 7)
+        self.assertEqual(metrics["per_agent"]["alice"], 6)
 
         stamps = {
             event["event"]: datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))

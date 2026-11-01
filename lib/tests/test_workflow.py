@@ -101,7 +101,7 @@ class NowTest(WorkspaceCase):
         out = run(workspace, "now", "--agent", "alice").stdout
         self.assertIn("ai task review 0001 --agent alice", out)
         run(workspace, "task", "review", "0001", "--agent", "alice")
-        self.assertIn("ai task release 0001", run(workspace, "now", "--agent", "alice").stdout)
+        self.assertIn("you delivered 0001", run(workspace, "now", "--agent", "alice").stdout)  # handed over by review itself
         self.assertIn("ai git finish --task 0001 --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout.replace("ai task next --review --agent bob", "ai git finish --task 0001 --agent bob"))
         self.assertIn("ai task next --review --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout)
 

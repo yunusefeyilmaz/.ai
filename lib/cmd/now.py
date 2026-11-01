@@ -22,8 +22,9 @@ def _task_line(task: dict) -> str:
 def cmd_now(args) -> int:
     data = overview.build(args.agent, role=args.role)
     if args.json:
-        data["schema"] = 1  # contract version of this payload
-        print(json.dumps(data, indent=2, default=str))
+        payload = overview.compact(data)
+        payload["schema"] = 1  # contract version of this payload
+        print(json.dumps(payload, indent=2, default=str))
         return 0
     git = data["git"]
     tree = "dirty:%d" % git["dirty"] if git["dirty"] else "clean"

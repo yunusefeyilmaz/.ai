@@ -185,3 +185,155 @@ class WordingTest(WorkspaceCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LockNamingTest(WorkspaceCase):
+    def test_resources_that_differ_only_in_separators_do_not_share_a_lock(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        self.assertEqual(run(workspace, "lock", "acquire", "src/a", "--agent", "alice").returncode, 0)
+        # `src-a` used to map to the same file name as `src/a` and was reported as taken
+        self.assertEqual(run(workspace, "lock", "acquire", "src-a", "--agent", "bob").returncode, 0)
+        # releasing one never deletes the other
+        self.assertEqual(run(workspace, "lock", "release", "src/a", "--agent", "alice").returncode, 0)
+        status = run(workspace, "lock", "status").stdout
+        self.assertIn("src-a", status)
+        self.assertNotIn("src/a ", status.replace("src-a", ""))
+
+
+class JsonModeTest(WorkspaceCase):
+    def test_json_outputs_are_one_document(self) -> None:
+        workspace = self.make_workspace()
+        cfg = workspace / "config" / "workspace.json"
+        config = json.loads(cfg.read_text(encoding="utf-8"))
+        config["checks"] = [{"name": "noisy", "command": 'python -c "print(\'LOUD OUTPUT\')"'}]
+        cfg.write_text(json.dumps(config), encoding="utf-8")
+        run(workspace, "setup", "--defaults")
+        run(workspace, "task", "new", "Json")
+        # `check --json`: the check's own output must not precede the JSON
+        checked = run(workspace, "check", "--json")
+        self.assertIn("LOUD OUTPUT", checked.stderr)
+        self.assertIn("ok", json.loads(checked.stdout))
+        # `task next --json`: claim chatter goes to stderr
+        claimed = run(workspace, "task", "next", "--agent", "w1", "--json")
+        self.assertEqual(claimed.returncode, 0, claimed.stderr)
+        self.assertEqual(json.loads(claimed.stdout)["meta"]["id"], "0001")
+
+
+class SpecGateTest(WorkspaceCase):
+    def with_gate(self, workspace: Path) -> None:
+        set_workflow(workspace, requireSpec=True)
+
+    def test_a_template_spec_blocks_the_claim_until_the_criteria_are_written(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        self.with_gate(workspace)
+        run(workspace, "task", "new", "Unspecified")
+        refused = run(workspace, "task", "claim", "0001", "--agent", "w1")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("still the template", refused.stderr)
+        spec = next((workspace / "specs" / "active").glob("0001-*.md"))
+        text = spec.read_text(encoding="utf-8").replace(
+            "- [ ] Criterion one, observable and independently testable", "- [ ] Visitors can read posts"
+        )
+        spec.write_text(text, encoding="utf-8")
+        self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "w1").returncode, 0)
+
+    def test_tasks_without_a_spec_by_choice_are_exempt(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        self.with_gate(workspace)
+        run(workspace, "task", "new", "Tiny", "--no-spec")
+        self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "w1").returncode, 0)
+
+    def test_planned_tasks_carry_their_criteria_into_the_spec(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        self.with_gate(workspace)
+        plan = workspace.parent / "spec-plan.json"
+        plan.write_text(json.dumps({"tasks": [{
+            "key": "a", "title": "Posts", "intent": "Readers need posts",
+            "acceptance": ["GET /posts lists posts"],
+        }]}), encoding="utf-8")
+        self.assertEqual(run(workspace, "plan", "apply", str(plan)).returncode, 0)
+        spec = next((workspace / "specs" / "active").glob("0001-*.md")).read_text(encoding="utf-8")
+        self.assertIn("Readers need posts", spec)
+        self.assertIn("GET /posts lists posts", spec)
+        self.assertNotIn("Criterion one", spec)
+        self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "w1").returncode, 0)
+
+    def test_doctor_warns_about_a_done_task_whose_spec_stayed_active(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "task", "new", "Old")
+        run(workspace, "task", "claim", "0001", "--agent", "w1")
+        run(workspace, "task", "done", "0001", "--agent", "boss", "--force")
+        spec = next((workspace / "specs" / "done").glob("0001-*.md"))
+        spec.rename(workspace / "specs" / "active" / spec.name)  # simulate the old behavior
+        task = next((workspace / "tasks" / "done").glob("0001-*.md"))
+        task.write_text(task.read_text(encoding="utf-8").replace("specs/done/", "specs/active/"), encoding="utf-8")
+        self.assertIn("its spec is still in specs/active/", run(workspace, "doctor").stdout)
+
+
+class SelfMergeTest(WorkspaceCase):
+    def test_the_producer_cannot_run_git_finish_on_its_own_work(self) -> None:
+        workspace = self.make_workspace()
+        run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no")
+        run(workspace, "task", "new", "Self merge")
+        run(workspace, "git", "setup", stdin="y\n")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        git(workspace, "commit", "--allow-empty", "-m", "feat: work")
+        self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        refused = run(workspace, "git", "finish", "--task", "0001", "--agent", "alice")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("never merges its own work", refused.stderr)
+        merged = run(workspace, "git", "finish", "--task", "0001", "--agent", "bob")
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+
+
+class TemplateTest(WorkspaceCase):
+    def test_the_manual_fallback_template_parses_to_plain_values(self) -> None:
+        import sys
+
+        from test_start import ROOT
+
+        sys.path.insert(0, str(ROOT))
+        from lib.tasks.store import parse_task
+
+        meta, _ = parse_task(str(ROOT / "tasks" / "TEMPLATE.md"))
+        for key in ("depends_on", "scope_allowed", "scope_forbidden", "locks"):
+            self.assertIsNone(meta.get(key), key)  # no inline `# comment` leaking into values
+
+
+class GitOffTest(WorkspaceCase):
+    def test_without_git_review_ends_with_done_not_git_finish(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "setup", "--set", "review=yes", "checks=no", "git=no", "tests=no")
+        run(workspace, "task", "new", "No git")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        delivered = run(workspace, "task", "review", "0001", "--agent", "alice")
+        self.assertIn("ai task done 0001 --agent <reviewer>", delivered.stdout)
+        self.assertNotIn("git finish", delivered.stdout)
+        self.assertIn("ai task done 0001 --agent bob", run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout + run(workspace, "task", "next", "--review", "--agent", "bob").stdout)
+        self.assertEqual(run(workspace, "task", "done", "0001", "--agent", "bob").returncode, 0)
+
+
+class ReworkTest(WorkspaceCase):
+    def test_rework_reruns_the_checks_after_a_new_claim(self) -> None:
+        workspace = self.make_workspace(git_repo=False, mode="strict")
+        cfg = workspace / "config" / "workspace.json"
+        config = json.loads(cfg.read_text(encoding="utf-8"))
+        config["checks"] = [{"name": "unit", "command": 'python -c "print(1)"'}]
+        cfg.write_text(json.dumps(config), encoding="utf-8")
+        run(workspace, "task", "new", "Rework")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        self.assertEqual(run(workspace, "task", "request-changes", "0001", "--agent", "bob", "--reason", "fix").returncode, 0)
+        self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "alice").returncode, 0)
+        again = run(workspace, "task", "review", "0001", "--agent", "alice")
+        self.assertEqual(again.returncode, 0, again.stderr)  # used to fail: "older than the claim"
+        self.assertIn("Running the project checks", again.stderr)
+
+    def test_reviewer_can_take_a_delivered_task_without_any_release(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "task", "new", "Handover")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        run(workspace, "task", "review", "0001", "--agent", "alice")
+        now = run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout
+        self.assertIn("ai task next --review --agent bob", now)
+        self.assertEqual(run(workspace, "task", "next", "--review", "--agent", "bob").returncode, 0)

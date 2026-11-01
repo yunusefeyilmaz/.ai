@@ -9,10 +9,9 @@ import sys
 from lib.core.paths import (
     DONE_DIR,
     HANDOFF_DIR,
-    LOCKS_DIR,
 )
 from lib.config.settings import lock_settings
-from lib.core.fsio import safe_name
+from lib.core.fsio import lock_path
 from lib.core.timeutil import iso
 from lib.runtime.leases import (
     list_locks,
@@ -58,7 +57,7 @@ def cmd_recover_inner(args) -> int:
             repairs.append(lambda p=path: os.replace(p, os.path.join(DONE_DIR, os.path.basename(p))))
             if lock:
                 handled_locks.add(resource)
-                repairs.append(lambda res=resource: os.remove(os.path.join(LOCKS_DIR, safe_name(res) + ".lock")))
+                repairs.append(lambda res=resource: os.remove(lock_path(res)))
         if task["_folder"] == "done" and status != "done":
             actions.append((f"set task {task_id} status done", "file is in done/"))
             def fix_status(p=path, m=task):
@@ -90,14 +89,14 @@ def cmd_recover_inner(args) -> int:
         if task["_folder"] == "done" and lock:
             actions.append((f"release lock {resource}", "task is done"))
             handled_locks.add(resource)
-            repairs.append(lambda res=resource: os.remove(os.path.join(LOCKS_DIR, safe_name(res) + ".lock")))
+            repairs.append(lambda res=resource: os.remove(lock_path(res)))
 
     known = {str(task.get("id")) for task in tasks}
     for resource in list(locks):
         if resource.startswith("task-") and resource[5:] not in known:
             actions.append((f"remove orphan lock {resource}", "no task file"))
             handled_locks.add(resource)
-            repairs.append(lambda res=resource: os.remove(os.path.join(LOCKS_DIR, safe_name(res) + ".lock")))
+            repairs.append(lambda res=resource: os.remove(lock_path(res)))
 
     for lock in list_locks():
         resource = str(lock.get("resource"))
@@ -106,7 +105,7 @@ def cmd_recover_inner(args) -> int:
         if lock_is_stale(lock, stale_after):
             actions.append((f"remove stale lock {resource}", f"held by {lock.get('agent')}"))
             handled_locks.add(resource)
-            repairs.append(lambda res=resource: os.remove(os.path.join(LOCKS_DIR, safe_name(res) + ".lock")))
+            repairs.append(lambda res=resource: os.remove(lock_path(res)))
 
     for marker in ckpt.list_handoff_markers():
         task_id = str(marker.get("task"))

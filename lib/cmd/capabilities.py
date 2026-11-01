@@ -24,6 +24,10 @@ CAPABILITIES = {
         "artifacts": "runtime/artifacts",
     },
     "commands": {
+        "init": "create the workspace state in a fresh checkout; --wire adds the root adapters",
+        "setup": "chief: the questions for the user and where answers are stored; --set k=v, --check NAME=CMD, --defaults, --json",
+        "plan": "chief: apply <plan.json> creates linked tasks; example prints a skeleton; --dry-run, --role chief",
+        "version": "print the workspace version",
         "now": "10-line state + the single next required command; --agent, --json",
         "context": "project memory: open/shipped work, ADRs, recent activity; --limit, --json",
         "decision": "new | list architecture decision records",
@@ -36,7 +40,7 @@ CAPABILITIES = {
         "status": "tasks, locks, checkpoints, handoffs; --json, --board",
         "metrics": "summarize local workflow events; --since, --json",
         "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
-        "task": "new | list | show | link | ready | next | claim | release | review | done | discard | block | unblock",
+        "task": "new | list | show | link | ready | next [--review] | claim | release | review | request-changes | done | discard | block | unblock",
         "lock": "acquire | release | heartbeat | status",
         "checkpoint": "save resumable context",
         "resume": "print a compact resume brief with drift",
@@ -82,5 +86,5 @@ ORDER = 120
 def register(sub) -> None:
     """Attach this command group's parsers to the root subparsers."""
     capabilities = sub.add_parser("capabilities", help="print the machine-readable CLI contract")
-    capabilities.add_argument("--json", action="store_true")
+    capabilities.add_argument("--json", action="store_true", help="accepted for symmetry; the output is always JSON")
     capabilities.set_defaults(func=cmd_capabilities)

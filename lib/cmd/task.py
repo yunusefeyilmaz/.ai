@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -10,15 +11,14 @@ import sys
 from lib.core.paths import (
     ACTIVE_DIR,
     DONE_DIR,
-    LOCKS_DIR,
     PROJECT,
     WORKSPACE,
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    lock_path,
     normalize_id,
     read_json,
-    safe_name,
 )
 from lib.core.timeutil import iso
 from lib.runtime.events import append_event
@@ -209,7 +209,8 @@ def _next_review(args) -> int:
     ]
     queue.sort(key=lambda t: str(t.get("id")))
     for task in queue:
-        ok, message = _claim(task["_path"], args.agent)
+        with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
+            ok, message = _claim(task["_path"], args.agent)
         if not ok:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
@@ -221,7 +222,7 @@ def _next_review(args) -> int:
         if meta.get("spec"):
             print(f"Spec: {meta.get('spec')}")
         print(f"History: ai history {message}")
-        print(f"Approve:  ai git finish --task {message} --agent {args.agent}, then ai task done {message} --agent {args.agent}")
+        print(f"Approve:  {_approve_steps(message, args.agent)}")
         print(f"Reject:   ai task request-changes {message} --agent {args.agent} --reason \"...\"")
         return 0
     print("Nothing is waiting for review.", file=sys.stderr)
@@ -233,7 +234,9 @@ def cmd_task_next(args) -> int:
         return _next_review(args)
     ready, waiting = lifecycle.ready_and_waiting()
     for task in ready:
-        ok, message = _claim(task["_path"], args.agent)
+        # in --json mode all human text goes to stderr so stdout stays one JSON document
+        with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
+            ok, message = _claim(task["_path"], args.agent)
         if not ok:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
@@ -275,6 +278,13 @@ def cmd_task_release(args) -> int:
                 print(f"Task {task_id} changed before release.", file=sys.stderr)
                 return 1
             meta, body = store.parse_task(current_path)
+            if (
+                not meta.get("owner")
+                and meta.get("status") == "review"
+                and meta.get("submitted_by") == args.agent
+            ):
+                print(f"Task {task_id} was already handed over by `ai task review`; nothing to release.")
+                return 0
             if meta.get("owner") and meta.get("owner") != args.agent and not args.force:
                 print(
                     f"Task {task_id} is owned by {meta.get('owner')}. Use --force to override.",
@@ -313,7 +323,7 @@ def _auto_verify(path: str, agent: str) -> str | None:
     task_id = str(meta.get("id"))
     with repo.in_task(meta):  # verify the task's own checkout
         head = repo.git_state().get("head")
-        if evidence.task_green(task_id, head)[0]:
+        if evidence.task_green(task_id, head, gates.claim_started(task_id))[0]:
             return None
         print(f"Running the project checks for task {task_id} before review...", file=sys.stderr)
         results: list[dict] = []
@@ -328,6 +338,12 @@ def _auto_verify(path: str, agent: str) -> str | None:
             f"`ai task review {task_id} --agent {agent}` again."
         )
     return None
+
+
+def _approve_steps(task_id: str, who: str) -> str:
+    if settings.git_enabled():
+        return f"ai git finish --task {task_id} --agent {who}, then ai task done {task_id} --agent {who}"
+    return f"ai task done {task_id} --agent {who}   (Git is off: nothing to merge)"
 
 
 def cmd_task_review(args) -> int:
@@ -353,7 +369,7 @@ def cmd_task_review(args) -> int:
             if meta.get("owner") != args.agent:
                 print(f"Task {task_id} is not owned by {args.agent}.", file=sys.stderr)
                 return 1
-            holder = read_json(os.path.join(LOCKS_DIR, safe_name(f"task-{task_id}") + ".lock")) or {}
+            holder = read_json(lock_path(f"task-{task_id}")) or {}
             if holder.get("agent") != args.agent:
                 print(f"Task {task_id} does not have a live claim for {args.agent}.", file=sys.stderr)
                 return 1
@@ -367,6 +383,8 @@ def cmd_task_review(args) -> int:
                 return 1
             meta["status"] = "review"
             meta["submitted_by"] = args.agent
+            meta["owner"] = None   # delivery hands the task over: no separate release step
+            meta["lock"] = None
             meta["updated"] = iso()
             body = history.append(body, args.agent, "in_progress", "review", "submitted for independent review", proof)
             store.write_task(current_path, meta, body)
@@ -376,8 +394,9 @@ def cmd_task_review(args) -> int:
         return 1
     append_event("task_reviewed", task=task_id, agent=args.agent)
     lifecycle.release_task_locks(meta, args.agent)
-    print(f"Task {task_id} is delivered for review. Release it before reviewer takeover: ai task release {task_id} --agent {args.agent}")
-    print(f"Reviewer next: ai git finish --task {task_id} --agent <reviewer>, then ai task done {task_id} --agent <reviewer>")
+    release_lock(f"task-{task_id}", agent=args.agent, quiet=True)
+    print(f"Task {task_id} is delivered for independent review and handed over.")
+    print(f"Reviewer next: {_approve_steps(task_id, '<reviewer>')}")
     if not gates.workflow_config()["autoContinue"]:
         print("STOP: report what you delivered and wait for the user before starting another task.")
     return 0
@@ -416,6 +435,7 @@ def cmd_task_request_changes(args) -> int:
     except RuntimeError as exc:
         print(f"Cannot request changes on task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
+    evidence.invalidate(task_id, f"changes requested by {args.agent}")
     append_event("task_changes_requested", task=task_id, agent=args.agent)
     print(f"Task {task_id} sent back to its producer ({meta.get('submitted_by')}): {args.reason}")
     print(f"Producer next: ai task claim {task_id} --agent <producer>")
@@ -491,7 +511,7 @@ def cmd_task_done(args) -> int:
         print(gate_error, file=sys.stderr)
         return 1
     resource = f"task-{task_id}"
-    holder = read_json(os.path.join(LOCKS_DIR, safe_name(resource) + ".lock"))
+    holder = read_json(lock_path(resource))
     if not holder:
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:

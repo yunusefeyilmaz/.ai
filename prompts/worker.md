@@ -42,10 +42,10 @@ Then:
    `.ai/ai checkpoint <id> --agent <AGENT_NAME> --next "<next step>"`
 10. Before finishing, run `.ai/ai check --strict` and paste the result
    into the task log.
-11. Release your file leases. For review, run `.ai/ai task review <id>
-    --agent <AGENT_NAME>` followed by `.ai/ai task release <id> --agent
-    <AGENT_NAME>`. A different session reviews and merges. Only mark the task
-    done after verification and merge.
+11. For review, run `.ai/ai task review <id> --agent <AGENT_NAME>`: it runs the
+    checks, delivers, frees your file locks and hands the task over. A different
+    session reviews and merges. Only mark the task done after verification and
+    merge.
 
 Hard rules:
 - Never claim or edit a task owned by another agent.

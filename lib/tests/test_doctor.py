@@ -42,6 +42,7 @@ def clear_ledger(workspace: Path, mode: str = "lite") -> None:
     config["mode"] = mode
     config["checks"] = []
     config.setdefault("workflow", {})["chiefOnlyTasks"] = False
+    config["workflow"]["requireSpec"] = False
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 

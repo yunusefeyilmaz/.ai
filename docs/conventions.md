@@ -47,7 +47,8 @@ with no way to fail is not a spec.
 ## Git
 
 - One task per branch is a good default. The branch name references the task:
-  `task/0001-add-invoice-export`.
+  `feature/0001-add-invoice-export` (the type prefix is `feature`, `fix`, `chore`,
+  `docs`, `refactor` or `hotfix`; `ai git start` creates it).
 - Commit messages describe the change, not the agent:
   `Add invoice CSV export`, not `AI changes`.
 - Do not force-push shared branches, do not rewrite published history.

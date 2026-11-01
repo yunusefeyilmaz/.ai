@@ -121,9 +121,9 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 - **Blocked:** `ai task block 0001 --agent implementer --reason "needs API key"`.
   Unblock with `ai task unblock 0001 --agent <name>`.
-- **Review:** the owner runs `ai task review <id> --agent <name>` and then
-  `ai task release <id> --agent <name>`. This preserves `review` while freeing
-  the claim for a different session. Leave the diff and spec path in the log.
+- **Review:** the owner runs `ai task review <id> --agent <name>`. Delivery also
+  hands the task over (no separate release), so a different session can take it
+  with `ai task next --review`. Leave the diff and spec path in the log.
 - **Context limit:** `ai handoff 0001 --agent implementer --reason "context
   limit"`. The marker and checkpoint let a fresh session run `ai resume 0001`.
 
@@ -131,8 +131,7 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
 
 ```sh
 ai check --task 0001 --agent implementer     # records verification evidence for the task
-ai task review 0001 --agent implementer      # producer submits
-ai task release 0001 --agent implementer
+ai task review 0001 --agent implementer      # producer submits and hands over
 ai git finish --task 0001 --agent qa          # a DIFFERENT agent merges
 ai task done 0001 --agent qa                  # ...and marks it done
 ```

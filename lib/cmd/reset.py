@@ -8,7 +8,7 @@ import sys
 from lib.core.paths import (
     WORKSPACE,
 )
-from lib.core.fsio import safe_name
+from lib.core.fsio import lock_path
 from lib.runtime.leases import (
     acquire_lock,
     release_lock,
@@ -65,7 +65,7 @@ def cmd_reset(args) -> int:
         )
         return 1
     try:
-        unexpected_locks = [path for path in runtime_reset.reset_lock_files() if os.path.basename(path) != safe_name(resource) + ".lock"]
+        unexpected_locks = [path for path in runtime_reset.reset_lock_files() if path != lock_path(resource)]
         if unexpected_locks:
             print("A lock appeared during confirmation; reset cancelled.", file=sys.stderr)
             return 1

@@ -6,11 +6,8 @@ import contextlib
 import os
 import time
 
-from lib.core.paths import (
-    LOCKS_DIR,
-    REGISTRY_MUTEX,
-)
-from lib.core.fsio import safe_name
+from lib.core.paths import REGISTRY_MUTEX
+from lib.core.fsio import lock_path
 from lib.runtime.dirs import ensure_dirs
 
 
@@ -49,7 +46,7 @@ def registry_mutex(timeout: float = 5.0):
 def workspace_state_guard():
     """Serialize state writes against `ai reset --hard`."""
     with registry_mutex():
-        reset_lock = os.path.join(LOCKS_DIR, safe_name("project") + ".lock")
+        reset_lock = lock_path("project")
         if os.path.exists(reset_lock):
             raise RuntimeError("workspace reset is in progress")
         yield

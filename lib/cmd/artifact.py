@@ -53,10 +53,15 @@ def cmd_artifact_inner(args) -> int:
             print(f"No such path: {args.path}", file=sys.stderr)
             return 1
         workspace_abs = os.path.abspath(WORKSPACE)
-        if os.path.commonpath([source, workspace_abs]) == workspace_abs:
+        try:
+            inside_workspace = os.path.commonpath([source, workspace_abs]) == workspace_abs
+            inside_project = os.path.commonpath([source, os.path.abspath(PROJECT)]) == os.path.abspath(PROJECT)
+        except ValueError:  # different drives on Windows
+            inside_workspace, inside_project = False, False
+        if inside_workspace:
             print("Path is already inside the workspace.", file=sys.stderr)
             return 1
-        if os.path.commonpath([source, os.path.abspath(PROJECT)]) != os.path.abspath(PROJECT):
+        if not inside_project:
             print("Refusing to move paths outside the project.", file=sys.stderr)
             return 1
         stamp = now().strftime("%Y%m%dT%H%M%SZ")
@@ -104,6 +109,9 @@ def cmd_artifact_inner(args) -> int:
 
 
 def cmd_clean(args) -> int:
+    if not (args.stale_locks or args.logs):
+        print("Nothing to clean: pass --stale-locks and/or --logs.", file=sys.stderr)
+        return 1
     removed = 0
     try:
         with workspace_state_guard():

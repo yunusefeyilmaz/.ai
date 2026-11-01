@@ -13,7 +13,6 @@ from lib.core.paths import (
     BOARD_PATH,
     CONFIG_DIR,
     DECISIONS_DIR,
-    LOCKS_DIR,
     PROJECT,
     SPECS_DIR,
     TASKS_DIR,
@@ -24,9 +23,9 @@ from lib.config.settings import (
     lock_settings,
 )
 from lib.core.fsio import (
+    lock_path,
     normalize_id,
     read_json,
-    safe_name,
     slugify,
 )
 from lib.runtime.events import append_event
@@ -269,7 +268,7 @@ def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> s
 def release_git_guard(owned: bool, agent: str) -> None:
     if not owned:
         return
-    path = os.path.join(LOCKS_DIR, safe_name(normalize_resource("@git/index")) + ".lock")
+    path = lock_path(normalize_resource("@git/index"))
     holder = read_json(path) or {}
     if holder.get("agent") == agent:
         try:

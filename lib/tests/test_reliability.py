@@ -59,6 +59,7 @@ class ReliabilityCase(unittest.TestCase):
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["checks"] = []
         config.setdefault("workflow", {})["chiefOnlyTasks"] = False
+        config["workflow"]["requireSpec"] = False
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
         if with_git:
@@ -132,7 +133,7 @@ class LeaseReliabilityTest(ReliabilityCase):
     def test_recover_apply_repairs_owner_lock_drift(self) -> None:
         workspace = self.make_workspace()
         self.create_claimed_task(workspace, "stranded")
-        lock_path = next((workspace / "runtime" / "locks").glob("task-0001.lock"))
+        lock_path = next((workspace / "runtime" / "locks").glob("task-0001-*.lock"))
         lock_path.unlink()
 
         recovered = run(workspace, "recover", "--apply")

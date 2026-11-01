@@ -24,11 +24,11 @@ ai context                                               # only when new: open w
 The user tells you your role ("you are the chief / an implementer / a reviewer");
 pass it as `--role`. Roles and their one-command loops:
 
-| Role | Loop |
-|------|------|
-| **chief** (`agents/orchestrator.md`) | `ai setup` (ask the user, stored in config) -> `ai plan apply plan.json` -> fill specs -> `ai status` |
-| **implementer** | `ai task next` (claims + locks + branch) -> work -> `ai task review` (checks + delivers). **Then stop** and wait for the user |
-| **reviewer** | `ai task next --review` -> `ai git finish` + `ai task done`, or `ai task request-changes` |
+| Role                                 | Loop                                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **chief** (`agents/orchestrator.md`) | `ai setup` (ask the user, stored in config) -> `ai plan apply plan.json` -> fill specs -> `ai status`                         |
+| **implementer**                      | `ai task next` (claims + locks + branch) -> work -> `ai task review` (checks + delivers). **Then stop** and wait for the user |
+| **reviewer**                         | `ai task next --review` -> `ai git finish` + `ai task done`, or `ai task request-changes`                                     |
 
 Run the command printed after `NEXT`, then run `ai now` again. It reads the task
 state, Git and the last check, so you never have to work out the order yourself.
@@ -36,18 +36,18 @@ Read task and spec files only when `NEXT` or the task asks you to.
 
 ## Required order (enforced, not advice)
 
-| # | Step | Command | Refused when |
-|---|------|---------|--------------|
-| 1 | Pick work | `ai task next --agent <n>`: also takes the task's file locks and opens its branch | a dependency is not done, or a declared file is locked |
-| 2 | Spec | edit the linked file in `specs/active/` | — (no spec, no code) |
-| 3 | Git base | `ai git setup` (once per clone) | — |
-| 4 | Branch | automatic at claim when Git is on; manual: `ai git start --task <id> --agent <n> --type feature` | before editing, always |
-| 5 | Work | the task's declared `locks` are already held; extra files: `ai lock acquire <path> --agent <n> --task <id>`; edit, `ai checkpoint <id> --agent <n> --next "<step>"` | a live lock is a refusal |
-| 6 | Commit | `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat --message "<subject>"` | staged paths not covered by your locks |
-| 7 | Check | `ai check --task <id> --agent <n>` (runs the *project's* `checks` from `config/workspace.json`) | red. Strict mode needs green evidence for this task on the current HEAD before review |
-| 8 | **Review** | `ai task review <id> --agent <n>` (runs the project checks itself when required), then `ai task release <id> --agent <n>` | not `in_progress`, not yours, or (strict) no green check |
-| 9 | **Merge + done** (a *different* agent) | `ai git finish --task <id> --agent <r>`, then `ai task done <id> --agent <r>` | task not in `review`, or `<r>` is the producer |
-| 9b | Not good enough? | `ai task request-changes <id> --agent <r> --reason "..."` | not in `review`, or `<r>` is the producer. The producer reclaims it |
+| #   | Step                                   | Command                                                                                                                                                             | Refused when                                                                          |
+| --- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | Pick work (needs a filled spec)        | `ai task next --agent <n>`: also takes the task's file locks and opens its branch                                                                                   | a dependency is not done, or a declared file is locked                                |
+| 2   | Spec                                   | edit the linked file in `specs/active/`                                                                                                                             | — (no spec, no code)                                                                  |
+| 3   | Git base                               | `ai git setup` (once per clone)                                                                                                                                     | —                                                                                     |
+| 4   | Branch                                 | automatic at claim when Git is on; manual: `ai git start --task <id> --agent <n> --type feature`                                                                    | before editing, always                                                                |
+| 5   | Work                                   | the task's declared `locks` are already held; extra files: `ai lock acquire <path> --agent <n> --task <id>`; edit, `ai checkpoint <id> --agent <n> --next "<step>"` | a live lock is a refusal                                                              |
+| 6   | Commit                                 | `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat --message "<subject>"`                                                            | staged paths not covered by your locks                                                |
+| 7   | Check                                  | `ai check --task <id> --agent <n>` (runs the _project's_ `checks` from `config/workspace.json`)                                                                     | red. Strict mode needs green evidence for this task on the current HEAD before review |
+| 8   | **Review**                             | `ai task review <id> --agent <n>`: runs the project checks itself when required, then hands the task over (no separate release)                                     | not `in_progress`, not yours, or no green check when checks are required              |
+| 9   | **Merge + done** (a _different_ agent) | `ai git finish --task <id> --agent <r>`, then `ai task done <id> --agent <r>`                                                                                       | task not in `review`, or `<r>` is the producer                                        |
+| 9b  | Not good enough?                       | `ai task request-changes <id> --agent <r> --reason "..."`                                                                                                           | not in `review`, or `<r>` is the producer. The producer reclaims it                   |
 
 `ai task done` never works straight from `in_progress`. The producer never
 approves its own work. `--force` is an operator escape hatch; use it only when
@@ -91,21 +91,21 @@ the recorded verification is still valid. A task may declare `scope_allowed`/`sc
 
 `lib/` holds only scripts. Data stays in the folders below.
 
-| Need | Data (read/write via `ai`) | Scripts (`lib/`) |
-|------|----------------------------|------------------|
-| Entry point | `ai.py`, launchers `ai`, `ai.cmd` | — |
-| Tasks, board | `tasks/active`, `tasks/done`, `tasks/BOARD.md` | `lib/tasks/` (rules: `gates.py`, `workflow.py`) |
-| Specs | `specs/active`, `specs/done` | `lib/specs/` |
-| Locks, checkpoints, handoffs, events, artifacts, logs | `runtime/` (never committed) | `lib/runtime/` |
-| Git flow, commit/PR templates | `templates/git/` | `lib/git/` |
-| Decisions (ADRs) | `docs/decisions/` | `lib/decisions/` |
-| Config (`workspace.json`) | `config/` | `lib/config/` |
-| CLI commands (one file each) | — | `lib/cmd/` |
-| Paths, atomic IO, time | — | `lib/core/` |
-| Tests of the workspace tooling itself (not your project; run only if you changed `.ai`) | — | `lib/tests/` |
-| Optional extensions (future) | `skills/` | — |
-| Module map and call flow | `lib/README.md` | |
-| Deep dives: flow, locks, git, recovery | `docs/` | |
+| Need                                                                                    | Data (read/write via `ai`)                     | Scripts (`lib/`)                                |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| Entry point                                                                             | `ai.py`, launchers `ai`, `ai.cmd`              | —                                               |
+| Tasks, board                                                                            | `tasks/active`, `tasks/done`, `tasks/BOARD.md` | `lib/tasks/` (rules: `gates.py`, `workflow.py`) |
+| Specs                                                                                   | `specs/active`, `specs/done`                   | `lib/specs/`                                    |
+| Locks, checkpoints, handoffs, events, artifacts, logs                                   | `runtime/` (never committed)                   | `lib/runtime/`                                  |
+| Git flow, commit/PR templates                                                           | `templates/git/`                               | `lib/git/`                                      |
+| Decisions (ADRs)                                                                        | `docs/decisions/`                              | `lib/decisions/`                                |
+| Config (`workspace.json`)                                                               | `config/`                                      | `lib/config/`                                   |
+| CLI commands (one file each)                                                            | —                                              | `lib/cmd/`                                      |
+| Paths, atomic IO, time                                                                  | —                                              | `lib/core/`                                     |
+| Tests of the workspace tooling itself (not your project; run only if you changed `.ai`) | —                                              | `lib/tests/`                                    |
+| Optional extensions (future)                                                            | `skills/`                                      | —                                               |
+| Module map and call flow                                                                | `lib/README.md`                                |                                                 |
+| Deep dives: flow, locks, git, recovery                                                  | `docs/`                                        |                                                 |
 
 ## Commands
 

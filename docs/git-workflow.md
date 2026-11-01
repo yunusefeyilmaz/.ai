@@ -98,14 +98,11 @@ ai git verify --strict
 ai git commit --task 0001 --agent implementer-1 --type feat --scope export \
   --message "add CSV export endpoint" --body "Closes the export gap for admins."
 
-ai check --strict
 ai task review 0001 --agent implementer-1
-ai task release 0001 --agent implementer-1
 ```
 
-Then let a different session verify it. `ai task review` records the state;
-`ai task release` frees the claim while preserving that state. The reviewer (or
-QA) merges:
+Then let a different session verify it. `ai task review` records the state and
+hands the task over. The reviewer (or QA) merges:
 
 ```sh
 # reviewer session, after reading the spec and diff
