@@ -135,9 +135,7 @@ A handoff is a checkpoint plus a marker plus a prompt. Nothing relies on chat
 history.
 
 ```sh
-ai checkpoint 0007 --agent impl-a --reason handoff \
-  --objective "..." --status "..." --next "..." \
-  --files src/billing/export.py --verification "npm test: 41 passed"
+ai checkpoint 0007 --agent impl-a --reason handoff --objective "..." --status "..." --next "..." --files src/billing/export.py --verification "npm test: 41 passed"
 ai handoff 0007 --agent impl-a --reason "ready for review"
 ```
 

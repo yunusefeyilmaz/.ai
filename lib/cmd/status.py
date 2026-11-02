@@ -68,12 +68,12 @@ def cmd_status(args) -> int:
     print(f"Artifacts  : {len(artifacts)} quarantined")
     print()
     if active:
-        print(f"{'ID':<6} {'STATUS':<12} {'OWNER':<18} TITLE")
-        for task in active:
-            print(
-                f"{str(task.get('id')):<6} {str(task.get('status')):<12} "
-                f"{str(task.get('owner') or '-'):<18} {task.get('title')}"
-            )
+        for line in board.text_table(
+            [("ID", 6), ("STATUS", 12), ("OWNER", 18), ("TITLE", 0)],
+            [[task.get("id"), task.get("status"), task.get("owner"), task.get("title")]
+             for task in active],
+        ):
+            print(line)
         print()
     for marker in markers:
         print(f"HANDOFF    task {marker.get('task')} requested by {marker.get('agent')} ({marker.get('reason')})")

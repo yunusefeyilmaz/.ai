@@ -3,6 +3,11 @@
 `.ai/` is the source of truth. An adapter is a thin pointer that tells one tool
 where the source of truth is. Rules are never duplicated here.
 
+`supports` in `adapter.json` lists the usage modes the wiring enables in that
+tool (`auto-load`, `fresh-session`, `fresh-chat`, `skills`). It does not claim a
+shipped hook, subagent or permission integration: the only automation an adapter
+installs is the pointer file written by `ai adopt`.
+
 | Adapter | Tool | Wiring file in the project |
 |---------|------|----------------------------|
 | `claude-code/` | Claude Code | `CLAUDE.md` |

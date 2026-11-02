@@ -72,6 +72,16 @@ def matches(pattern: str, path: str) -> bool:
     return bool(_regex(normalize_rel_path(pattern)).match(path))
 
 
+def staged_violations(meta: dict, staged: list[str], is_ledger) -> list[str]:
+    """Scope violations for staged product paths.
+
+    Ledger paths (`tasks/`, `specs/`, `config/`, decisions) are the CLI's own
+    bookkeeping and are never in a task's scope. Shared by `ai git commit` and
+    `ai git verify` so the two cannot disagree.
+    """
+    return violations(meta, [path for path in staged if not is_ledger(path)])
+
+
 def violations(meta: dict, paths: list[str]) -> list[str]:
     """Return human-readable violations for `paths` against the task's scope."""
     allowed = split_globs(meta.get("scope_allowed"))

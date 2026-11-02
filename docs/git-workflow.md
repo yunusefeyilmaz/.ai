@@ -98,8 +98,7 @@ ai lock acquire src/export/csv.py --agent implementer-1 --task 0001
 ai check --fast
 git add <only the files you own>
 ai git verify --strict
-ai git commit --task 0001 --agent implementer-1 --type feat --scope export \
-  --message "add CSV export endpoint" --body "Closes the export gap for admins."
+ai git commit --task 0001 --agent implementer-1 --type feat --scope export --message "add CSV export endpoint" --body "Closes the export gap for admins."
 
 ai check --task 0001 --agent implementer-1   # the one per-task evidence record
 ai task review 0001 --agent implementer-1

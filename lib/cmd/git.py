@@ -53,8 +53,8 @@ def cmd_git(args) -> int:
             state = repo.git_state()
     uncovered, locks = repo.uncovered_staged(state)
     if getattr(args, "task", None):
-        out_of_scope = task_scope.violations(
-            meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+        out_of_scope = task_scope.staged_violations(
+            meta, state.get("staged", []), repo.is_workspace_ledger_path
         )
     if args.json:
         print(json.dumps({"staged": state.get("staged", []), "uncovered": uncovered,

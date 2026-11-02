@@ -57,6 +57,24 @@ def board_task_rows(tasks: list[dict]) -> list[tuple[dict, str]]:
     return rows
 
 
+def text_table(columns: list[tuple[str, int]], rows: list[list]) -> list[str]:
+    """Fixed-width plain-text table shared by `task list`, `task ready` and `status`.
+
+    `columns` is [(heading, width)]; each row is padded cell by cell and the line
+    is right-stripped so the last column (usually a title) needs no width.
+    """
+    def cell(value, width: int) -> str:
+        text = str(value if value not in (None, "") else "-")
+        if width <= 0:
+            return text  # last column: free text, no padding or truncation
+        return f"{text[:width]:<{width}}"
+
+    lines = [" ".join(cell(name, width) for name, width in columns).rstrip()]
+    for row in rows:
+        lines.append(" ".join(cell(value, width) for value, (_, width) in zip(row, columns)).rstrip())
+    return lines
+
+
 def render_board(tasks: list[dict], locks: list[dict], mode: str) -> str:
     """Render the read-only board: dependency order, leases and refusals."""
     _, stale_after = lock_settings()

@@ -218,8 +218,8 @@ def _git_commit(args) -> int:
     if not state.get("staged") and not args.allow_empty:
         print("Nothing is staged. Stage only the files you own, then retry.", file=sys.stderr)
         return 1
-    scope_problems = task_scope.violations(
-        meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+    scope_problems = task_scope.staged_violations(
+        meta, state.get("staged", []), repo.is_workspace_ledger_path
     )
     if scope_problems and not getattr(args, "force", False):
         print(f"Refusing commit; staged paths leave the scope of task {task_id}:", file=sys.stderr)

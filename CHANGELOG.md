@@ -2,6 +2,37 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.6] - 2026-11-02
+
+### Changed
+
+- **Task transitions have one implementation.** `lib/tasks/transition.py` owns the
+  guarded sequence every state change repeated by hand: re-find the task under
+  `workspace_state_guard()`, refuse when the file moved, re-parse, apply, write
+  and refresh the board. `review`, `request-changes`, `block`, `unblock` and
+  `done` now pass a `mutate` callback (and, for `done`, a `finalize` that archives
+  the file) instead of copying the block; a refusal can no longer half-apply.
+  `lib/cmd/task.py` keeps argument handling and printed messages.
+  (`lib/tasks/transition.py`, `lib/cmd/task.py`)
+
+- **Shared rendering and scope checks.** `ai task list`, `ai task ready` and
+  `ai status` print through one `board.text_table()`, and `ai git commit` /
+  `ai git verify` compute scope violations through one
+  `scope.staged_violations()` so the two commands cannot drift.
+  (`lib/tasks/board.py`, `lib/tasks/scope.py`, `lib/git/flow.py`, `lib/cmd/git.py`)
+
+- `adapter.json`'s `supports` field is documented for what it is: the usage modes
+  a wiring enables, not shipped hooks or permission integrations.
+  (`adapters/README.md`)
+
+### Added
+
+- `lib/tests/test_platform.py`: fault injection at the `fsio` / `repo` boundary —
+  a failed `fsync` keeps the previous content and leaves no temp debris, a
+  Windows sharing violation is retried until it succeeds, a missing `git`
+  returns 127, a git timeout returns 124, and a CRLF task file parses and
+  round-trips to LF. These run on every OS instead of skipping off Windows.
+
 ## [0.9.5] - 2026-11-02
 
 ### Fixed

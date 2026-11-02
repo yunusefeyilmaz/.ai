@@ -89,8 +89,7 @@ ai lock acquire src/billing --agent implementer --task 0001
 ai check --fast
 
 # 5. Save your position before the context fills
-ai checkpoint 0001 --agent implementer --percent 70 \
-  --next "write the CSV writer" --files src/billing/export.py
+ai checkpoint 0001 --agent implementer --percent 70 --next "write the CSV writer" --files src/billing/export.py
 
 # 6. Prove it, then submit for review
 ai check
@@ -386,16 +385,7 @@ Do not write secrets or personal data into a checkpoint. Do not assume the next
 agent can see this conversation.
 
 ```sh
-ai checkpoint 0007 --agent codex --reason context --percent 85 \
-  --objective "Export invoices as CSV" \
-  --status "writer raises KeyError on missing vat_id" \
-  --done "parser and 12 tests" \
-  --in-progress "writer.py:84, empty-row branch" \
-  --next "1. handle missing vat_id 2. add empty-row test 3. npm test" \
-  --decisions "stdlib csv only" \
-  --do-not "do not rewrite the parser" \
-  --files src/export/writer.py \
-  --verification "npm test: 12 passed, 1 failing"
+ai checkpoint 0007 --agent codex --reason context --percent 85 --objective "Export invoices as CSV" --status "writer raises KeyError on missing vat_id" --done "parser and 12 tests" --in-progress "writer.py:84, empty-row branch" --next "1. handle missing vat_id 2. add empty-row test 3. npm test" --decisions "stdlib csv only" --do-not "do not rewrite the parser" --files src/export/writer.py --verification "npm test: 12 passed, 1 failing"
 
 ai handoff 0007 --agent codex --reason "context limit"
 ```
