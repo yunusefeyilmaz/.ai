@@ -86,7 +86,17 @@ def create(meta: dict, branch: str, base: str) -> tuple[bool, str, str]:
     """Create (or reuse) the task's worktree. Returns (ok, path, message)."""
     path = os.path.join(WORKTREES_DIR, worktree_name(branch))
     if os.path.isdir(path):
-        return True, path, "reused"
+        # Reuse only a real worktree of the expected branch. A leftover folder
+        # from another task (or a name collision) must never be adopted, or two
+        # workers would quietly edit the same checkout.
+        code, current, _ = repo.run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=path)
+        if code == 0 and current == branch:
+            return True, path, "reused"
+        found = current if code == 0 and current else "not a git worktree"
+        return False, path, (
+            f"{path} already exists but is on '{found}', not '{branch}'. "
+            "Remove it (or pick a different branch) before claiming this task."
+        )
     os.makedirs(WORKTREES_DIR, exist_ok=True)
     main = PROJECT
     ensure_excluded(main)

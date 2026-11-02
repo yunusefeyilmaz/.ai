@@ -138,16 +138,19 @@ It never edits product code.
 
 ## Corrupted or hand-edited files
 
-All CLI writes are atomic (temp file + replace), so partial JSON is rare. If you
-hand-edit:
+All CLI writes are flush+fsync before an atomic replace, so partial JSON is rare.
+Prefer `ai recover --apply` / `ai doctor --fix`. Hand-edit only when the CLI is
+unavailable or as part of this recovery procedure, and keep the documented field
+names:
 
 - Task front matter is `key: value` lines between `---` fences. Keep `id`,
-  `title`, `status`, `owner`, `updated`.
+  `title`, `status`, `owner`, `updated` (see `conventions.md` for the full table).
 - A lock is a JSON object with `resource`, `agent`, `task`, `started_at`,
   `updated_at`, `ttl_seconds`.
 - A checkpoint is a task-shaped Markdown file plus its `.json` sidecar.
 
-If a file is unparseable, `ai check` reports it. Restore from git:
+If a file is unparseable, `ai check` reports it. Restore from git (paths are
+workspace-relative; prefix `.ai/` only in a subfolder install):
 
 ```sh
 git checkout -- .ai/tasks/active/0007-export-invoices.md

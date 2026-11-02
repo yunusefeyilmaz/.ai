@@ -38,6 +38,7 @@ from lib.config import roles
 from lib.config import settings
 from lib.git import flow
 from lib.git import repo
+from lib.git import worktrees
 from lib.runtime import evidence
 from lib.specs import spec as spec_lib
 from lib.runtime import health
@@ -72,7 +73,8 @@ def cmd_task_new(args) -> int:
             locks=scope.join_globs(getattr(args, "lock", None)),
             actor=getattr(args, "agent", None),
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        print(f"Cannot create the task: {exc}.", file=sys.stderr)
         return 1
     print(f"Created {os.path.relpath(created['path'], PROJECT)}")
     if created["spec"]:
@@ -243,11 +245,18 @@ def cmd_task_next(args) -> int:
         claimed_path = store.find_task(message)
         meta, body = store.parse_task(claimed_path)
         if args.json:
-            print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
+            payload = {"meta": meta, "body": body}
+            if meta.get("worktree"):
+                payload["worktree"] = meta.get("worktree")
+                payload["cli"] = worktrees.cli_command()
+            print(json.dumps(payload, indent=2, default=str))
             return 0
         print(f"Task: {meta.get('title')}")
         if meta.get("spec"):
             print(f"Spec: {meta.get('spec')}")
+        if meta.get("worktree"):
+            print(f"Worktree: {meta.get('worktree')} (cd there; run the CLI by absolute path)")
+            print(f"CLI: {worktrees.cli_command()}")
         print(f"Read it: ai task show {message}")
         return 0
     if args.json:
@@ -447,6 +456,15 @@ def cmd_task_block(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
+    meta, _ = store.parse_task(path)
+    owner = meta.get("owner")
+    if owner and owner != args.agent:
+        print(
+            f"Task {args.task_id} is owned by {owner}; only the owner (or the chief) may block it.",
+            file=sys.stderr,
+        )
+        return 1
+    task_id = str(meta.get("id"))
     try:
         with workspace_state_guard():
             current_path = store.find_task(args.task_id)
@@ -455,14 +473,25 @@ def cmd_task_block(args) -> int:
                 return 1
             meta, body = store.parse_task(current_path)
             previous = meta.get("status")
+            if previous == "blocked":
+                print(f"Task {task_id} is already blocked.")
+                return 0
+            meta["blocked_from"] = previous
             meta["status"] = "blocked"
             meta["updated"] = iso()
+            if previous == "in_progress":
+                # A blocked worker no longer holds the task: release ownership
+                # and its claim lease so it is not reported as "leased by X".
+                meta["owner"] = None
+                meta["lock"] = None
             body = history.append(body, args.agent, previous, "blocked", args.reason)
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
         print(f"Cannot block task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
+    if previous == "in_progress":
+        release_lock(f"task-{task_id}", force=True)
     print(f"Blocked {meta.get('id')}: {args.reason}")
     return 0
 
@@ -480,15 +509,27 @@ def cmd_task_unblock(args) -> int:
                 return 1
             meta, body = store.parse_task(current_path)
             previous = meta.get("status")
-            meta["status"] = "todo"
+            if previous != "blocked":
+                print(f"Task {args.task_id} is {previous or 'unknown'}, not blocked.", file=sys.stderr)
+                return 1
+            restore = meta.get("blocked_from")
+            if restore not in ("review", "changes_requested"):
+                # in_progress is deliberately not restored: the worker that was
+                # interrupted must reclaim the task and its lease explicitly.
+                restore = "todo"
+            meta["status"] = restore
+            meta.pop("blocked_from", None)
+            if restore == "todo":
+                meta["owner"] = None
+                meta["lock"] = None
             meta["updated"] = iso()
-            body = history.append(body, args.agent, previous, "todo", "unblocked")
+            body = history.append(body, args.agent, previous, restore, "unblocked")
             store.write_task(current_path, meta, body)
             board.write_board(store.load_tasks())
     except RuntimeError as exc:
         print(f"Cannot unblock task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
-    print(f"Unblocked {meta.get('id')}.")
+    print(f"Unblocked {meta.get('id')} to {meta.get('status')}.")
     return 0
 
 
@@ -531,12 +572,36 @@ def cmd_task_done(args) -> int:
     records = evidence.task_records(task_id)
     proof = evidence.summary(records[-1]) if records else ""
     body = history.append(body, args.agent, previous, "done", forced, proof)
-    archived_spec = spec_lib.archive_spec(meta)
-    if archived_spec:
-        meta["spec"] = archived_spec
-    store.write_task(path, meta, body)
     target = os.path.join(DONE_DIR, os.path.basename(path))
-    os.replace(path, target)
+    if os.path.exists(target):
+        print(
+            f"Cannot archive task {task_id}: {os.path.relpath(target, PROJECT)} already exists. "
+            "Rename one of the files, then rerun.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        with workspace_state_guard():
+            current_path = store.find_task(task_id)
+            if current_path != path:
+                print(f"Task {task_id} changed before it could be archived; retry.", file=sys.stderr)
+                return 1
+            current_meta, current_body = store.parse_task(current_path)
+            if (
+                gates.workflow_config()["requireReview"]
+                and current_meta.get("status") not in ("review", "done")
+                and not args.force
+            ):
+                print(f"Task {task_id} is no longer in review; retry.", file=sys.stderr)
+                return 1
+            archived_spec = spec_lib.archive_spec(meta)
+            if archived_spec:
+                meta["spec"] = archived_spec
+            store.write_task(path, meta, body)
+            os.replace(path, target)
+    except (RuntimeError, OSError) as exc:
+        print(f"Cannot archive task {task_id}: {exc}.", file=sys.stderr)
+        return 1
     release_lock(resource, force=True)
     lifecycle.release_task_locks(meta, None)
     marker = ckpt.handoff_marker(task_id)
@@ -560,7 +625,11 @@ def cmd_task_discard(args) -> int:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
     meta, _ = store.parse_task(path)
-    task_id = normalize_id(str(meta.get("id") or args.task_id))
+    try:
+        task_id = normalize_id(str(meta.get("id") or args.task_id))
+    except ValueError:
+        print(f"Task file has an invalid id: {meta.get('id')!r}.", file=sys.stderr)
+        return 1
     if not sys.stdin.isatty():
         print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
         return 1

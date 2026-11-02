@@ -82,7 +82,7 @@ What:
 
 Task: 0001
 Agent: implementer-1
-Check: ai check --strict -> 0 errors, 0 warnings
+Check: ai check --task 0001 --agent implementer-1 -> green
 ```
 
 ## Required loop for each file-changing task
@@ -91,6 +91,9 @@ Check: ai check --strict -> 0 errors, 0 warnings
 ai task claim 0001 --agent implementer-1
 ai git start --task 0001 --agent implementer-1 --type feature
 
+# lease every file the task did not declare with --allow
+ai lock acquire src/export/csv.py --agent implementer-1 --task 0001
+
 # edit only what the task owns
 ai check --fast
 git add <only the files you own>
@@ -98,8 +101,13 @@ ai git verify --strict
 ai git commit --task 0001 --agent implementer-1 --type feat --scope export \
   --message "add CSV export endpoint" --body "Closes the export gap for admins."
 
+ai check --task 0001 --agent implementer-1   # the one per-task evidence record
 ai task review 0001 --agent implementer-1
 ```
+
+`ai git verify --strict` refuses any staged path without a held lease. A task
+created without `--allow` starts with no leases, so acquire them yourself (or
+create the task with `--allow`/`--lock`).
 
 Then let a different session verify it. `ai task review` records the state and
 hands the task over. The reviewer (or QA) merges:
@@ -114,7 +122,9 @@ ai task done 0001 --agent reviewer-a
 
 1. the task is `review` or `done` (or `--force` is recorded as an exception);
 2. the working tree is clean;
-3. `ai check --strict` passes;
+3. `ai check --strict --task <id>` passes (this includes project-wide warnings:
+   a stray `tmp/` or an unknown team role can block every merge until fixed with
+   `ai doctor --fix`; it is not a per-task failure);
 4. the task branch exists.
 
 It merges with `--no-ff`, deletes the branch when `deleteAfterMerge` is true,

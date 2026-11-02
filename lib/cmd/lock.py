@@ -31,6 +31,10 @@ def cmd_lock(args) -> int:
             else:
                 print(f"Acquired '{args.resource}' for {args.agent}.")
             return 0
+        error = result.get("error")
+        if error:
+            print(f"Cannot acquire '{args.resource}': {error}", file=sys.stderr)
+            return 1
         holder = result["holder"] or {}
         print(
             f"'{args.resource}' is held by {holder.get('agent')} "

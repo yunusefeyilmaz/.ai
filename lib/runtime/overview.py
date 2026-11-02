@@ -37,6 +37,31 @@ def _line_of(task: dict) -> str:
     return f"{task.get('id')} [{task.get('priority') or '-'}] {task.get('title')}"
 
 
+def _answer_text(value) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return str(value)
+
+
+def _setup_extras(preference_state: dict) -> list[str]:
+    """The chief's unanswered questions, inline, so `ai now` is self-contained."""
+    rows = preference_state["questions"]
+    pending = [row for row in rows if not row["answered"]]
+    if not pending:
+        return []
+    asks = ", ".join(
+        f"{row['key']} ({'yes' if row['recommended'] is True else 'no' if row['recommended'] is False else row['recommended']})"
+        for row in pending
+    )
+    answers = " ".join(f"{row['key']}={_answer_text(row['recommended'])}" for row in rows)
+    command = f"then: ai setup --set {answers}"
+    if not preference_state["checks"]:
+        command += ' --check "tests=<command>"'
+    return [f"ask the user: {asks}", command]
+
+
 def build(agent: str | None = None, history: int = 5, role: str | None = None) -> dict:
     config = load_config()
     tasks = store.load_tasks()
@@ -66,7 +91,8 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
 
     git_on = settings.git_enabled()
     role = resolve_role(agent, role)
-    confirmed = preferences.status(config)["confirmed"]
+    preference_state = preferences.status(config)
+    confirmed = preference_state["confirmed"]
     autocontinue = bool((config.get("workflow") or {}).get("autoContinue", False))
     delivered = [t for t in active if agent and t.get("status") == "review" and t.get("submitted_by") == agent]
     rework = [t for t in ready_all if agent and t.get("status") == "changes_requested" and t.get("submitted_by") == agent]
@@ -85,10 +111,10 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
         h = handoffs[0]
         recommended = {"task": h.get("task"), "cmd": f"ai resume {h.get('task')}", "why": f"handoff from {h.get('agent')}: {h.get('reason')}", "extra": []}
     elif not active and not done and not confirmed:
-        recommended = {**nothing, "cmd": "ai setup", "why": "new project: ask the user which workflow features to use (review, checks, git, tests), then store the answers"}
+        recommended = {**nothing, "cmd": "ai setup", "extra": _setup_extras(preference_state), "why": "new project: ask the user which workflow features to use (review, checks, git, tests), then store the answers"}
     elif role == "chief" or (role is None and not active and not done):
         if not confirmed:
-            recommended = {**nothing, "cmd": "ai setup", "why": "ask the user the setup questions first; answers are stored in config"}
+            recommended = {**nothing, "cmd": "ai setup", "extra": _setup_extras(preference_state), "why": "ask the user the setup questions first; answers are stored in config"}
         elif not active:
             recommended = {**nothing, "cmd": "ai plan apply plan.json", "why": "no tasks yet: split the request into linked tasks (see `ai plan example`), then fill each spec"}
         else:

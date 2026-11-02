@@ -26,6 +26,7 @@ sys.pycache_prefix = os.path.join(
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.cmd import discover  # noqa: E402
+from lib.config.settings import ConfigError  # noqa: E402
 from lib.core.paths import VERSION  # noqa: E402
 
 
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         return int(args.func(args))
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         return 130
     except BrokenPipeError:  # e.g. `ai ... | head`

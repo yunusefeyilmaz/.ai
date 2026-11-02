@@ -84,7 +84,10 @@ def task_paths(folder: str) -> list[str]:
 
 
 def find_task(task_id: str) -> str | None:
-    wanted = normalize_id(task_id)
+    try:
+        wanted = normalize_id(task_id)
+    except ValueError:
+        return None
     for folder in ("active", "done"):
         for path in task_paths(folder):
             name = os.path.basename(path)
@@ -117,7 +120,15 @@ def board_dependencies(task: dict) -> list[str]:
     if raw is None or str(raw).strip() in ("", "null", "None"):
         return []
     parts = [str(item) for item in raw] if isinstance(raw, (list, tuple)) else re.split(r"[,\s]+", str(raw))
-    return [normalize_id(part) for part in parts if part and part.strip() not in ("", "null")]
+    out = []
+    for part in parts:
+        if not part or part.strip() in ("", "null"):
+            continue
+        try:
+            out.append(normalize_id(part))
+        except ValueError:
+            continue
+    return out
 
 
 def dependency_blockers(meta: dict) -> list[str]:

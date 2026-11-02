@@ -21,11 +21,14 @@ Choose lock names that match the blast radius: `src/billing` is better than
 Resources are repo-relative; absolute paths are rejected. **Overlap counts as
 conflict**: `src/billing` conflicts with `src/billing/invoice.py`, and globs such
 as `src/*.ts` conflict with matching paths. Acquisition is serialized through a
-short-lived `.registry.mutex` directory so the overlap scan cannot race.
+short-lived advisory lock on `runtime/locks/.registry.mutex` (the kernel releases
+it when a process dies) so the overlap scan cannot race.
 
 ## The lock file
 
-A lock is a JSON file at `runtime/locks/<resource>.lock`:
+A lock is a JSON file at `runtime/locks/<safe-name>-<sha1[:8]>.lock`, e.g.
+`src-billing-1f2a3c4d.lock`; task leases are `task-0001-<sha1[:8]>.lock`. The
+digest keeps `src/a` and `src-a` apart. The payload:
 
 ```json
 {
@@ -40,16 +43,20 @@ A lock is a JSON file at `runtime/locks/<resource>.lock`:
 }
 ```
 
-Creation uses `os.open(path, O_CREAT | O_EXCL | O_WRONLY)`. That single call is
-atomic on Windows, Linux and macOS: exactly one process wins, everyone else gets
-`FileExistsError`. No read-then-write race.
+Creation uses `os.open(path, O_CREAT | O_EXCL | O_WRONLY)`, writes the payload,
+and `fsync`s it before closing. That single call is atomic on Windows, Linux and
+macOS: exactly one process wins, everyone else gets `FileExistsError`. A process
+killed mid-write leaves a file that readers treat as a conflict (never as
+"free"); `ai doctor` reports it and `--force` removes it.
 
 ## Staleness and recovery
 
-A lock is **stale** when any of these is true:
+A lock is **stale** when `updated_at` is older than
+`locks.staleAfterSeconds` (default 3600).
 
-- `updated_at` is older than `locks.staleAfterSeconds` (default 3600).
-- The lock file is unreadable or malformed.
+A malformed lock file is **not** stale: it is treated as live so a damaged lease
+cannot silently free the resource it protects. `ai lock status` and `ai doctor`
+report it; an operator removes it with `ai lock release <resource> --force`.
 
 The PID and host are recorded for diagnostics, not for staleness. A task claim
 outlives the short-lived CLI process that created it, so checking whether the

@@ -89,7 +89,7 @@ def create_task(
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
-    with task_index_guard():
+    with workspace_state_guard():
         number = allocate_task_number()
         task_id = f"{number:04d}"
         title = title.strip()
@@ -159,45 +159,46 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
             return False, unready
     if os.path.dirname(path) != ACTIVE_DIR:
         return False, "This task is already in done/."
-    meta, body = store.parse_task(path)
-    task_id = str(meta.get("id"))
-    if meta.get("status") == "blocked" and not force:
-        return False, f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`."
-    blockers = store.dependency_blockers(meta)
-    if blockers and not force:
-        return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
-    resource = f"task-{task_id}"
-    result = acquire_lock(resource, agent=agent, task=task_id, force=force)
-    new_claim = bool(result["ok"])
-    if not result["ok"]:
-        if result.get("error"):
-            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
-            return False, f"Could not claim task {task_id}: {result['error']}"
-        holder = result["holder"] or {}
-        if holder.get("agent") == agent:
-            heartbeat_lock(resource, agent=agent)
-        else:
-            append_event(
-                "lock_refused",
-                resource=resource,
-                agent=agent,
-                task=task_id,
-                conflict=holder.get("resource"),
-                conflict_agent=holder.get("agent"),
-            )
-            return False, (
-                f"Task {task_id} is locked by {holder.get('agent')} "
-                f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
-            )
-    if store.find_task(task_id) != path:
-        release_lock(resource, agent=agent, force=True)
-        return False, f"Task {task_id} was removed while it was being claimed."
-    previous = meta.get("status")
-    meta["owner"] = agent
-    # A reviewer taking over a task in review keeps it in review.
-    meta["status"] = "review" if previous == "review" else "in_progress"
-    meta["updated"] = iso()
-    meta["lock"] = resource
+    with workspace_state_guard():
+        meta, body = store.parse_task(path)
+        task_id = str(meta.get("id"))
+        if meta.get("status") == "blocked" and not force:
+            return False, f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`."
+        blockers = store.dependency_blockers(meta)
+        if blockers and not force:
+            return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
+        resource = f"task-{task_id}"
+        result = acquire_lock(resource, agent=agent, task=task_id, force=force)
+        new_claim = bool(result["ok"])
+        if not result["ok"]:
+            if result.get("error"):
+                append_event("lock_refused", resource=resource, agent=agent, task=task_id)
+                return False, f"Could not claim task {task_id}: {result['error']}"
+            holder = result["holder"] or {}
+            if holder.get("agent") == agent:
+                heartbeat_lock(resource, agent=agent)
+            else:
+                append_event(
+                    "lock_refused",
+                    resource=resource,
+                    agent=agent,
+                    task=task_id,
+                    conflict=holder.get("resource"),
+                    conflict_agent=holder.get("agent"),
+                )
+                return False, (
+                    f"Task {task_id} is locked by {holder.get('agent')} "
+                    f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
+                )
+        if store.find_task(task_id) != path:
+            release_lock(resource, agent=agent, force=True)
+            return False, f"Task {task_id} was removed while it was being claimed."
+        previous = meta.get("status")
+        meta["owner"] = agent
+        # A reviewer taking over a task in review keeps it in review.
+        meta["status"] = "review" if previous == "review" else "in_progress"
+        meta["updated"] = iso()
+        meta["lock"] = resource
     body = history.append(body, agent, previous, meta["status"], "claimed")
     store.write_task(path, meta, body)
     board.write_board(store.load_tasks())

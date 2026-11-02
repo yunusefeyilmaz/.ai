@@ -152,7 +152,7 @@ Without a commit it only prints `ai git setup`; it never prompts or force-claims
 
 ```sh
 ai doctor [--fix] [--strict] [--json]
-ai check [--fast] [--strict] [--json] [--no-commands]
+ai check [--fast] [--strict] [--json] [--no-commands] [--task <id>] [--agent <name>]
 ai status [--json] [--board]
 ai metrics [--json] [--since YYYY-MM-DD]
 ai capabilities
@@ -202,7 +202,7 @@ seconds. No event data is uploaded.
 ### Task ledger
 
 ```sh
-ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--no-spec] [--depends-on 0002]
+ai task new "<title>" --role chief --agent <name> [--priority low|medium|high] [--allow GLOB] [--forbid GLOB] [--lock GLOB] [--spec <path>] [--no-spec] [--depends-on 0002]
 ai task list [--all] [--json]
 ai task show <id> [--json]
 ai task ready [--json]                 # claimable: todo, deps done, no live lease
@@ -544,6 +544,7 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | `todo` | none | Ready to be claimed |
 | `in_progress` | set | Being worked on; task lease held |
 | `review` | optional | Implementation finished; independent check pending |
+| `changes_requested` | none | A reviewer sent it back; reason in `ai history`; ready for rework |
 | `blocked` | optional | Waiting on a person or another task |
 | `done` | none | Archived under `tasks/done/` |
 

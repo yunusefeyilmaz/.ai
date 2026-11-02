@@ -30,6 +30,12 @@ artifacts exist but are not blocking. The mode does not change the file format.
 One session does everything, checkpointing at milestones. Best default. Add
 review only when the change is risky.
 
+The shipped default is `workflow.requireReview: true`, so a single agent cannot
+run `ai task done` on its own work: after `ai task review` the producer's only
+next step is "wait". A solo user must either answer `review=no` during `ai setup`
+(`ai setup --set review=no`) or start a second session as the reviewer. `ai now`
+prints that instruction when the producer is the only agent.
+
 ### 2. Planner + implementer + reviewer
 
 Three sessions, one task.
@@ -57,7 +63,7 @@ The orchestrator only triages and assigns. Workers never edit `tasks/BOARD.md`
 or tasks they do not own. Use `depends_on` to encode order:
 
 ```sh
-ai task new "Add CSV export" --depends-on 0007
+ai task new "Add CSV export" --depends-on 0007 --role chief --agent orchestrator
 ```
 
 `ai task claim` refuses while the dependency is not `done`. Workers start with
@@ -196,8 +202,9 @@ issues. Do not "clean up" by deleting task files.
 Read .ai/AGENTS.md, .ai/GUIDE.md and .ai/docs/orchestration.md.
 Run `.ai/ai status --json`. Do not write product code.
 Split the goal into independent tasks with testable acceptance criteria.
-Create them with `.ai/ai task new`, set `--depends-on` where order matters,
-and write each spec in .ai/specs/active/. Refresh the board and stop.
+Create them with `.ai/ai task new ... --role chief --agent <you>`, set
+`--depends-on` where order matters, and fill each spec in .ai/specs/active/.
+Refresh the board and stop.
 ```
 
 ### Implementer
@@ -207,8 +214,8 @@ Read .ai/AGENTS.md, the task and its spec. Claim it with
 `.ai/ai task claim <id> --agent <name>`. Acquire locks for the files you
 will touch. Implement only the acceptance criteria, with tests. Run
 `.ai/ai check --fast` as you go. Checkpoint at milestones and before your
-context fills. When green, run `.ai/ai check --strict`, record the output
-in the task, and move it to review.
+context fills. When green, run `.ai/ai check --task <id> --agent <name>` (this
+records the evidence the review gate reads) and move it to review.
 ```
 
 ### Reviewer
@@ -217,7 +224,9 @@ in the task, and move it to review.
 You are the reviewer. Read the spec, the task and `git diff <base>...HEAD`.
 For each acceptance criterion, cite file:line evidence. Look for missing tests,
 security issues, scope creep and broken contracts. Do not edit code. Write a
-PASS/FAIL verdict with concrete fixes, then run `.ai/ai check --strict`.
+PASS/FAIL verdict with concrete fixes. Verify the task's own evidence with
+`.ai/ai check --task <id> --agent <name>`; `ai check --strict` is CI's global
+gate, not this task's proof.
 ```
 
 ### Handoff

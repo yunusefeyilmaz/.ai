@@ -7,8 +7,8 @@ Keep these stable so the CLI, the agents and CI agree.
 - The workspace itself (rules, docs, CLI output, protocol fields) is **English**.
 - Project documents may use another language. `config/workspace.json` records it
   under `language.documents` and `language.interviews`.
-- Protocol values stay English: `todo`, `in_progress`, `review`, `blocked`,
-  `done`, `lite`, `strict`, `null`.
+- Protocol values stay English: `todo`, `in_progress`, `review`,
+  `changes_requested`, `blocked`, `done`, `lite`, `strict`, `null`.
 
 ## Identifiers
 
@@ -23,8 +23,11 @@ Keep these stable so the CLI, the agents and CI agree.
 ## Front matter
 
 Every task has: `id`, `title`, `status`, `owner`, `priority`, `spec`, `created`,
-`updated`, `lock`. Use `null`, not an empty string. Timestamps are UTC ISO 8601
-with a trailing `Z`.
+`updated`, `lock`. The CLI also writes `depends_on`, `scope_allowed`,
+`scope_forbidden`, `locks`, `branch`, `worktree`, `submitted_by`, `reviewed_by`,
+`merged_into`, `merged_at` and `blocked_from` when they apply. That list is the
+canonical schema: `tasks/TEMPLATE.md` and this section must agree. Use `null`,
+not an empty string. Timestamps are UTC ISO 8601 with a trailing `Z`.
 
 ## Task body
 
@@ -49,6 +52,10 @@ with no way to fail is not a spec.
 - One task per branch is a good default. The branch name references the task:
   `feature/0001-add-invoice-export` (the type prefix is `feature`, `fix`, `chore`,
   `docs`, `refactor` or `hotfix`; `ai git start` creates it).
+- The commit type list is the single source in this file: `feat`, `fix`,
+  `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+  (the same tuple the CLI accepts). `templates/git/commit-template.txt` refers
+  here instead of repeating its own list.
 - Commit messages describe the change, not the agent:
   `Add invoice CSV export`, not `AI changes`.
 - Do not force-push shared branches, do not rewrite published history.
@@ -59,7 +66,12 @@ with no way to fail is not a spec.
 
 - Verification is `ai check`. There is no second contract.
 - `ai check --fast` is for the inner loop and is not evidence.
-- The full `ai check` result is what you attach to a task.
+- **The per-task evidence record** is `ai check --task <id> --agent <n>`; it
+  writes `runtime/state/evidence/<id>.jsonl`, which is what the review gate
+  reads. `ai check` without `--task` is a workspace state check.
+- `ai check --strict` is CI's global gate (warnings fail). It is not the
+  per-task proof and agents must not paste it in place of one.
+- `ai git finish` runs `ai check --strict --task <id>` before merging.
 - CI runs `ai doctor --strict` and `ai check`.
 
 ## File hygiene

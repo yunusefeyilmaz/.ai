@@ -14,12 +14,18 @@ from __future__ import annotations
 
 import re
 
+from lib.core.fsio import normalize_rel_path
+
 
 def split_globs(raw) -> list[str]:
     if raw is None:
         return []
     items = raw if isinstance(raw, (list, tuple)) else re.split(r"\s*,\s*", str(raw))
-    return [item.strip().replace("\\", "/").lstrip("./") for item in items if item and item.strip() not in ("", "null")]
+    return [
+        normalize_rel_path(item)
+        for item in items
+        if item and item.strip() not in ("", "null")
+    ]
 
 
 def join_globs(values) -> str | None:

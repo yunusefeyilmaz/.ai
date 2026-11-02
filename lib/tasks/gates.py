@@ -1,8 +1,10 @@
 """tasks.gates: the required transitions of the task state machine.
 
     todo --claim--> in_progress --review--> review --done--> done
-                         ^  |                 |
+                         ^  |                 |  ^
                          |  +---block-------> blocked --unblock--> todo
+                         |                    |
+                         +----claim-------- changes_requested <--request-changes
 
 Rules enforced here (not left to prose):
   * `review` needs the owner, a live claim and, when configured, green evidence

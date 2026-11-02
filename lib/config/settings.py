@@ -11,14 +11,30 @@ import json
 import os
 
 
+class ConfigError(ValueError):
+    """`config/workspace.json` is missing or unreadable."""
+
 
 def config_path() -> str:
     return CONFIG_PATH
 
 
 def load_config() -> dict:
-    with open(config_path(), encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with open(config_path(), encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError as exc:
+        raise ConfigError(
+            "config/workspace.json is missing; run `ai doctor --fix` "
+            "(or `ai setup`) to recreate it."
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigError(
+            f"config/workspace.json is unreadable: not valid JSON ({exc}). "
+            "Repair it by hand; `ai doctor --fix` will not overwrite a corrupt file."
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(f"cannot read config/workspace.json: {exc}") from exc
 
 
 def lock_settings() -> tuple[int, int]:

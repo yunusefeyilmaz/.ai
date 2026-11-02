@@ -79,7 +79,19 @@ def _evidence_task(args) -> str | None:
 
 
 def cmd_check(args) -> int:
+    if getattr(args, "task", None) and not store.find_task(args.task):
+        print(
+            f"No task with id {args.task}; no evidence was recorded.",
+            file=sys.stderr,
+        )
+        return 1
     task_id = _evidence_task(args)
+    if getattr(args, "agent", None) and not task_id and not getattr(args, "task", None):
+        print(
+            f"WARN  no single in-progress task owned by {args.agent}; "
+            "the check result will not be attached as evidence. Use --task <id>.",
+            file=sys.stderr,
+        )
     meta: dict = {}
     if task_id:
         meta = store.parse_task(store.find_task(task_id))[0]

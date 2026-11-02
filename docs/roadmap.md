@@ -33,9 +33,21 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
 - A second task ledger or a second definition of done.
 - Automatic merges without an independent reviewer.
 
+## Known limitations
+
+- Locks are per checkout, not a distributed lock across clones or machines.
+- `ai git finish` merges locally; it never pushes.
+- `ai task discard` cannot authenticate a human; it relies on an interactive
+  terminal and an exact typed phrase.
+- A corrupt lock file is reported as a conflict until an operator removes it with
+  `--force`; there is no automatic quarantine.
+- `ai check --strict` at merge time includes workspace-wide warnings, so ambient
+  noise can block merges until `ai doctor --fix`.
+- Cross-clone coordination, remote locks and a hosted board are out of scope.
+
 ## How this list changes
 
-Each item is a task in `tasks/active/` with acceptance criteria. When an item
-ships, its numbers and any reversal move to `CHANGELOG.md`; the list above keeps
-only what is still ahead. New requests enter as tasks and must displace
-something rather than extend the queue.
+Each item is a task with acceptance criteria in the task ledger; `tasks/active/`
+holds only open work. When an item ships, its numbers and any reversal move to
+`CHANGELOG.md`; the list above keeps only what is still ahead. New requests enter
+as tasks and must displace something rather than extend the queue.

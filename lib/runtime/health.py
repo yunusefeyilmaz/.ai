@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 from lib.core.paths import (
     PROJECT,
@@ -16,6 +17,7 @@ from lib.core.paths import (
     workspace_shape,
 )
 from lib.config.settings import (
+    ConfigError,
     config_path,
     default_config,
     load_config,
@@ -125,8 +127,8 @@ def collect_checks() -> list[Finding]:
             problems.append(Finding("error", f"missing required path: {rel}", hint))
     try:
         config = load_config()
-    except FileNotFoundError:
-        problems.append(Finding("error", "config/workspace.json is missing", "ai doctor --fix"))
+    except ConfigError as exc:
+        problems.append(Finding("error", str(exc), "ai doctor --fix"))
         config = {}
     except (OSError, ValueError) as exc:
         problems.append(
@@ -189,14 +191,25 @@ def collect_checks() -> list[Finding]:
                     )
                 )
             ids[task_id] = path
-            if task["_folder"] == "active" and normalize_id(task_id) + "-" not in os.path.basename(path):
+            try:
+                canonical = normalize_id(task_id)
+            except ValueError:
                 problems.append(
                     Finding(
-                        "warn",
-                        f"{path}: filename does not start with {task_id}-",
-                        f"rename {path} to {task_id}-<slug>.md",
+                        "error",
+                        f"{path}: invalid task id '{task_id}'",
+                        "task ids are numeric (up to nine digits); rename the file and fix `id:`",
                     )
                 )
+            else:
+                if task["_folder"] == "active" and canonical + "-" not in os.path.basename(path):
+                    problems.append(
+                        Finding(
+                            "warn",
+                            f"{path}: filename does not start with {task_id}-",
+                            f"rename {path} to {task_id}-<slug>.md",
+                        )
+                    )
         if not task.get("title"):
             problems.append(Finding("error", f"{path}: missing title", f"add a `title:` field to {path}"))
         status = task.get("status")
@@ -237,7 +250,13 @@ def collect_checks() -> list[Finding]:
         if depends:
             for dependency in re.split(r"[,\s]+", str(depends)):
                 dependency = dependency.strip()
-                if dependency and normalize_id(dependency) not in ids and not store.find_task(dependency):
+                if not dependency:
+                    continue
+                try:
+                    known = normalize_id(dependency) in ids or store.find_task(dependency)
+                except ValueError:
+                    known = False
+                if not known:
                     problems.append(
                         Finding(
                             "warn",
@@ -422,16 +441,35 @@ def run_commands(fast_only: bool, results: list | None = None, out=None) -> list
         command = item.get("command")
         if not command:
             continue
+        try:
+            timeout = int(item.get("timeoutSeconds") or config.get("checksTimeoutSeconds") or 1800)
+        except (TypeError, ValueError):
+            timeout = 1800
         # `out` (e.g. stderr in --json mode) keeps stdout machine-readable
         print(f"\n$ {command}", file=out or sys.stdout)
-        result = subprocess.run(command, shell=True, cwd=repo.current_root(), stdout=out)
+        started = time.monotonic()
+        try:
+            # Checks are project-owned shell commands by design ("run this
+            # command"); a timeout keeps a hung suite from blocking a merge.
+            result = subprocess.run(
+                command, shell=True, cwd=repo.current_root(), stdout=out, timeout=timeout
+            )
+            exit_code = result.returncode
+        except subprocess.TimeoutExpired:
+            exit_code = 124
+            print(f"check '{name}' timed out after {timeout}s", file=out or sys.stderr)
         if results is not None:
-            results.append({"name": name, "command": command, "exit_code": result.returncode})
-        if result.returncode != 0:
+            results.append({
+                "name": name,
+                "command": command,
+                "exit_code": exit_code,
+                "seconds": round(time.monotonic() - started, 2),
+            })
+        if exit_code != 0:
             problems.append(
                 Finding(
                     "error",
-                    f"check '{name}' failed with exit code {result.returncode}",
+                    f"check '{name}' failed with exit code {exit_code}",
                     f"run the failing command yourself: {command}",
                 )
             )

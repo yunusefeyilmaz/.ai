@@ -2,6 +2,97 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.2] - 2026-11-02
+
+### Fixed
+
+- **UnboundLocalError in task discard.** `ai task discard` no longer crashes with
+  `UnboundLocalError: local variable 'lock_path' referenced before assignment` when
+  the claim lock is missing or corrupt. The function now uses a distinct local variable
+  and handles `CorruptStateError` gracefully.
+  (`lib/tasks/discard.py`)
+
+- **`lock_is_stale` TypeError on naive timestamps.** The function now safely handles
+  offset-naive timestamps by normalizing them to UTC within the try block, preventing
+  `TypeError: can't subtract offset-naive and offset-aware datetimes` from poisoning
+  `list_locks` consumers (lock status, board, recover, clean).
+  (`lib/runtime/leases.py`)
+
+- **`read_json` distinguishes corrupt from missing.** Corrupt state files now raise
+  `CorruptStateError` instead of silently returning `None`, preventing corrupt lock
+  files from being read as "free" in conflict scans. The function now only catches
+  `FileNotFoundError` for the default return value.
+  (`lib/core/fsio.py`)
+
+- **Corrupt lock files fail closed in conflict scan.** `resources_overlap()` now
+  returns `True` (conflicting) if either resource is `None` (corrupt), preventing
+  corrupt lock files from being silently ignored during lock acquisition.
+  (`lib/runtime/leases.py`)
+
+- **Audit trail never empty on event write failure.** `append_event()` now writes a
+  minimal fallback record (`_fallback: True`, `_error: <error details>`) on final
+  failure so the audit trail is never completely empty, preserving investigation
+  capability even under extreme contention.
+  (`lib/runtime/events.py`)
+
+- **`normalize_id` rejects digit-collapsing ids.** The regex is tightened to
+  `[0-9]{1,9}` and a 4-digit limit prevents collisions such as "12" and "012"
+  both normalizing to "0012". Non-numeric ids like "T-12a" are also rejected.
+  (`lib/core/fsio.py`)
+
+### Added
+
+- **`CorruptStateError` raised from `read_json`.** Callers that guard shared state
+  should use `read_json_checked` which fails closed instead of silently treating
+  a damaged lock as "free".
+  (`lib/core/fsio.py`)
+
+### Added
+
+- `lib/tests/test_regressions.py`: coverage for corrupt-lock fail-closed,
+  forced-takeover trails, stale-lease replacement, path-traversal refusals,
+  naive timestamps, legacy mutex recovery, strict task ids, atomic archiving and
+  checked JSON reads.
+
+### Fixed
+
+- **The registry mutex no longer guesses by directory age.** It is now an OS
+  advisory lock (released automatically when a process dies); the directory
+  mutex remains only as a fallback, and a stale non-empty directory no longer
+  spins forever (it times out, and an empty leftover is upgraded).
+- **Corrupt locks fail closed.** A damaged lease file is a conflict instead of
+  reading as "free"; `--force` removes it and records `lock_forced`. A stale
+  lease on the same resource is replaced as `lock_replaced_stale`, and a forced
+  takeover of a live same-resource lease is recorded instead of being ignored.
+  Lock files are created with `fsync` and verified before use.
+- `ai lock acquire` reports validation errors (repo-relative paths, absolute
+  paths, `..`, oversized TTL) instead of claiming the resource is "held by None".
+- Strict task ids: `normalize_id` rejects non-numeric and traversal values, and
+  `task show|claim|done` return a clean "No task with id" instead of crashing.
+  Leading zeros no longer allow ids longer than nine significant digits.
+- State writes `fsync` before the atomic rename, retry Windows sharing
+  violations, and `read_json_checked` distinguishes a missing file from a
+  corrupt one. Naive (offset-free) timestamps are read as UTC, so
+  `ai lock status` and heartbeat no longer fail with `TypeError`.
+- `ai task discard` no longer crashes when the claim lock or linked spec id is
+  missing/invalid; `ai task done` refuses to overwrite an existing archived task
+  file and keeps the active task in place.
+- `ai task block/unblock` check ownership before writing and restore
+  `blocked_from` (`review`/`changes_requested`) instead of dropping it.
+- Git layer: commands time out after 300 s, Windows runs hide console windows,
+  porcelain output is parsed with `-z` (spaces in names), a failed merge aborts
+  cleanly, `git.merge` (`ff`/`no-ff`) is honored, and the index guard release is
+  serialized.
+- `ai doctor`: an unknown `--task` fails, `--agent` without a task warns that no
+  evidence can be attached, and check runs record their duration/timeout.
+- Configuration errors surface as one actionable `ConfigError` message instead of
+  a traceback; `ai.cmd` verifies Python 3 and returns an honest exit code.
+- Documentation: the chief loop now uses `ai plan apply ... --role chief`, the
+  spec step precedes the claim, `--force` is documented as an operator-only
+  escape hatch, per-task evidence (`ai check --task --agent`) and the lease step
+  before committing are explicit, `changes_requested` appears in the state
+  diagrams, and the canonical task front matter is defined once.
+
 ## [0.9.0] - 2026-11-01
 
 ### Added

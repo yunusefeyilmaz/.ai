@@ -16,12 +16,17 @@ Use this prompt when the human describes a piece of work.
 
 ## 3. Create
 
+Only the chief creates tasks (`--role chief`), and only after the user answered
+`ai setup`. See `docs/orchestration.md` for the planner path (`ai plan apply`).
+
 ```sh
-ai task new "<short imperative title>" --priority <low|medium|high>
+ai task new "<short imperative title>" --priority <low|medium|high> --role chief --agent <name>
 ```
 
-Fill in `## Intent` and at least one acceptance criterion. Leave the plan to the
-planner unless you are acting as both.
+`ai task new` writes the spec skeleton to `specs/active/<id>-<slug>.md`. Fill in
+that file (not the task body): `## Intent`, behavior and at least one acceptance
+criterion that names the command which proves it. The claim gate reads the spec,
+not the task body.
 
 ## 4. Claim and work
 

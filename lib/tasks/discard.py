@@ -13,6 +13,7 @@ from lib.core.paths import (
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     normalize_id,
     read_json,
@@ -51,7 +52,11 @@ def task_discard_spec_path(meta: dict, task_id: str) -> tuple[str | None, str | 
     if not os.path.isfile(candidate):
         return None, f"Linked spec is not a file: {reference}"
     spec_meta, _ = store.parse_task(candidate)
-    if normalize_id(str(spec_meta.get("task") or "")) != normalize_id(task_id):
+    try:
+        same_task = normalize_id(str(spec_meta.get("task") or "")) == normalize_id(task_id)
+    except ValueError:
+        same_task = False
+    if not same_task:
         return None, f"Linked spec does not identify task {task_id}: {reference}"
     return candidate, None
 
@@ -76,8 +81,14 @@ def task_discard_targets(task_path: str, spec_path: str | None, task_id: str) ->
 
 
 def task_discard_lock_error(task_id: str, targets: list[str]) -> str | None:
-    lock_path = lock_path(f"task-{task_id}")
-    holder = read_json(lock_path)
+    # Use a distinct local name to avoid shadowing the imported lock_path function.
+    lock_file = lock_path(f"task-{task_id}")
+    try:
+        holder = read_json(lock_file)
+    except CorruptStateError:
+        # A corrupt lock file is treated as a held lock (conservative approach).
+        return (f"Task {task_id} has a corrupt lock file; "
+                "release it normally or run `ai recover --apply` after it is stale.")
     if holder:
         return (
             f"Task {task_id} still has a lock held by {holder.get('agent')}. "

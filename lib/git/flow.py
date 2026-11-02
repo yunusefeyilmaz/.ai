@@ -458,10 +458,23 @@ def cmd_git_finish(args) -> int:
             print(f"Could not switch to {integration}: {err}", file=sys.stderr)
             return 1
         merge_message = f"merge: {branch} ({task_id})"
-        code, _, err = repo.run_git(["merge", "--no-ff", branch, "-m", merge_message])
+        merge_args = ["merge", branch, "-m", merge_message]
+        if config.get("merge") == "ff":
+            merge_args.insert(1, "--ff")
+        else:
+            merge_args.insert(1, "--no-ff")
+        code, _, err = repo.run_git(merge_args)
         if code != 0:
-            repo.run_git(["merge", "--abort"])
-            print(f"Merge failed and was aborted: {err}", file=sys.stderr)
+            abort_code, _, abort_err = repo.run_git(["merge", "--abort"])
+            if abort_code == 0:
+                print(f"Merge failed and was aborted: {err}", file=sys.stderr)
+            else:
+                print(
+                    "Merge failed and could NOT be aborted "
+                    f"({abort_err or 'git merge --abort failed'}); the repository is still mid-merge. "
+                    "Resolve it manually before retrying: " + (err or "unknown merge error"),
+                    file=sys.stderr,
+                )
             return 1
         _, merged_head, _ = repo.run_git(["rev-parse", "--short", "HEAD"])
         deleted = False
