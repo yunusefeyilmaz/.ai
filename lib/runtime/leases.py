@@ -32,6 +32,11 @@ from lib.runtime.dirs import ensure_dirs
 from lib.runtime.events import append_event, read_events
 from lib.runtime.mutex import registry_mutex
 
+# A lock must be at least this old before the PID liveness probe is applied.
+# This avoids false positives for recently claimed tasks whose owner has simply
+# exited between CLI invocations (e.g. `ai start` claims and exits).
+_PID_LIVENESS_MIN_AGE_SECONDS = 30
+
 
 def path_covers(pattern: str, resource: str) -> bool:
     """Does the lock `pattern` (maybe a glob or a directory) cover `resource`?"""
@@ -59,7 +64,43 @@ def lock_is_stale(payload: dict | None, stale_after: int) -> bool:
         # If we cannot parse the timestamp, treat the lock as stale so that
         # recover/clean can remove it.
         return True
-    return age > stale_after
+    if age > stale_after:
+        return True
+    # Secondary liveness signal: task locks only. A crashed worker holding
+    # task-XXXX should not block for the full TTL. Infrastructure locks
+    # (git.index, project, tasks.index) use TTL only to preserve cross-process
+    # mutual exclusion for short-lived guards such as `git begin`/`git end`.
+    # Only apply when the lock is old enough that a recently-exited owner
+    # (e.g. `ai start` claiming and exiting) is not a false positive.
+    resource = payload.get("resource", "")
+    if (
+        isinstance(resource, str)
+        and resource.startswith("task-")
+        and age > _PID_LIVENESS_MIN_AGE_SECONDS
+    ):
+        host = payload.get("host")
+        pid = payload.get("pid")
+        if host == HOST and isinstance(pid, int) and pid > 0 and not _pid_alive(pid):
+            return True
+    return False
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if `pid` is still running on this machine.
+
+    Used only as a secondary liveness signal when host == HOST. PID reuse is
+    handled by keeping TTL as the primary cross-host staleness signal.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we lack permission to signal it.
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def normalize_resource(resource: str) -> str:
@@ -179,6 +220,17 @@ def acquire_lock(
                             event="lock_forced", resource=resource, agent=agent, task=task,
                             previous_agent="corrupt", previous_resource=holder.get("resource") or resource,
                         ))
+                    elif force:
+                        # Explicit --force always takes over, leaving a lock_forced trail.
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                        forced.append(dict(
+                            event="lock_forced", resource=resource, agent=agent, task=task,
+                            previous_agent=holder.get("agent"), previous_task=holder.get("task"),
+                            previous_resource=holder.get("resource") or resource,
+                        ))
                     elif lock_is_stale(holder, stale_after):
                         # A stale lock on this exact resource is replaceable; TTL
                         # staleness exists so a crashed worker does not need
@@ -192,17 +244,6 @@ def acquire_lock(
                             resource=resource, agent=agent, task=task,
                             previous_agent=holder.get("agent"),
                             previous_task=holder.get("task"),
-                        ))
-                    elif force:
-                        # Forcing the same resource must still leave a trail.
-                        try:
-                            os.remove(path)
-                        except OSError:
-                            pass
-                        forced.append(dict(
-                            event="lock_forced", resource=resource, agent=agent, task=task,
-                            previous_agent=holder.get("agent"), previous_task=holder.get("task"),
-                            previous_resource=holder.get("resource") or resource,
                         ))
                     else:
                         return {"ok": False, "holder": holder, "path": path}

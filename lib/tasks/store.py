@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 
 from lib.core.paths import (
     TASKS_DIR,
@@ -62,6 +63,25 @@ def parse_task(path: str) -> tuple[dict, str]:
     return meta, body
 
 
+def validate_task_meta(meta: dict) -> list[str]:
+    """Return a list of validation errors for a task meta dict.
+
+    Required fields: id, title, status.  An empty list means the task is valid.
+    """
+    errors: list[str] = []
+    task_id = meta.get("id")
+    if not task_id or not str(task_id).strip():
+        errors.append("missing required field: id")
+    title = meta.get("title")
+    if not title or not str(title).strip():
+        errors.append("missing required field: title")
+    status = meta.get("status")
+    valid_statuses = {"todo", "in_progress", "review", "changes_requested", "blocked", "done"}
+    if status not in valid_statuses:
+        errors.append(f"missing or invalid status: {status!r}")
+    return errors
+
+
 def write_task(path: str, meta: dict, body: str) -> None:
     order = ["id", "title", "status", "owner", "priority", "spec", "depends_on", "scope_allowed", "scope_forbidden", "locks", "created", "updated", "lock"]
     keys = [key for key in order if key in meta] + [key for key in meta if key not in order]
@@ -101,6 +121,13 @@ def load_tasks() -> list[dict]:
     for folder in ("active", "done"):
         for path in task_paths(folder):
             meta, body = parse_task(path)
+            errors = validate_task_meta(meta)
+            if errors:
+                print(
+                    f"WARN  skipping invalid task file {path}: {'; '.join(errors)}",
+                    file=sys.stderr,
+                )
+                continue
             meta["_path"] = path
             meta["_folder"] = folder
             meta["_body"] = body

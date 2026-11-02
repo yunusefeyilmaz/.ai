@@ -26,6 +26,11 @@ _MUTEX_FILE = REGISTRY_MUTEX  # advisory lock file; no `.lock` suffix so it is n
 _FALLBACK_STALE_SECONDS = 5.0
 _ADVISORY = True
 
+# Re-entrancy guard: a single-threaded CLI may nest registry_mutex() calls
+# (e.g. workspace_state_guard() -> acquire_lock()). Tracking the holding state
+# lets nested calls skip the OS lock and just yield.
+_holding_mutex = False
+
 if os.name == "nt":  # pragma: no cover - exercised on Windows CI
     import msvcrt
 
@@ -120,6 +125,11 @@ def _directory_mutex(timeout: float):
 @contextlib.contextmanager
 def registry_mutex(timeout: float = 10.0):
     """Serialize every write to shared workspace state."""
+    global _holding_mutex
+    # Re-entrant: same thread already holds the mutex, just yield.
+    if _holding_mutex:
+        yield
+        return
     if not _ADVISORY:
         with _directory_mutex(timeout):
             yield
@@ -138,10 +148,12 @@ def registry_mutex(timeout: float = 10.0):
                 raise TimeoutError("lock registry is busy")
             time.sleep(0.02)
         held = True
+        _holding_mutex = True
         yield
     finally:
         if held:
             _unlock(descriptor)
+        _holding_mutex = False
         os.close(descriptor)
 
 

@@ -23,6 +23,7 @@ from lib.core.fsio import (
 from lib.core.timeutil import iso
 from lib.runtime.dirs import ensure_dirs
 from lib.runtime.events import append_event
+from lib.runtime.mutex import workspace_state_guard
 from lib.runtime.leases import (
     acquire_lock,
     heartbeat_lock,
@@ -90,7 +91,8 @@ def create_task(
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
     with workspace_state_guard():
-        number = allocate_task_number()
+        with task_index_guard():
+            number = allocate_task_number()
         task_id = f"{number:04d}"
         title = title.strip()
         slug = slugify(title)

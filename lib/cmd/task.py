@@ -16,6 +16,7 @@ from lib.core.paths import (
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     normalize_id,
     read_json,
@@ -552,7 +553,10 @@ def cmd_task_done(args) -> int:
         print(gate_error, file=sys.stderr)
         return 1
     resource = f"task-{task_id}"
-    holder = read_json(lock_path(resource))
+    try:
+        holder = read_json(lock_path(resource))
+    except CorruptStateError:
+        holder = {"corrupt": True, "agent": "unknown", "error": "corrupt lock file"}
     if not holder:
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:

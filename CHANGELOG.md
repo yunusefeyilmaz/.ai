@@ -2,6 +2,58 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.3] - 2026-11-02
+
+### Fixed
+
+- **Missing `workspace_state_guard` import broke `ai task new`.** `lib/tasks/lifecycle.py`
+  used `workspace_state_guard()` but never imported it, causing a `NameError` on every
+  task creation. `create_task()` now also wraps `allocate_task_number()` inside
+  `task_index_guard()` so the `tasks.index` lock is held for ID allocation.
+  (`lib/tasks/lifecycle.py`)
+
+- **Non-reentrant `registry_mutex()` crashed nested state writes.** `registry_mutex()`
+  now tracks whether the current thread already holds the lock and skips the OS advisory
+  lock for nested calls (e.g. `workspace_state_guard()` → `acquire_lock()` →
+  `registry_mutex()`). Fixes `TimeoutError: lock registry is busy` on Windows where
+  `msvcrt.locking` is not re-entrant across file descriptors.
+  (`lib/runtime/mutex.py`)
+
+- **Task writes in `git commit` and `git finish` bypassed the state guard.** Both
+  `cmd_git_commit()` and `cmd_git_finish()` in `lib/git/flow.py` now wrap
+  `store.write_task()` + `board.write_board()` in `workspace_state_guard()`, so a reset
+  cannot delete a task file mid-write and the writer cannot resurrect it.
+  (`lib/git/flow.py`)
+
+- **No PID liveness for crashed task holders.** `lock_is_stale()` now adds a secondary
+  PID+host liveness probe for `task-*` locks only: if the holder is on this host, its PID
+  is no longer running, and the lock is older than 30 s, it is treated as stale even if
+  TTL has not expired. TTL remains the primary cross-host signal; infrastructure locks
+  (`git.index`, `project`, `tasks.index`) are unaffected.
+  (`lib/runtime/leases.py`)
+
+- **`--force` on a stale live lease was recorded as `lock_replaced_stale`.** `acquire_lock()`
+  now checks `--force` before staleness, so an explicit `--force` always leaves a
+  `lock_forced` audit trail.
+  (`lib/runtime/leases.py`)
+
+- **Corrupt task lock crashed `ai task done`.** `cmd_task_done()` now catches
+  `CorruptStateError` when reading the task lock and treats it as held instead of
+  crashing.
+  (`lib/cmd/task.py`)
+
+- **Hand-edited or corrupt task files created phantom tasks.** `store.parse_task()` output
+  is validated by a new `validate_task_meta()` (requires `id`, `title`, `status`), and
+  `load_tasks()` skips invalid files with a `WARN` to stderr instead of letting id-less
+  tasks flow through id-keyed logic.
+  (`lib/tasks/store.py`)
+
+### Added
+
+- `lib/tests/test_regressions.py` now covers the re-entrant mutex, PID liveness probe,
+  force-before-stale ordering, corrupt-lock handling in `done`, and invalid task meta
+  validation.
+
 ## [0.9.2] - 2026-11-02
 
 ### Fixed

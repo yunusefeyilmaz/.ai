@@ -15,6 +15,7 @@ from lib.core.paths import (
 )
 from lib.core.timeutil import iso
 from lib.runtime.events import append_event
+from lib.runtime.mutex import workspace_state_guard
 from lib.config import roles
 from lib.git import repo
 from lib.git import worktrees
@@ -368,8 +369,9 @@ def _git_commit(args) -> int:
         body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
         if args.ci:
             body += f"- {iso()} CI: {args.ci}\n"
-        store.write_task(path, meta, body)
-        board.write_board(store.load_tasks())
+        with workspace_state_guard():
+            store.write_task(path, meta, body)
+            board.write_board(store.load_tasks())
         amended = repo.commit_task_metadata(path, "", amend=True)
         if amended:
             short = amended
@@ -495,8 +497,9 @@ def cmd_git_finish(args) -> int:
         meta["merged_at"] = iso()
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} merged {branch} into {integration} by {args.agent}\n"
-        store.write_task(path, meta, body)
-        board.write_board(store.load_tasks())
+        with workspace_state_guard():
+            store.write_task(path, meta, body)
+            board.write_board(store.load_tasks())
         repo.commit_task_metadata(path, f"chore(task): record merge {task_id}")
     finally:
         repo.release_git_guard(owned, args.agent)
