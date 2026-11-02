@@ -90,6 +90,12 @@ def cmd_recover_inner(args) -> int:
             actions.append((f"release lock {resource}", "task is done"))
             handled_locks.add(resource)
             repairs.append(lambda res=resource: os.remove(lock_path(res)))
+        # A crash between the checkpoint .md and its sidecar leaves the two out
+        # of step; the .md is authoritative, so the sidecar is rebuilt from it.
+        checkpoint_problem = ckpt.sidecar_mismatch(task_id)
+        if checkpoint_problem:
+            actions.append((f"rebuild checkpoint sidecar {task_id}", checkpoint_problem))
+            repairs.append(lambda tid=task_id: ckpt.rebuild_sidecar(tid))
 
     known = {str(task.get("id")) for task in tasks}
     for resource in list(locks):

@@ -2,6 +2,34 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.7] - 2026-11-02
+
+### Fixed
+
+- **`ai task show` crashed on a legacy console codepage.** Printing a task body
+  containing a character the console/pipe encoding cannot represent (for example
+  `→` under cp1254) raised `UnicodeEncodeError` after the useful state had been
+  printed. `ai.py` now configures its streams once at startup: a real terminal
+  keeps its codepage and escapes the characters it cannot show (`\u2192`), while
+  redirected output (editor task output, CI, a pipe) is written as UTF-8. The
+  same guard covers every command that prints task titles, quotes or specs.
+  (`lib/core/console.py`, `ai.py`)
+
+- **A checkpoint can no longer be split from its sidecar without a repair.**
+  `checkpoint.md` and its `.json` sidecar are two writes; a crash between them is
+  now detected by `ai recover` (`rebuild checkpoint sidecar <id>`) and repaired
+  with `--apply`, taking the Markdown as authoritative and marking the rebuilt
+  sidecar `rebuilt: true`.
+  (`lib/runtime/checkpoints.py`, `lib/cmd/recover.py`)
+
+### Added
+
+- Encoding regressions: a redirected cp1254 stream is written as UTF-8, a cp1254
+  terminal escapes what it cannot encode, and an end-to-end `ai task show` with
+  `PYTHONIOENCODING=cp1254` succeeds and prints the arrow. Plus the
+  checkpoint-sidecar repair test.
+  (`lib/tests/test_platform.py`, `lib/tests/test_regressions.py`)
+
 ## [0.9.6] - 2026-11-02
 
 ### Changed

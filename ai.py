@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.cmd import discover  # noqa: E402
 from lib.config.settings import ConfigError  # noqa: E402
+from lib.core import console  # noqa: E402
 from lib.core.paths import VERSION  # noqa: E402
 
 
@@ -44,6 +45,9 @@ def build_parser(argv: list[str] | None = None) -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Before any output: a legacy console codepage must not kill a command
+    # halfway through printing a task body.
+    console.configure()
     parser = build_parser(argv)
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):

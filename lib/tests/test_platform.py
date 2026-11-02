@@ -8,9 +8,11 @@ skipping on non-Windows runners.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,11 +20,14 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(HERE))
 
-from lib.core import fsio  # noqa: E402
+from lib.core import console, fsio  # noqa: E402
 from lib.git import repo  # noqa: E402
 from lib.tasks import store  # noqa: E402
+from test_start import WorkspaceCase, run  # noqa: E402
 
 
 class AtomicWriteFaultTest(unittest.TestCase):
@@ -73,6 +78,57 @@ class GitAvailabilityTest(unittest.TestCase):
             code, _, error = repo.run_git(["status"])
         self.assertEqual(code, 124)
         self.assertIn("timed out", error)
+
+
+class ConsoleEncodingTest(unittest.TestCase):
+    def test_redirected_output_is_written_as_utf8(self) -> None:
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1254", errors="strict")
+        console.configure([stream])
+        print("arrow \u2192 ok", file=stream)
+        stream.flush()
+        self.assertEqual(buffer.getvalue().decode("utf-8").strip(), "arrow \u2192 ok")
+
+    def test_terminal_escapes_what_its_codepage_cannot_encode(self) -> None:
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1254", errors="strict")
+        with mock.patch.object(stream, "isatty", return_value=True):
+            console.configure([stream])
+        print("arrow \u2192 ok", file=stream)
+        stream.flush()
+        shown = buffer.getvalue().decode("cp1254")
+        self.assertIn("arrow", shown)
+        self.assertIn("\\u2192", shown)
+
+
+class TaskShowEncodingTest(WorkspaceCase):
+    def test_task_show_survives_a_legacy_console_codepage(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        created = run(workspace, "task", "new", "Unicode arrow")
+        self.assertEqual(created.returncode, 0, created.stderr + created.stdout)
+        task_path = next((workspace / "tasks" / "active").glob("0001-*.md"))
+        text = task_path.read_text(encoding="utf-8")
+        task_path.write_text(
+            text.replace("## Intent", "## Intent\n\nThen \u2192 done.", 1), encoding="utf-8"
+        )
+
+        env = dict(os.environ)
+        env.pop("PYTHONUTF8", None)
+        env.pop("PYTHONIOENCODING", None)
+        env["PYTHONIOENCODING"] = "cp1254"  # the reporter's console/pipe codepage
+        result = subprocess.run(
+            [sys.executable, str(workspace / "ai.py"), "task", "show", "0001"],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("\u2192 done", result.stdout)
 
 
 class TaskFileEncodingTest(unittest.TestCase):

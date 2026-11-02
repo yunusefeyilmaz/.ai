@@ -94,6 +94,50 @@ def read_checkpoint(task_id: str) -> tuple[dict, str, dict] | None:
     return meta, body, sidecar
 
 
+def sidecar_mismatch(task_id: str) -> str | None:
+    """Why a checkpoint's `.json` sidecar does not match its `.md` (None = fine).
+
+    The two files are written one after the other; a crash between them used to
+    leave a stale or missing sidecar with nothing to notice or repair it.
+    """
+    path = checkpoint_path(task_id)
+    if not os.path.exists(path):
+        return None
+    meta, _ = store.parse_task(path)
+    sidecar = checkpoint_sidecar(task_id)
+    if not os.path.exists(sidecar):
+        return f"checkpoint {task_id} has a .md but no sidecar"
+    try:
+        payload = read_json(sidecar) or {}
+    except CorruptStateError as exc:
+        return f"checkpoint sidecar {task_id} is corrupt: {exc}"
+    if str(payload.get("created") or "") != str(meta.get("created") or ""):
+        return f"checkpoint sidecar {task_id} belongs to a different checkpoint"
+    return None
+
+
+def rebuild_sidecar(task_id: str) -> bool:
+    """Recreate a checkpoint sidecar from its Markdown when they diverge."""
+    path = checkpoint_path(task_id)
+    if not os.path.exists(path):
+        return False
+    meta, _ = store.parse_task(path)
+    write_json_atomic(
+        checkpoint_sidecar(task_id),
+        {
+            "task": task_id,
+            "created": meta.get("created"),
+            "agent": meta.get("agent"),
+            "reason": meta.get("reason"),
+            "percent": meta.get("percent"),
+            "git": {},
+            "files": {},
+            "rebuilt": True,
+        },
+    )
+    return True
+
+
 def checkpoint_age_minutes(task_id: str) -> float | None:
     data = read_checkpoint(task_id)
     if not data:

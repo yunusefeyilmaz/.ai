@@ -253,6 +253,24 @@ class CorruptStateRegressionTest(CliRegressionCase):
         self.assertTrue(live.exists(), "a live writer's temp file must be left alone")
 
 
+class CheckpointRepairRegressionTest(CliRegressionCase):
+    def test_recover_rebuilds_a_missing_checkpoint_sidecar(self) -> None:
+        workspace = self.make_workspace()
+        self.create_claimed_task(workspace)
+        made = run(workspace, "checkpoint", "0001", "--agent", "worker", "--next", "continue")
+        self.assertEqual(made.returncode, 0, made.stderr + made.stdout)
+        sidecar = workspace / "runtime" / "state" / "checkpoints" / "0001.json"
+        self.assertTrue(sidecar.exists(), made.stderr)
+        sidecar.unlink()
+
+        found = run(workspace, "recover")
+        self.assertIn("rebuild checkpoint sidecar 0001", found.stdout)
+        applied = run(workspace, "recover", "--apply")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertTrue(sidecar.exists(), "the sidecar must be rebuilt from the .md")
+        self.assertIn('"rebuilt": true', sidecar.read_text(encoding="utf-8"))
+
+
 class UnitRegressionTest(unittest.TestCase):
     def test_scope_matching_normalizes_instead_of_stripping_characters(self) -> None:
         from lib.tasks.scope import matches
