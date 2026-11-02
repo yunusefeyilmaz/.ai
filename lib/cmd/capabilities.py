@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from lib.core.paths import (
+    TASK_STATUSES,
     VERSION,
 )
+from lib.config.roles import DEFAULT_ROLES
+from lib.git import repo
+from lib.git.repo import COMMIT_TYPES
 
 import json
 
@@ -15,6 +19,11 @@ CAPABILITIES = {
     "version": VERSION,
     "workspace": ".ai",
     "exit_codes": {"0": "success", "1": "check failed or operation refused", "127": "python 3 not found"},
+    # One machine-readable source for the vocabularies the docs used to restate
+    # in four slightly different spellings.
+    "task_states": sorted(TASK_STATUSES),
+    "roles": sorted(DEFAULT_ROLES),
+    "commit_types": list(COMMIT_TYPES),
     "state": {
         "tasks": "tasks/active, tasks/done",
         "locks": "runtime/locks/*.lock (advisory, TTL leases)",
@@ -66,6 +75,12 @@ CAPABILITIES = {
 
 def cmd_capabilities(args) -> int:
     payload = dict(CAPABILITIES)
+    try:
+        payload["branch_types"] = list(repo.git_config()["branchTypes"])
+        payload["merge_strategy"] = repo.git_config().get("merge", "no-ff")
+    except (OSError, ValueError):
+        payload["branch_types"] = []
+        payload["merge_strategy"] = None
     payload["adapter_contract"] = {
         "schema_version": "0.1.0",
         "schema_path": "adapters/contract.schema.json",

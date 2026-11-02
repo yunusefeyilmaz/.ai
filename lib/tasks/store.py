@@ -42,25 +42,76 @@ def format_value(value) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def parse_task(path: str) -> tuple[dict, str]:
-    text = read_text(path)
+def _parse_frontmatter(text: str) -> tuple[dict, str, list[str]]:
+    """Parse the front matter without silently guessing.
+
+    Returns (meta, body, problems). `problems` names what the old parser used to
+    swallow: an unterminated block, a line without a colon, a duplicate key and
+    a stray indented continuation. `|`/`>` block scalars are joined instead of
+    being dropped.
+    """
+    problems: list[str] = []
     if not text.startswith("---"):
-        return {}, text
+        return {}, text, ["missing front matter"]
     rest = text[3:]
     end = rest.find("\n---")
     if end == -1:
-        return {}, text
+        return {}, text, ["unterminated front matter (no closing ---)"]
     head = rest[:end].strip("\n")
     body = rest[end + 4 :].lstrip("\n")
     meta: dict = {}
+    block_key: str | None = None
+    block_lines: list[str] = []
+    block_separator = " "
+
+    def flush_block() -> None:
+        nonlocal block_key, block_lines
+        if block_key is not None:
+            meta[block_key] = block_separator.join(block_lines)
+            block_key = None
+            block_lines = []
+
     for line in head.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line[:1] in (" ", "\t"):
+            if block_key is not None:
+                block_lines.append(stripped)
+            else:
+                problems.append(f"stray indented line: {stripped!r}")
             continue
         if ":" not in line:
+            problems.append(f"line without a colon: {stripped!r}")
             continue
+        flush_block()
         key, value = line.split(":", 1)
-        meta[key.strip()] = parse_value(value)
+        key = key.strip()
+        if key in meta:
+            problems.append(f"duplicate key: {key}")
+        raw = value.strip()
+        if raw in ("|", "|-", ">", ">-"):
+            block_key = key
+            block_separator = "\n" if raw.startswith("|") else " "
+            meta.setdefault(key, None)
+            continue
+        meta[key] = parse_value(value)
+    flush_block()
+    return meta, body, problems
+
+
+def parse_task(path: str) -> tuple[dict, str]:
+    meta, body, _ = _parse_frontmatter(read_text(path))
     return meta, body
+
+
+def frontmatter_problems(path: str) -> list[str]:
+    """Structural problems in a task file's front matter (empty = fine)."""
+    try:
+        _, _, problems = _parse_frontmatter(read_text(path))
+    except OSError as exc:
+        return [f"unreadable: {exc}"]
+    return problems
 
 
 def validate_task_meta(meta: dict) -> list[str]:
@@ -82,8 +133,17 @@ def validate_task_meta(meta: dict) -> list[str]:
     return errors
 
 
+# The one schema every reader relies on: `tasks/TEMPLATE.md` and
+# `docs/conventions.md` list the same fields in the same order.
+FRONTMATTER_ORDER = (
+    "id", "title", "status", "owner", "priority", "spec", "depends_on",
+    "scope_allowed", "scope_forbidden", "locks", "branch", "worktree",
+    "created", "updated", "lock",
+)
+
+
 def write_task(path: str, meta: dict, body: str) -> None:
-    order = ["id", "title", "status", "owner", "priority", "spec", "depends_on", "scope_allowed", "scope_forbidden", "locks", "created", "updated", "lock"]
+    order = list(FRONTMATTER_ORDER)
     keys = [key for key in order if key in meta] + [key for key in meta if key not in order]
     lines = ["---"]
     for key in keys:
@@ -121,7 +181,7 @@ def load_tasks() -> list[dict]:
     for folder in ("active", "done"):
         for path in task_paths(folder):
             meta, body = parse_task(path)
-            errors = validate_task_meta(meta)
+            errors = validate_task_meta(meta) + frontmatter_problems(path)
             if errors:
                 print(
                     f"WARN  skipping invalid task file {path}: {'; '.join(errors)}",

@@ -78,7 +78,7 @@ workspace. Run its CLI by absolute path from this directory:
     {cli} git commit --task {meta.get('id')} --agent <name> --type feat --message "<subject>"
     {cli} task review {meta.get('id')} --agent <name>
 
-Read the workspace rules in `{os.path.join(WORKSPACE, 'AGENTS.md')}`.
+Read the workspace rules in `{os.path.join(WORKSPACE, 'AGENTS.md').replace(os.sep, '/')}`.
 """
 
 

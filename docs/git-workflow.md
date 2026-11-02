@@ -199,10 +199,16 @@ How it works:
 ## Hotfix
 
 ```sh
-ai git start --task 0015 --agent fixer --type hotfix
+ai task claim 0015 --agent fixer            # opens the default feature/0015-... branch
+ai git start --task 0015 --agent fixer --type hotfix   # hotfix/0015-... from production
 # fix, test, commit
 ai git finish --task 0015 --agent reviewer-a
 ```
+
+Claim always opens the task's default `feature/` branch. For a hotfix, start the
+`hotfix/` branch explicitly after the claim; it is based on `production`, not on
+the integration branch. The unused `feature/0015-...` branch can be deleted with
+`git branch -D` (it has no commits).
 
 `start --type hotfix` bases the branch on production. After the production
 merge, merge the same branch into integration before deleting it; `ai git

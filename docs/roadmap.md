@@ -47,7 +47,7 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
 
 ## How this list changes
 
-Each item is a task with acceptance criteria in the task ledger; `tasks/active/`
-holds only open work. When an item ships, its numbers and any reversal move to
-`CHANGELOG.md`; the list above keeps only what is still ahead. New requests enter
-as tasks and must displace something rather than extend the queue.
+An item is added to the task ledger when it becomes open work; this file keeps
+only what is still ahead, plus the limitations we accept. When an item ships, its
+numbers and any reversal move to `CHANGELOG.md`. New requests enter as tasks and
+must displace something rather than extend the queue.

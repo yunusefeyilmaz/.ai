@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import sys
 
 from lib.core.paths import (
     CHECKPOINT_ARCHIVE,
@@ -14,6 +15,7 @@ from lib.core.paths import (
     ws_rel,
 )
 from lib.core.fsio import (
+    CorruptStateError,
     normalize_id,
     read_json,
     write_json_atomic,
@@ -67,7 +69,13 @@ def list_handoff_markers(ensure: bool = True) -> list[dict]:
     for name in sorted(os.listdir(HANDOFF_DIR)):
         if not name.endswith(".json"):
             continue
-        payload = read_json(os.path.join(HANDOFF_DIR, name)) or {}
+        try:
+            payload = read_json(os.path.join(HANDOFF_DIR, name)) or {}
+        except CorruptStateError as exc:
+            # A handoff marker is a display/queue hint, never a reason to make
+            # `ai now` or `ai context` traceback. `ai doctor` reports it.
+            print(f"WARN  skipping corrupt handoff file {name}: {exc}", file=sys.stderr)
+            continue
         payload["_file"] = name
         items.append(payload)
     return items
@@ -78,7 +86,12 @@ def read_checkpoint(task_id: str) -> tuple[dict, str, dict] | None:
     if not os.path.exists(path):
         return None
     meta, body = store.parse_task(path)
-    return meta, body, (read_json(checkpoint_sidecar(task_id)) or {})
+    try:
+        sidecar = read_json(checkpoint_sidecar(task_id)) or {}
+    except CorruptStateError as exc:
+        print(f"WARN  checkpoint sidecar for task {task_id} is corrupt: {exc}", file=sys.stderr)
+        sidecar = {}
+    return meta, body, sidecar
 
 
 def checkpoint_age_minutes(task_id: str) -> float | None:

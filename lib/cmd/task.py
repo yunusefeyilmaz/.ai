@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import os
@@ -136,6 +135,11 @@ def cmd_task_show(args) -> int:
     return 0
 
 
+def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    """Public one-command claim, shared with `ai start` (no fabricated args)."""
+    return _claim(path, agent, force)
+
+
 def cmd_task_claim(args) -> int:
     path = store.find_task(args.task_id)
     if not path:
@@ -172,9 +176,7 @@ def _claim(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
         if not state.get("repo") or not state.get("head"):
             print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
         else:
-            started = flow.cmd_git_start(argparse.Namespace(
-                task=message, agent=agent, type="feature", base=None, force=False, json=False, carry=False,
-            ))
+            started = flow.start_branch(message, agent)
             if started != 0:
                 print(f"  git: could not start the task branch; fix the message above, then `ai git start --task {message} --agent {agent}`.")
     return True, message
@@ -570,6 +572,7 @@ def cmd_task_done(args) -> int:
     previous = meta.get("status")
     meta["status"] = "done"
     meta["reviewed_by"] = args.agent
+    meta["reviewed_at"] = iso()
     meta["updated"] = iso()
     meta["lock"] = None
     forced = "forced: review gate bypassed" if args.force and meta.get("submitted_by") in (None, args.agent) else "approved"
@@ -634,10 +637,6 @@ def cmd_task_discard(args) -> int:
     except ValueError:
         print(f"Task file has an invalid id: {meta.get('id')!r}.", file=sys.stderr)
         return 1
-    if not sys.stdin.isatty():
-        print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
-        return 1
-
     spec_path, spec_error = discard.task_discard_spec_path(meta, task_id)
     if spec_error:
         print(f"Cannot safely discard task: {spec_error}", file=sys.stderr)
@@ -671,6 +670,11 @@ def cmd_task_discard(args) -> int:
                 file=sys.stderr,
             )
             return 1
+    # Ask for the terminal only once the discard can actually happen: a held
+    # task must report the holder, not a generic "needs a terminal".
+    if not sys.stdin.isatty():
+        print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
+        return 1
     print(f"This permanently discards task {task_id}: {meta.get('title')}")
     print("It removes the task, its matching spec, and its continuation files.")
     expected = f"discard task {task_id}"

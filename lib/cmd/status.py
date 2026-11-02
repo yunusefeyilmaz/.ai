@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 from lib.core.paths import (
     CHECKPOINT_DIR,
@@ -12,7 +13,7 @@ from lib.core.paths import (
     WORKSPACE,
 )
 from lib.config.settings import load_config
-from lib.core.fsio import read_json
+from lib.core.fsio import CorruptStateError, read_json
 from lib.runtime.leases import (
     list_locks,
     print_lock_table,
@@ -30,7 +31,13 @@ def cmd_status(args) -> int:
         return 0
     active = [task for task in tasks if task["_folder"] == "active"]
     locks = list_locks()
-    artifacts = read_json(MANIFEST_PATH) or []
+    try:
+        artifacts = read_json(MANIFEST_PATH) or []
+    except CorruptStateError as exc:
+        # A summary command must still print the rest of the workspace; the
+        # damage is named here and `ai doctor` gives the repair.
+        print(f"WARN  artifact manifest is unreadable: {exc}", file=sys.stderr)
+        artifacts = []
     markers = ckpt.list_handoff_markers()
     checkpoints = [
         {"task": path.split(os.sep)[-1][:-3], "age_minutes": ckpt.checkpoint_age_minutes(path.split(os.sep)[-1][:-3])}

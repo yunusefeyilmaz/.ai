@@ -23,6 +23,11 @@ approved_on: null
 
 ## Acceptance criteria
 
+<!-- Each criterion must name the command or request that proves it, and include
+     a failing case. Example: `ai check --task 0001 --agent implementer` is green
+     AND `curl -s localhost:3000/health` returns {"ok":true}; an empty POST
+     returns 400 with "missing invoice_id". Delete these placeholders. -->
+
 - [ ] Criterion one, observable and independently testable
 - [ ] Criterion two
 - [ ] Existing behavior X still holds

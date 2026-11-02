@@ -58,10 +58,18 @@ def _regex(pattern: str) -> re.Pattern:
 
 
 def matches(pattern: str, path: str) -> bool:
-    path = path.replace("\\", "/").lstrip("./")
+    # `lstrip("./")` used to be a character strip, so "../secret" became
+    # "secret" and matched an allowed glob. Normalize lexically instead, and
+    # refuse anything that escapes the repository.
+    from lib.core.fsio import normalize_rel_path
+
+    pattern = pattern.replace("\\", "/")
+    path = normalize_rel_path(path)
+    if path == ".." or path.startswith("../"):
+        return False
     if pattern.endswith("/"):
         pattern += "**"
-    return bool(_regex(pattern).match(path))
+    return bool(_regex(normalize_rel_path(pattern)).match(path))
 
 
 def violations(meta: dict, paths: list[str]) -> list[str]:

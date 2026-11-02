@@ -14,6 +14,7 @@ from lib.core.paths import (
 )
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     read_json,
     slugify,
@@ -64,7 +65,17 @@ def allocate_task_number() -> int:
     holder = read_json(lock_path(resource)) or {}
     if holder.get("agent") != "task-index":
         raise RuntimeError("task ID allocation requires the tasks.index lock")
-    state = read_json(COUNTER_PATH) or {"last": 0}
+    try:
+        state = read_json(COUNTER_PATH) or {"last": 0}
+    except CorruptStateError as exc:
+        # A damaged counter must not block task creation: the scan below rebuilds
+        # the next id from the task files, and the counter is rewritten from it.
+        append_event(
+            "state_repaired",
+            file=os.path.relpath(COUNTER_PATH, WORKSPACE).replace(os.sep, "/"),
+            error=str(exc),
+        )
+        state = {"last": 0}
     last = int(state.get("last", 0) or 0)
     for task in store.load_tasks():
         digits = "".join(ch for ch in str(task.get("id") or "") if ch.isdigit())
@@ -87,6 +98,7 @@ def create_task(
     locks: str | None = None,
     intent: str | None = None,
     acceptance: list[str] | None = None,
+    demo: bool = False,
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
@@ -117,6 +129,9 @@ def create_task(
             "updated": iso(),
             "lock": None,
         }
+        if demo:
+            # Marks the throwaway task `ai start` creates on a fresh install.
+            meta["demo"] = True
         criteria = "\n".join(f"- [ ] {item}" for item in (acceptance or [])) or "- [ ] "
         plan = (
             f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"

@@ -371,7 +371,7 @@ def release_lock(
     return 0
 
 
-def heartbeat_lock(resource: str, agent: str | None = None) -> int:
+def heartbeat_lock(resource: str, agent: str | None = None, quiet: bool = False) -> int:
     try:
         resource = normalize_resource(resource)
     except ValueError as exc:
@@ -383,18 +383,23 @@ def heartbeat_lock(resource: str, agent: str | None = None) -> int:
             holder = _read_holder(path)
             if holder is not None and holder.get("resource") not in (None, resource):
                 holder = None  # a different resource that merely shares the file name
+            def warn(message: str) -> None:
+                if not quiet:
+                    print(message, file=sys.stderr)
+
             if holder is None:
-                print(f"No lock held for '{resource}'.", file=sys.stderr)
+                warn(f"No lock held for '{resource}'.")
                 return 1
             if holder.get("corrupt"):
-                print(f"Lock '{resource}' is corrupt: {holder.get('error')}", file=sys.stderr)
+                warn(f"Lock '{resource}' is corrupt: {holder.get('error')}")
                 return 1
             if agent and holder.get("agent") != agent:
-                print(f"Lock '{resource}' is held by {holder.get('agent')}.", file=sys.stderr)
+                warn(f"Lock '{resource}' is held by {holder.get('agent')}.")
                 return 1
             holder["updated_at"] = iso()
             write_json_atomic(path, holder)
-            print(f"Heartbeat '{resource}' at {holder['updated_at']}.")
+            if not quiet:
+                print(f"Heartbeat '{resource}' at {holder['updated_at']}.")
             return 0
     except TimeoutError as exc:
         print(str(exc), file=sys.stderr)

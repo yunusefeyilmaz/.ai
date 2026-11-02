@@ -46,19 +46,14 @@ Budget thresholds live in `config/workspace.json`:
 3. **Before the window closes** — handoff. Stop cleanly.
 
 ```sh
-ai checkpoint 0007 --agent codex --reason context --percent 85 \
-  --objective "Export invoices as CSV" \
-  --status "Parser done; writer fails on empty rows" \
-  --done "CSV parser + tests (12 passing)" \
-  --in-progress "writer.py line 84: KeyError on missing vat_id" \
-  --next "1. Handle missing vat_id. 2. Add empty-row test. 3. Run npm test." \
-  --decisions "Use csv module; no dependency" \
-  --do-not "Do not rewrite parser" \
-  --files src/export/parser.py,src/export/writer.py \
-  --verification "npm test: 12 passed, 1 failing"
+ai checkpoint 0007 --agent codex --reason context --percent 85 --objective "Export invoices as CSV" --status "Parser done; writer fails on empty rows" --done "CSV parser + tests (12 passing)" --in-progress "writer.py line 84: KeyError on missing vat_id" --next "1. Handle missing vat_id. 2. Add empty-row test. 3. Run npm test." --decisions "Use csv module; no dependency" --do-not "Do not rewrite parser" --files src/export/parser.py,src/export/writer.py --verification "npm test: 12 passed, 1 failing"
 
 ai handoff 0007 --agent codex --reason "context limit"
 ```
+
+The examples are single-line on purpose: `\` continuations are a POSIX-shell
+feature and fail in PowerShell and cmd. Paste one line, or use the backtick
+continuation there.
 
 `ai handoff` prints the resume prompt. Paste it into the next session. That
 session starts with `ai resume 0007`.

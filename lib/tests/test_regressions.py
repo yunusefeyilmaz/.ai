@@ -197,7 +197,113 @@ class TaskRegressionTest(CliRegressionCase):
         self.assertTrue(active.exists(), "the active task must stay in place")
 
 
+class CorruptStateRegressionTest(CliRegressionCase):
+    """Damaged state must self-heal or fail cleanly, never traceback."""
+
+    def test_corrupt_counter_is_rebuilt_by_task_creation(self) -> None:
+        workspace = self.make_workspace()
+        counter = workspace / "runtime" / "state" / "task-counter.json"
+        counter.parent.mkdir(parents=True, exist_ok=True)
+        counter.write_text('{"last": ', encoding="utf-8")
+
+        created = run(workspace, "task", "new", "counter recovery", "--no-spec")
+        self.assertEqual(created.returncode, 0, created.stderr + created.stdout)
+        self.assertNotIn("Traceback", created.stderr)
+        self.assertEqual(json.loads(counter.read_text(encoding="utf-8")), {"last": 1})
+        self.assertIn("state_repaired", self.event_text(workspace))
+
+    def test_corrupt_handoff_does_not_break_context(self) -> None:
+        workspace = self.make_workspace()
+        handoff = workspace / "runtime" / "state" / "handoff" / "0001.json"
+        handoff.parent.mkdir(parents=True, exist_ok=True)
+        handoff.write_text("{not json", encoding="utf-8")
+
+        result = run(workspace, "context")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("corrupt handoff", result.stderr)
+
+    def test_corrupt_manifest_degrades_status_and_doctor_names_it(self) -> None:
+        workspace = self.make_workspace()
+        manifest = workspace / "runtime" / "artifacts" / "MANIFEST.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("not-json", encoding="utf-8")
+
+        status = run(workspace, "status")
+        self.assertEqual(status.returncode, 0, status.stderr + status.stdout)
+        self.assertNotIn("Traceback", status.stderr)
+        self.assertIn("artifact manifest is unreadable", status.stderr)
+
+        doctor = run(workspace, "doctor")
+        self.assertIn("corrupt state file: runtime/artifacts/MANIFEST.json", doctor.stdout)
+
+    def test_doctor_fix_sweeps_only_stale_temp_files(self) -> None:
+        workspace = self.make_workspace()
+        active = workspace / "tasks" / "active"
+        stale = active / ".tmp-stale.part"
+        live = active / ".tmp-live.part"
+        stale.write_text("x", encoding="utf-8")
+        live.write_text("x", encoding="utf-8")
+        old = time.time() - 3600
+        os.utime(stale, (old, old))
+
+        result = run(workspace, "doctor", "--fix")
+        self.assertIn("removed stale temp file", result.stdout)
+        self.assertFalse(stale.exists(), "a killed write's temp file must be swept")
+        self.assertTrue(live.exists(), "a live writer's temp file must be left alone")
+
+
 class UnitRegressionTest(unittest.TestCase):
+    def test_scope_matching_normalizes_instead_of_stripping_characters(self) -> None:
+        from lib.tasks.scope import matches
+
+        self.assertTrue(matches("src/**", "./src/a.py"))
+        self.assertTrue(matches("src/**", "src/../src/a.py"))
+        self.assertFalse(matches("src/**", "src2/a.py"))
+        # `lstrip("./")` used to turn this into "escape.py" and match the glob.
+        self.assertFalse(matches("src/**", "../escape.py"))
+
+    def test_resources_overlap_normalizes_spellings(self) -> None:
+        from lib.runtime.leases import resources_overlap
+
+        self.assertTrue(resources_overlap("src/a", "./src/a"))
+        self.assertTrue(resources_overlap("src/a", "src/../src/a"))
+        # a directory lock covers its children, but a sibling is free
+        self.assertTrue(resources_overlap("src/a", "src/a/b"))
+        self.assertFalse(resources_overlap("src/a", "src/b"))
+
+    def test_parse_task_reads_block_scalars_and_flags_duplicates(self) -> None:
+        from lib.tasks import store
+
+        temp = Path(tempfile.mkdtemp(prefix="ai-regressions-"))
+        self.addCleanup(shutil.rmtree, temp, True)
+        path = temp / "0001-x.md"
+        path.write_text(
+            "---\nid: 0001\ntitle: One\ntitle: Two\nstatus: todo\nnotes: |\n  first\n  second\n---\nbody\n",
+            encoding="utf-8",
+        )
+        meta, body = store.parse_task(str(path))
+        self.assertEqual(meta["notes"], "first\nsecond")
+        self.assertEqual(body.strip(), "body")
+        self.assertIn("duplicate key: title", store.frontmatter_problems(str(path)))
+
+    def test_checks_budget_covers_every_configured_check(self) -> None:
+        from unittest import mock
+
+        from lib.git import flow
+
+        config = {
+            "checks": [
+                {"command": "a", "timeoutSeconds": 900},
+                {"command": "b"},
+                {"command": "c", "timeoutSeconds": "1200"},
+            ]
+        }
+        with mock.patch.object(flow, "load_config", lambda: config):
+            self.assertEqual(flow.checks_seconds_budget(), 900 + 1800 + 1200)
+        with mock.patch.object(flow, "load_config", lambda: (_ for _ in ()).throw(ValueError("bad"))):
+            self.assertEqual(flow.checks_seconds_budget(), 1800)
+
     def test_normalize_id_is_strict(self) -> None:
         from lib.core.fsio import normalize_id
 

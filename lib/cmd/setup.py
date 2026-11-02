@@ -20,7 +20,7 @@ def cmd_setup(args) -> int:
                 return 1
             answers[key.strip()] = value
         try:
-            result = preferences.apply(answers, args.check)
+            result = preferences.apply(answers, args.check, agent=getattr(args, "agent", None))
         except ValueError as exc:
             print(f"Cannot store the answers: {exc}", file=sys.stderr)
             return 1
@@ -65,5 +65,6 @@ def register(sub) -> None:
     setup.add_argument("--set", nargs="+", metavar="KEY=VALUE", help="review, checks, git, tests, continue, workers")
     setup.add_argument("--check", action="append", metavar="NAME=COMMAND", help="add a project check command")
     setup.add_argument("--defaults", action="store_true", help="accept the recommended answers")
+    setup.add_argument("--agent", default=None, help="who records the answers/checks (stored as check provenance)")
     setup.add_argument("--json", action="store_true")
     setup.set_defaults(func=cmd_setup)

@@ -23,6 +23,7 @@ from lib.config.settings import (
     lock_settings,
 )
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     normalize_id,
     read_json,
@@ -32,6 +33,7 @@ from lib.runtime.events import append_event
 from lib.runtime.mutex import registry_mutex
 from lib.runtime.leases import (
     acquire_lock,
+    heartbeat_lock,
     list_locks,
     lock_is_stale,
     normalize_resource,
@@ -220,7 +222,13 @@ def task_branch_name(meta: dict, branch_type: str) -> str:
     return f"{branch_type}/{normalize_id(str(meta.get('id')))}-{slug or 'task'}"
 
 
-def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
+def acquire_git_guard(agent: str, task_id: str, ttl: int = 600) -> tuple[bool, bool, str]:
+    """Take the git index for one orchestrating step.
+
+    `ttl` must cover the longest child command run while the guard is held
+    (e.g. a project check), or the lease expires mid-step and another agent can
+    interleave a commit between the check and the merge.
+    """
     _, stale_after = lock_settings()
     current = next(
         (
@@ -238,7 +246,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
                 f"(task {current.get('task') or '-'})."
             )
         return True, False, ""
-    result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=600)
+    result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=ttl)
     if not result["ok"]:
         holder = result["holder"] or {}
         append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
@@ -247,6 +255,11 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
             f"(task {holder.get('task') or '-'})."
         )
     return True, True, ""
+
+
+def heartbeat_git_guard(agent: str) -> bool:
+    """Prove the index lease is still ours after a long child command."""
+    return heartbeat_lock("@git/index", agent=agent, quiet=True) == 0
 
 
 def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> str | None:
@@ -298,7 +311,12 @@ def release_git_guard(owned: bool, agent: str) -> None:
         with registry_mutex():
             # Re-read inside the mutex: the lease may have expired and been
             # taken by another agent between the check and the delete.
-            holder = read_json(path) or {}
+            try:
+                holder = read_json(path) or {}
+            except CorruptStateError:
+                # We cannot prove ownership of a damaged lease, so keep it: the
+                # next holder expires it and `ai doctor` reports it.
+                return
             if holder.get("agent") == agent:
                 try:
                     os.remove(path)
@@ -317,6 +335,10 @@ def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
     ]
     uncovered = []
     for path in state.get("staged", []):
+        # Coordination state (tasks/specs/config/decisions) is committed by the
+        # CLI itself and is not product code; it never needs a file lease.
+        if is_workspace_ledger_path(path):
+            continue
         covered = False
         for lock in locks:
             try:
@@ -336,13 +358,14 @@ SENSITIVE = re.compile(
 )
 
 
-def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
+def confirm_initial_baseline(
+    production: str, assume_yes: bool = False, json_out: bool = False
+) -> tuple[bool, int]:
     code, listed, err = run_git(["ls-files", "--cached", "--others", "--exclude-standard"])
     if code != 0:
         print(f"Could not list files for the initial Git baseline: {err}", file=sys.stderr)
         return False, 1
     files = [line for line in listed.splitlines() if line]
-    assume_yes = bool(getattr(args, "yes", False))
     if assume_yes:
         # The user already agreed to Git during `ai setup`; an agent cannot type the phrase.
         risky = [path for path in files if SENSITIVE.search(path)]
@@ -359,7 +382,7 @@ def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
             print(f"  {path}")
         if len(files) > 30:
             print(f"  ... and {len(files) - 30} more")
-    elif args.json:
+    elif json_out:
         print(json.dumps({
             "repo": True,
             "baselineConfirmationRequired": True,

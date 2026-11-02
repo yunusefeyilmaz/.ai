@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -9,10 +10,19 @@ import sys
 import time
 
 from lib.core.paths import (
+    CONFIG_DIR,
+    COUNTER_PATH,
+    DECISIONS_DIR,
+    LOCKS_DIR,
+    MANIFEST_PATH,
     PROJECT,
     REQUIRED_PATHS,
+    RUNTIME_DIR,
     SCAN_SKIP,
+    SPECS_DIR,
+    STATE_DIR,
     TASK_STATUSES,
+    TASKS_DIR,
     WORKSPACE,
     workspace_shape,
 )
@@ -87,6 +97,98 @@ def adapter_findings() -> list[Finding]:
     return findings
 
 
+_TMP_STALE_SECONDS = 300
+_TMP_ROOTS = (TASKS_DIR, SPECS_DIR, RUNTIME_DIR, CONFIG_DIR, DECISIONS_DIR)
+
+
+def _rel(path: str) -> str:
+    return os.path.relpath(path, WORKSPACE).replace(os.sep, "/")
+
+
+def tmp_debris() -> list[str]:
+    """Temp files a killed atomic write left behind (`.tmp-*.part`)."""
+    found: list[str] = []
+    for root in _TMP_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for base, dirs, names in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in SCAN_SKIP]
+            for name in names:
+                if name.startswith(".tmp-") and name.endswith(".part"):
+                    found.append(os.path.join(base, name))
+    return found
+
+
+def _state_files() -> list[str]:
+    """Every JSON/lease file the CLI reads as shared state."""
+    paths = [COUNTER_PATH, MANIFEST_PATH]
+    for root in (STATE_DIR, LOCKS_DIR):
+        if not os.path.isdir(root):
+            continue
+        for base, dirs, names in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in SCAN_SKIP]
+            paths.extend(
+                os.path.join(base, name)
+                for name in names
+                if name.endswith((".json", ".lock"))
+            )
+    return [path for path in paths if os.path.isfile(path)]
+
+
+def _is_corrupt_json(path: str) -> str | None:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            json.load(handle)
+    except ValueError as exc:
+        return str(exc)
+    except OSError as exc:
+        return str(exc)
+    return None
+
+
+def corrupt_state_findings() -> list[Finding]:
+    """State files that exist but cannot be parsed, instead of a traceback later."""
+    findings: list[Finding] = []
+    for path in _state_files():
+        error = _is_corrupt_json(path)
+        if not error:
+            continue
+        rel = _rel(path)
+        if path == COUNTER_PATH:
+            hint = "ai doctor --fix (the counter is rebuilt from the task files)"
+        elif rel.startswith("runtime/locks/"):
+            hint = "ai lock release <resource> --force, or wait for the lease to expire"
+        elif path == MANIFEST_PATH:
+            hint = "move runtime/artifacts/MANIFEST.json aside, then rerun `ai artifact list`"
+        else:
+            hint = f"move {rel} aside, then rerun the command that needs it"
+        level = "error" if rel.startswith("runtime/locks/") else "warn"
+        findings.append(Finding(level, f"corrupt state file: {rel} ({error})", hint))
+    return findings
+
+
+def task_frontmatter_findings() -> list[Finding]:
+    """Task files the CLI would refuse to load, named instead of only warned."""
+    findings: list[Finding] = []
+    for folder in ("active", "done"):
+        for path in store.task_paths(folder):
+            problems = store.frontmatter_problems(path)
+            if problems:
+                findings.append(Finding(
+                    "warn",
+                    f"malformed task front matter: {_rel(path)} ({'; '.join(problems)})",
+                    "fix the front matter, or move the file aside if it is not a task",
+                ))
+    return findings
+
+
+def tmp_debris_findings() -> list[Finding]:
+    return [
+        Finding("warn", f"leftover temp file: {_rel(path)}", "ai doctor --fix removes stale temp files")
+        for path in tmp_debris()
+    ]
+
+
 def apply_safe_fixes() -> list[str]:
     """Repair missing, regenerable state. Never overwrite files or touch Git."""
     fixes: list[str] = []
@@ -107,6 +209,22 @@ def apply_safe_fixes() -> list[str]:
         if missing_ignore:
             config_adopt.adopt_gitignore()
             fixes.append("added .gitignore rules: " + ", ".join(missing_ignore))
+    for path in tmp_debris():
+        try:
+            if time.time() - os.path.getmtime(path) < _TMP_STALE_SECONDS:
+                continue  # a live writer owns it
+            os.remove(path)
+            fixes.append(f"removed stale temp file {_rel(path)}")
+        except OSError:
+            pass
+    if _is_corrupt_json(COUNTER_PATH):
+        # The allocator rebuilds the next id from the task files, so a damaged
+        # counter is safe to drop rather than a permanent blocker.
+        try:
+            os.remove(COUNTER_PATH)
+            fixes.append("removed corrupt runtime/state/task-counter.json (ids are rebuilt from the tasks)")
+        except OSError:
+            pass
     return fixes
 
 
@@ -405,6 +523,9 @@ def collect_checks() -> list[Finding]:
 
     problems.extend(adapter_findings())
     problems.extend(worktree_findings())
+    problems.extend(corrupt_state_findings())
+    problems.extend(tmp_debris_findings())
+    problems.extend(task_frontmatter_findings())
     return problems
 
 

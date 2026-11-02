@@ -15,8 +15,16 @@ import os
 import socket
 import sys
 
-VERSION = "0.9.3"
-HOST = socket.gethostname()
+VERSION = "0.9.5"
+def _host_name() -> str:
+    """One stable spelling per machine: lower-case short name, overridable."""
+    override = os.environ.get("AI_HOST")
+    if override:
+        return override.strip().lower()
+    return socket.gethostname().split(".")[0].strip().lower() or "localhost"
+
+
+HOST = _host_name()
 
 CORE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.dirname(CORE_DIR)

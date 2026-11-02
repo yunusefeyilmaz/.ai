@@ -26,6 +26,7 @@ import os
 from lib.config import preferences
 from lib.config.settings import configured_checks, load_config
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     read_json,
 )
@@ -98,7 +99,12 @@ def check_required() -> bool:
 
 
 def claim_started(task_id: str) -> str | None:
-    holder = read_json(lock_path(f"task-{task_id}")) or {}
+    try:
+        holder = read_json(lock_path(f"task-{task_id}")) or {}
+    except CorruptStateError:
+        # A damaged lease is reported by the caller's own checks; it is not a
+        # start time, and it must not crash `review`/`done`.
+        return None
     return holder.get("started_at")
 
 

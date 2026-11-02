@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import io
 import json
@@ -23,7 +22,7 @@ from lib.config.settings import (
 from lib.core.fsio import write_json_atomic
 from lib.runtime.dirs import ensure_dirs
 from lib.config import adopt as config_adopt
-from lib.cmd.task import _claim
+from lib.cmd.task import claim_task
 from lib.config import preferences, settings
 from lib.git import flow
 from lib.git import repo
@@ -56,7 +55,7 @@ def cmd_start(args) -> int:
     if confirmed and settings.git_enabled() and state.get("repo") and state.get("head"):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            setup_code = flow.cmd_git_setup(argparse.Namespace(json=False))
+            setup_code = flow.setup_git()
         if setup_code != 0:
             setup_error = (out.getvalue() + err.getvalue()).strip()
             print(setup_error, file=sys.stderr)
@@ -80,6 +79,7 @@ def cmd_start(args) -> int:
             created = lifecycle.create_task(
                 "Try the workspace",
                 acceptance=["`ai doctor` reports 0 errors", "`ai task show` prints this task"],
+                demo=True,
             )
         except RuntimeError:
             created = None
@@ -93,7 +93,7 @@ def cmd_start(args) -> int:
     if target and args.agent and not target.get("owner"):
         # the same one-command claim workers use (file locks, branch); chatter off stdout for --json
         with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
-            ok, message = _claim(target["_path"], args.agent)
+            ok, message = claim_task(target["_path"], args.agent)
         if ok:
             claimed = True
             target = next(

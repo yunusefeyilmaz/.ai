@@ -43,7 +43,13 @@ class TaskStateCommandsTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         run(workspace, "task", "new", "Held")
         run(workspace, "task", "claim", "0001", "--agent", "w1")
-        self.assertEqual(run(workspace, "task", "discard", "0001").returncode, 1)
+        refused = run(workspace, "task", "discard", "0001")
+        self.assertEqual(refused.returncode, 1)
+        # The lock refusal, not the generic no-terminal guard: a held task must
+        # name its holder.
+        self.assertIn("lock held by w1", refused.stderr)
+        self.assertNotIn("Traceback", refused.stderr)
+        self.assertEqual(len(json.loads(run(workspace, "task", "list", "--json").stdout)["active"]), 1)
 
 
 class BriefAndArtifactsTest(WorkspaceCase):

@@ -41,6 +41,40 @@ not an empty string. Timestamps are UTC ISO 8601 with a trailing `Z`.
 ## Log           <- append-only; the CLI writes claims/releases here
 ```
 
+## Task front matter
+
+The canonical field table. `tasks/TEMPLATE.md` starts from it, and `ai task
+new` / the commands in the last column own the values.
+
+| Field | Written by | Meaning |
+|-------|-----------|---------|
+| `id` | `ai task new` | Four-digit task id; the only id form the CLI accepts. |
+| `title` | `ai task new` | Imperative one-liner. |
+| `status` | state transitions | `todo`, `in_progress`, `review`, `changes_requested`, `blocked`, `done`. |
+| `owner` | claim/release/review/done | Agent currently holding the task; `null` when free. |
+| `priority` | `ai task new` | `low`, `medium`, `high`. |
+| `spec` | `ai task new` / `--spec` | Path of the linked spec; the claim gate reads it. |
+| `depends_on` | `ai task new` / `plan apply` | Comma-separated ids that must be `done` first. |
+| `scope_allowed` | `--allow` | Globs the task may touch. |
+| `scope_forbidden` | `--forbid` | Globs the task must not touch. |
+| `locks` | `--lock` (default: `scope_allowed`) | File leases taken automatically at claim. |
+| `branch` | `ai git start` | Task branch while Git is on. |
+| `worktree` | claim/`git start` | Isolated checkout when `git.isolation = worktree`. |
+| `submitted_by` | `ai task review` | Producer; a different agent must review. |
+| `reviewed_by` | `ai task done` | Reviewer/approver. |
+| `changes_requested_by` | `ai task request-changes` | Who sent it back. |
+| `reviewed_at` | `ai task done` | When it was approved. |
+| `merged_into` / `merged_at` | `ai git finish` | Integration branch and merge time. |
+| `blocked_from` | `ai task block` | Status restored by `unblock`. |
+| `github_issue` / `github_pr` | `ai task link` | External references. |
+| `created` / `updated` | CLI | ISO timestamps. |
+| `lock` | claim/release | The `task-<id>` lease while claimed. |
+| `demo` | `ai start` | Marks the throwaway demo task. |
+
+Do not invent fields: `parse_task()` keeps unknown keys, but no command reads
+them, and a hand-written duplicate or stray indented line makes the file invalid
+(`ai doctor` names it).
+
 ## Specs
 
 Required sections: Intent, Behavior, Acceptance criteria, Out of scope, Status.
@@ -58,6 +92,10 @@ with no way to fail is not a spec.
   here instead of repeating its own list.
 - Commit messages describe the change, not the agent:
   `Add invoice CSV export`, not `AI changes`.
+- `ai git commit` verifies staged paths against held leases automatically when
+  the task declares `locks`/`scope_allowed`; `--no-verify` is the deliberate
+  bypass and belongs in the task log. Ledger files (`tasks/`, `specs/`,
+  `config/`, `docs/decisions/`) never need a lease.
 - Do not force-push shared branches, do not rewrite published history.
 - `ai check` must be green before a commit that claims completion.
 - Never commit `runtime/` state, raw evidence dumps or secrets.

@@ -115,9 +115,10 @@ ai now [--agent <n>] [--role r]   ai context [--limit N]   ai brief <id>   ai st
 ai setup [--set k=v ...] [--check NAME=COMMAND] [--defaults]
 ai plan apply|example            ai doctor [--fix]        ai check [--task <id> --agent <n>]
 ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock|link|discard
+  new flags: --role chief [--allow GLOB --forbid GLOB --lock GLOB --depends-on IDS]
 ai lock acquire|release|heartbeat|status
 ai checkpoint|handoff <id> --agent <n>   ai resume <id>   ai recover [--apply]
-ai git setup|start|commit|verify|finish|begin|end
+ai git setup|start|commit|verify|finish|begin|end   (start --carry, commit --verify)
 ai history <id> [--evidence]     ai decision new|list     ai artifact put|list|clean
 ai status [--board]   ai capabilities   ai metrics   ai adopt   ai init   ai version   ai clean   ai reset
 ```
@@ -126,4 +127,4 @@ ai status [--board]   ai capabilities   ai metrics   ai adopt   ai init   ai ver
 block and the parser disagree, the parser wins.
 
 If `ai` is unavailable, follow the same protocol by editing files directly
-(see `tasks/README.md`, "Without the CLI"); do not invent a shortcut.
+(see `tasks/README.md`, "Manual operation"); do not invent a shortcut.

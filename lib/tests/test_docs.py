@@ -20,7 +20,7 @@ from test_start import ROOT, WorkspaceCase, run
 sys.path.insert(0, str(ROOT))
 
 DOC_GLOBS = [
-    "README.md", "AGENTS.md", "GUIDE.md", "CHANGELOG.md_skip", "docs/*.md", "agents/*.md", "prompts/*.md",
+    "README.md", "AGENTS.md", "GUIDE.md", "CHANGELOG.md", "docs/*.md", "agents/*.md", "prompts/*.md",
     "tasks/README.md", "specs/README.md", "skills/README.md", "lib/README.md", "adapters/**/*.md",
 ]
 STALE_PATHS = ("scripts/ai", "scripts\\ai", "lib/runtime/artifacts", "lib/tasks/active", "lib/specs/active")
@@ -74,6 +74,10 @@ class DocumentedCommandsTest(WorkspaceCase):
     def test_no_stale_paths_in_the_guides(self) -> None:
         problems = []
         for path in self.doc_files():
+            # CHANGELOG records what the layout used to be; rewriting history to
+            # satisfy a path check would make the log lie.
+            if path.name == "CHANGELOG.md":
+                continue
             text = path.read_text(encoding="utf-8")
             for stale in STALE_PATHS:
                 if stale in text:

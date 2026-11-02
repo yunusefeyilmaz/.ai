@@ -2,6 +2,151 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.5] - 2026-11-02
+
+### Fixed
+
+- **`ai task discard` reported the wrong refusal.** The mandatory-terminal guard ran
+  before the lease checks, so a task held by another agent produced "Discard requires
+  an interactive terminal" instead of naming the holder, and no test could reach the
+  lock path. The holder is now reported first; the smoke test asserts the message.
+  (`lib/cmd/task.py`, `lib/tests/test_commands_smoke.py`)
+
+- **Scope matching stripped characters instead of normalizing paths.** `matches()`
+  used `lstrip("./")`, a character strip, so `../escape.py` became `escape.py` and
+  matched an allowed `src/**` glob while `src/../src/a` was judged by raw string
+  comparison. Both scope checks and lease overlap now normalize lexically through
+  `normalize_rel_path`, and a path escaping the repository never matches.
+  (`lib/tasks/scope.py`)
+
+- **`ai git commit` made the documented refusal opt-in.** AGENTS.md promises that
+  staged paths without a held lease are refused, but the check only ran with
+  `--verify`. It now runs automatically when the task declares `locks` or
+  `scope_allowed`; ledger paths (`tasks/`, `specs/`, `config/`, `docs/decisions/`)
+  never need a lease, and `--no-verify` is the explicit, visible bypass.
+  (`lib/git/flow.py`, `lib/git/repo.py`, `lib/cmd/git.py`)
+
+### Changed
+
+- **Front matter parsing fails loudly instead of silently guessing.** `|`/`>` block
+  scalars are joined instead of dropped, and a duplicate key, stray indented line,
+  missing colon or unterminated block is returned by `store.frontmatter_problems()`:
+  `load_tasks()` skips such a file with a warning and `ai doctor` names it.
+  (`lib/tasks/store.py`, `lib/runtime/health.py`)
+
+- **Persisted checks carry provenance.** `ai setup --check NAME=CMD` records
+  `addedBy` / `addedAt` on the entry (`ai setup --agent <n>` names the recorder);
+  `ai capabilities` publishes the task states, roles and commit types, and
+  `branch_types` / `merge_strategy`, so the vocabularies have one machine-readable
+  source instead of four prose spellings. Host identity is normalized
+  (lower-case short name; `AI_HOST` overrides it).
+  (`lib/config/preferences.py`, `lib/cmd/setup.py`, `lib/cmd/capabilities.py`,
+  `lib/core/paths.py`)
+
+- **No fabricated `argparse.Namespace` objects in the work path.** `ai task claim`
+  and `ai start` call `start_branch(...)` / `claim_task(...)` with explicit
+  parameters, and Gitflow setup moved to `lib/git/setup.py` with `setup_git(...)`
+  (flow.py keeps the CLI wrapper). A renamed flag is now a real error, not a silent
+  one. The `ai start` demo task is marked `demo: true`, and `ai task done` records
+  `reviewed_at`.
+  (`lib/git/setup.py`, `lib/git/flow.py`, `lib/cmd/task.py`, `lib/cmd/start.py`)
+
+- **Documentation matches the CLI.** One canonical task front-matter table
+  (`docs/conventions.md`), one commit-type list, a hotfix note about the automatic
+  `feature/` branch, single-line recovery examples (PowerShell-safe), acceptance
+  criteria that must name their proof in both templates, adapters that advertise
+  only what they ship, and `CHANGELOG.md` is now inside the documented-command test
+  (stale paths in history remain exempt).
+
+### Added
+
+- `lib/tests/run.py --coverage` (needs `pip install coverage`), and unit tests for
+  scope matching, lease-resource normalization and front-matter parsing.
+
+## [0.9.4] - 2026-11-02
+
+### Fixed
+
+- **Corrupt state files no longer traceback.** Since `read_json` started raising
+  `CorruptStateError`, several readers still assumed `None`: a damaged handoff
+  marker killed `ai context`/`ai now`, a damaged `runtime/artifacts/MANIFEST.json`
+  killed `ai status`, a damaged `task-counter.json` killed `ai task new`, and a
+  damaged claim lease could kill `review`/`done`.
+  - Handoff markers and checkpoint sidecars are display state: they are skipped
+    with a `WARN` naming the file.
+  - `ai status` warns and shows zero artifacts; `ai artifact put|clean` refuses
+    (appending would silently drop earlier entries) while `list` still works.
+  - The task counter is rebuilt from the task files under the `tasks.index`
+    lock and a `state_repaired` event is recorded.
+  - `claim_started()` treats a damaged lease as "no start time" and releasing
+    the git index guard keeps a lease it cannot prove it owns.
+  (`lib/runtime/checkpoints.py`, `lib/cmd/status.py`, `lib/cmd/artifact.py`,
+  `lib/tasks/lifecycle.py`, `lib/tasks/gates.py`, `lib/git/repo.py`)
+
+- **`ai doctor` now names damaged state instead of leaving it for a crash.**
+  It parses every JSON/lease file under `runtime/state/` and `runtime/locks/`
+  plus the task counter and artifact manifest: a corrupt lock is an error (with
+  the `--force` release hint), the rest are warnings. It also reports leftover
+  `.tmp-*.part` files from writes killed mid-rename.
+  `ai doctor --fix` removes temp files older than five minutes (a live writer's
+  temp file is untouched) and deletes a corrupt `task-counter.json`, which the
+  allocator then rebuilds.
+  (`lib/runtime/health.py`, `lib/cmd/doctor.py`)
+
+- **A long project check can no longer outlive the git index guard.**
+  `ai git finish` acquired `@git/index` with a fixed 600 s TTL and then ran
+  `ai check --strict --task`, whose configured timeouts can total far more; the
+  lease went stale mid-check and another agent could interleave a commit between
+  the check and the merge. The guard's TTL is now the sum of the configured
+  check timeouts, and after the check the command re-asserts the lease and
+  refuses to merge if it is no longer held.
+  (`lib/git/flow.py`, `lib/git/repo.py`, `lib/runtime/leases.py`)
+
+- **Worktree briefing printed a Windows path inside a Markdown code span.**
+  The workspace root now uses forward slashes.
+  (`lib/git/worktrees.py`)
+
+- **`ai lock acquire` hid validation errors behind "held by None".** A refused
+  acquisition with no holder (path traversal, absolute path, oversized TTL) now
+  prints the actual reason and skips the misleading `lock_refused` event.
+  (`lib/cmd/lock.py`)
+
+- **A title containing `|` or a newline corrupted `tasks/BOARD.md`.** Board
+  rendering escapes table cells and flattens newlines in list lines.
+  (`lib/tasks/board.py`)
+
+- **`commit_task_metadata` swallowed every git failure.** A failed `git add` or
+  `git commit` of task metadata now warns on stderr and records a
+  `git_metadata_failed` event instead of silently dropping the ledger commit.
+  (`lib/git/repo.py`)
+
+- **The fallback directory mutex spun forever on a stale non-empty directory.**
+  When the stale mutex directory cannot be removed (foreign file inside), the
+  wait loop now honors its timeout instead of looping past it.
+  (`lib/runtime/mutex.py`)
+
+### Changed
+
+- `ai now` prints the unanswered setup questions and the ready-to-run
+  `ai setup --set ...` line inline on an unconfirmed project, so a chief sees the
+  interview without a second command.
+  (`lib/runtime/overview.py`)
+
+- `AGENTS.md`'s fallback pointer now names the real section
+  (`tasks/README.md`, "Manual operation"), and the command block lists the
+  `ai task new` scope/lock flags plus `git start --carry` and `git commit --verify`.
+  (`AGENTS.md`)
+
+### Added
+
+- `lib/tests/test_regressions.py` covers counter rebuild + `state_repaired`,
+  a corrupt handoff during `ai context`, a corrupt manifest during `ai status`
+  and `ai doctor`, stale-versus-live temp-file sweeping, the check-timeout
+  budget that sizes the git index guard, forced takeover of a live lease
+  (with its `lock_forced` trail), inline setup questions in `ai now`, the
+  refused-overwrite guard in `ai task done`, and the reported failure of a
+  task-metadata commit.
+
 ## [0.9.3] - 2026-11-02
 
 ### Fixed
@@ -98,8 +243,6 @@ All notable changes to this workspace are documented here.
   should use `read_json_checked` which fails closed instead of silently treating
   a damaged lock as "free".
   (`lib/core/fsio.py`)
-
-### Added
 
 - `lib/tests/test_regressions.py`: coverage for corrupt-lock fail-closed,
   forced-takeover trails, stale-lease replacement, path-traversal refusals,

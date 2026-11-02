@@ -22,6 +22,8 @@ lock: null
 
 ## Acceptance criteria
 
+<!-- Name the command that proves each item, and include a failing case. -->
+
 - [ ] Observable criterion one
 - [ ] Observable criterion two
 

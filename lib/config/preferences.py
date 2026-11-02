@@ -11,6 +11,8 @@ gets. It asks the user once, in the user's language, then stores the answers in
 
 from __future__ import annotations
 
+import os
+
 from lib.config.settings import config_path, load_config
 from lib.core.fsio import write_json_atomic
 from lib.core.timeutil import iso
@@ -83,10 +85,14 @@ def status(config: dict | None = None) -> dict:
         })
     confirmed = all(key in answered for key in REQUIRED_KEYS)
     return {"confirmed": confirmed, "questions": rows,
-            "checks": [c.get("name") or c.get("command") for c in (config.get("checks") or [])]}
+            "checks": [c.get("name") or c.get("command") for c in (config.get("checks") or [])],
+            "checksProvenance": [
+                {"name": c.get("name") or c.get("command"), "addedBy": c.get("addedBy"), "addedAt": c.get("addedAt")}
+                for c in (config.get("checks") or [])
+            ]}
 
 
-def apply(answers: dict[str, str], checks: list[str] | None = None) -> dict:
+def apply(answers: dict[str, str], checks: list[str] | None = None, agent: str | None = None) -> dict:
     """Validate and store answers (key -> raw text) and optional check commands."""
     config = load_config()
     known = {key: (dotted, kind) for key, dotted, kind, _, _ in QUESTIONS}
@@ -107,7 +113,13 @@ def apply(answers: dict[str, str], checks: list[str] | None = None) -> dict:
         if not sep or not name.strip() or not command.strip():
             raise ValueError(f"--check expects NAME=COMMAND, got '{item}'")
         entries = [c for c in (config.get("checks") or []) if c.get("name") != name.strip()]
-        entries.append({"name": name.strip(), "command": command.strip()})
+        # Provenance: a persisted shell command must say who added it and when.
+        entries.append({
+            "name": name.strip(),
+            "command": command.strip(),
+            "addedBy": agent or os.environ.get("AI_AGENT") or "unrecorded",
+            "addedAt": iso(),
+        })
         config["checks"] = entries
     prefs["answered"] = sorted(answered)
     prefs["confirmed"] = all(key in answered for key in REQUIRED_KEYS)

@@ -105,7 +105,14 @@ def register(sub) -> None:
     git_commit.add_argument("--message", required=True)
     git_commit.add_argument("--body", default="")
     git_commit.add_argument("--allow-empty", action="store_true")
-    git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
+    git_commit.add_argument(
+        "--verify", action="store_true",
+        help="require a held lock for each staged path (automatic when the task declares locks/scope)",
+    )
+    git_commit.add_argument(
+        "--no-verify", action="store_true",
+        help="skip the lock check for a task that declares locks/scope (deliberate bypass)",
+    )
     git_commit.add_argument("--force", action="store_true")
     git_commit.add_argument("--json", action="store_true")
     git_commit.add_argument("--ci", default=None, help="record CI result URL or identifier in task log")

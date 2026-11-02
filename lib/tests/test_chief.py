@@ -53,7 +53,13 @@ class SetupTest(WorkspaceCase):
         done = run(workspace, "setup", "--defaults", "--check", "unit=python -c \"print(1)\"")
         self.assertEqual(done.returncode, 0, done.stderr)
         config = json.loads((workspace / "config" / "workspace.json").read_text(encoding="utf-8"))
-        self.assertEqual(config["checks"], [{"name": "unit", "command": "python -c \"print(1)\""}])
+        self.assertEqual(len(config["checks"]), 1)
+        entry = config["checks"][0]
+        self.assertEqual(entry["name"], "unit")
+        self.assertEqual(entry["command"], "python -c \"print(1)\"")
+        # provenance: a persisted shell command says who added it and when
+        self.assertIn("addedBy", entry)
+        self.assertIn("addedAt", entry)
 
 
 class PlanTest(WorkspaceCase):
