@@ -1,21 +1,23 @@
 ---
 id: 0012
 title: "Remove the GUIDE and orchestration contradictions about checks and review claims"
-status: review
+status: done
 owner: null
 priority: medium
-spec: specs/active/0012-remove-the-guide-and-orchestration-contradictions-about-chec.md
+spec: specs/done/0012-remove-the-guide-and-orchestration-contradictions-about-chec.md
 depends_on: null
 scope_allowed: "GUIDE.md, docs/orchestration.md"
 scope_forbidden: null
 locks: "GUIDE.md, docs/orchestration.md"
 branch: null
 created: 2026-11-03T08:44:09Z
-updated: 2026-11-03T08:56:39Z
+updated: 2026-11-03T08:56:40Z
 lock: null
 submitted_by: buffy-s3
 merged_into: develop
 merged_at: 2026-11-03T08:56:39Z
+reviewed_by: buffy-reviewer
+reviewed_at: 2026-11-03T08:56:40Z
 ---
 
 # 0012 - Remove the GUIDE and orchestration contradictions about checks and review claims
@@ -46,3 +48,4 @@ Spec: `specs/active/0012-remove-the-guide-and-orchestration-contradictions-about
 - 2026-11-03T08:55:45Z committed: docs: state the check evidence and reviewer claim rules the code enforces
 - 2026-11-03T08:56:38Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @f1783141 by buffy-s3 (no commands)
 - 2026-11-03T08:56:39Z merged feature/0012-remove-the-guide-and-orchestration-contr into develop by buffy-reviewer
+- 2026-11-03T08:56:40Z | buffy-reviewer | review -> done | approved | check passed @7f03cb4f by buffy-reviewer (no commands)
