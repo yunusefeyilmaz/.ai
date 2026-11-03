@@ -140,8 +140,9 @@ ai handoff 0007 --agent impl-a --reason "ready for review"
 ```
 
 The next role starts with `ai resume 0007`, verifies drift, then claims or
-heartbeats the lock. Reviewers usually do **not** claim the task; they read it and
-write a verdict. If the review fails, the implementer reclaims and fixes.
+heartbeats the lock. A reviewer claims too: `ai task next --review` takes the
+review claim and its lease, and `ai task request-changes` refuses an agent that
+never claimed. If the review fails, the implementer reclaims and fixes.
 
 ## Git index contention
 
@@ -219,12 +220,14 @@ records the evidence the review gate reads) and move it to review.
 ### Reviewer
 
 ```text
-You are the reviewer. Read the spec, the task and `git diff <base>...HEAD`.
+You are the reviewer. Claim it first with `.ai/ai task next --review --agent
+<name>`. Read the spec, the task and `git diff <base>...HEAD`.
 For each acceptance criterion, cite file:line evidence. Look for missing tests,
 security issues, scope creep and broken contracts. Do not edit code. Write a
 PASS/FAIL verdict with concrete fixes. Verify the task's own evidence with
-`.ai/ai check --task <id> --agent <name>`; `ai check --strict` is CI's global
-gate, not this task's proof.
+`.ai/ai check --task <id> --agent <name>`; adding `--strict` only promotes
+warnings to failures and records the same per-task evidence, so CI and the
+review gate read one record.
 ```
 
 ### Handoff
