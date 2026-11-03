@@ -2,6 +2,55 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.8] - 2026-11-03
+
+### Added
+
+- **`ai review <id>` — read-only review package.** Prints the task state, the linked
+  spec with its acceptance criteria, the branch diff against the integration branch
+  (with `--stat` and `--max-lines`), the recorded check evidence, the transition
+  history and a final checklist. `--json` returns the same content structured.
+  (`lib/cmd/review.py`, `docs/task-flow.md`, `GUIDE.md`, `AGENTS.md`)
+- **`ai now --json` gains the machine contract.** Top-level `schema: 2` plus
+  `needs_human` (bool), `question` (string|null), `next_args` (argv, ready to
+  execute) and `blocker` (string|null). `next_args` is concrete for the caller's
+  own agent and derives from the same text the printed NEXT line prints.
+  (`lib/runtime/overview.py`, `lib/cmd/now.py`, `lib/tests/test_now_json.py`)
+- **Semantic `ai doctor` audits.** (1) active tasks whose spec is missing, unreadable
+  or still the template while `workflow.requireSpec` is on; (2) dependency cycles
+  among active tasks as an error naming the cycle; (3) `in_progress`/`blocked` tasks
+  without an owner; (4) `in_progress`/`review` tasks without a branch once the
+  Gitflow base exists. New tests: `lib/tests/test_doctor_semantics.py`.
+  (`lib/runtime/health.py`, `lib/specs/spec.py`)
+
+### Changed
+
+- **`ai capabilities` is a faithful contract.** The published command descriptions
+  are derived from the parser, every parser flag is published per command, every
+  published command has a real description (no `--help` fallback), and the new
+  `ai review` command appears in the contract. (`lib/cmd/capabilities.py`,
+  `lib/tests/test_capabilities.py`, `pyproject.toml`)
+- **Repository-local lint and type gates.** `pyproject.toml` (ruff select:
+  E4/E7/E9/F/W/I/B, 120-char lines) and `[tool.mypy]` (3.9, `ignore_missing_imports`)
+  land in the repo; `requirements-dev.txt` installs them for contributors and CI.
+  (`pyproject.toml`, `requirements-dev.txt`)
+
+### Fixed
+
+- **CI now gates every push and pull request on ruff, mypy and the capabilities
+  contract, in addition to `ai doctor --strict`, `ai check --strict` and
+  `python lib/tests/run.py`.** (`.github/workflows/ci.yml`)
+- A deliberately reintroduced duplicate definition and an unused import both fail
+  the new ruff/mypy gates (verified locally). (`lib/cmd/version.py`)
+
+### Notes
+
+- The repository uses a managed `config/workspace.json` as a template: its
+  shipped `confirmed: false` keeps `ai task new` a chief-only, user-confirmed step.
+  Engineers who want `ai setup --set review=yes checks=yes git=yes tests=yes
+continue=no workers=1 --check "tests=python lib/tests/run.py"` for their own
+  checkout should copy it rather than commit one install's answers here.
+
 ## [0.9.7] - 2026-11-02
 
 ### Fixed
@@ -139,8 +188,8 @@ All notable changes to this workspace are documented here.
     lock and a `state_repaired` event is recorded.
   - `claim_started()` treats a damaged lease as "no start time" and releasing
     the git index guard keeps a lease it cannot prove it owns.
-  (`lib/runtime/checkpoints.py`, `lib/cmd/status.py`, `lib/cmd/artifact.py`,
-  `lib/tasks/lifecycle.py`, `lib/tasks/gates.py`, `lib/git/repo.py`)
+    (`lib/runtime/checkpoints.py`, `lib/cmd/status.py`, `lib/cmd/artifact.py`,
+    `lib/tasks/lifecycle.py`, `lib/tasks/gates.py`, `lib/git/repo.py`)
 
 - **`ai doctor` now names damaged state instead of leaving it for a crash.**
   It parses every JSON/lease file under `runtime/state/` and `runtime/locks/`
@@ -430,7 +479,7 @@ All notable changes to this workspace are documented here.
   the current HEAD (new commits make it stale); `ai resume` reports whether
   recorded evidence is still valid. Replaces the global `last-check` gate.
 - **`changes_requested` status** and `ai task request-changes <id> --agent <r>
-  --reason ...` (reviewer only, never the submitter). The task becomes ready for
+--reason ...` (reviewer only, never the submitter). The task becomes ready for
   rework; `ai now` points the producer at it.
 - **Task scope.** `ai task new --allow GLOB --forbid GLOB`; `ai git commit`
   refuses staged paths outside it and `ai git verify --task <id>` reports them.
