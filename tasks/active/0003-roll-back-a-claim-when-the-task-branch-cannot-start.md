@@ -1,17 +1,18 @@
 ---
 id: 0003
 title: "Roll back a claim when the task branch cannot start"
-status: todo
-owner: null
+status: in_progress
+owner: implementer
 priority: high
 spec: specs/active/0003-roll-back-a-claim-when-the-task-branch-cannot-start.md
 depends_on: "0001, 0002"
 scope_allowed: "lib/cmd/task.py, lib/tasks/lifecycle.py, lib/tests/test_claim_rollback.py"
 scope_forbidden: null
 locks: "lib/cmd/task.py, lib/tasks/lifecycle.py, lib/tests/test_claim_rollback.py"
+branch: feature/0003-roll-back-a-claim-when-the-task-branch-c
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:17:31Z
-lock: null
+updated: 2026-11-03T07:23:23Z
+lock: task-0003
 ---
 
 # 0003 - Roll back a claim when the task branch cannot start
@@ -40,3 +41,6 @@ Spec: `specs/active/0003-roll-back-a-claim-when-the-task-branch-cannot-start.md`
 ## Log
 
 - 2026-11-03T07:17:31Z | orchestrator | - -> todo | created
+- 2026-11-03T07:20:48Z | implementer | todo -> in_progress | claimed
+- 2026-11-03T07:20:49Z created branch feature/0003-roll-back-a-claim-when-the-task-branch-c from develop by implementer
+- 2026-11-03T07:23:23Z committed: fix: roll back a claim when the branch cannot start
