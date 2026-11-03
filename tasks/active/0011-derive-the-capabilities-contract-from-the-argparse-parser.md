@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/cmd/capabilities.py, lib/tests/test_capabilities.py"
 scope_forbidden: null
 locks: "lib/cmd/capabilities.py, lib/tests/test_capabilities.py"
-branch: feature/0011-derive-the-capabilities-contract-from-th
+branch: null
 created: 2026-11-03T08:44:09Z
-updated: 2026-11-03T08:55:04Z
+updated: 2026-11-03T08:55:07Z
 lock: null
 submitted_by: buffy-s3
+merged_into: develop
+merged_at: 2026-11-03T08:55:07Z
 ---
 
 # 0011 - Derive the capabilities contract from the argparse parser
@@ -43,3 +45,4 @@ Spec: `specs/active/0011-derive-the-capabilities-contract-from-the-argparse-pars
 - 2026-11-03T08:44:45Z created branch feature/0011-derive-the-capabilities-contract-from-th from develop by buffy-s3
 - 2026-11-03T08:46:24Z committed: feat: derive the capabilities contract from the argparse parser
 - 2026-11-03T08:55:04Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @6bc2797f by buffy-s3 (no commands)
+- 2026-11-03T08:55:07Z merged feature/0011-derive-the-capabilities-contract-from-th into develop by buffy-reviewer
