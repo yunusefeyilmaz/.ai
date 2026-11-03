@@ -72,7 +72,7 @@ def append_event(event: str, **fields) -> None:
             if attempt == 0:
                 time.sleep(0.05)
     # Final failure: try one minimal record, but never let the fallback raise.
-    fallback = {"timestamp": iso(), "event": event}
+    fallback: dict[str, object] = {"timestamp": iso(), "event": event}
     fallback.update({key: value for key, value in fields.items() if value is not None})
     fallback.update({"_fallback": True, "_error": str(last_error)})
     fallback_error: Exception | None = None

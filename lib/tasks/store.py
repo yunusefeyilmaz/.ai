@@ -7,13 +7,13 @@ import os
 import re
 import sys
 
-from lib.core.paths import (
-    TASKS_DIR,
-)
 from lib.core.fsio import (
     normalize_id,
     read_text,
     write_text_atomic,
+)
+from lib.core.paths import (
+    TASKS_DIR,
 )
 
 
@@ -294,7 +294,7 @@ def board_dependencies(task: dict) -> list[str]:
 
 
 def dependency_blockers(meta: dict) -> list[str]:
-    blockers = []
+    blockers: list[str] = []
     depends = meta.get("depends_on")
     if not depends:
         return blockers

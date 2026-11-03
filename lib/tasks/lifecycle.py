@@ -6,12 +6,7 @@ import contextlib
 import os
 import sys
 
-from lib.core.paths import (
-    ACTIVE_DIR,
-    COUNTER_PATH,
-    SPECS_ACTIVE_DIR,
-    WORKSPACE,
-)
+from lib.config import roles
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
     CorruptStateError,
@@ -21,10 +16,15 @@ from lib.core.fsio import (
     write_json_atomic,
     write_text_atomic,
 )
+from lib.core.paths import (
+    ACTIVE_DIR,
+    COUNTER_PATH,
+    SPECS_ACTIVE_DIR,
+    WORKSPACE,
+)
 from lib.core.timeutil import iso
 from lib.runtime.dirs import ensure_dirs
 from lib.runtime.events import append_event
-from lib.runtime.mutex import workspace_state_guard
 from lib.runtime.leases import (
     acquire_lock,
     heartbeat_lock,
@@ -32,13 +32,10 @@ from lib.runtime.leases import (
     lock_is_stale,
     release_lock,
 )
+from lib.runtime.mutex import workspace_state_guard
 from lib.specs import spec as spec_lib
-from lib.config import roles
-from lib.tasks import board
-from lib.tasks import gates
-from lib.tasks import history
+from lib.tasks import board, gates, history, store
 from lib.tasks import scope as task_scope
-from lib.tasks import store
 
 
 @contextlib.contextmanager
@@ -114,7 +111,7 @@ def create_task(
             spec_path = os.path.join(SPECS_ACTIVE_DIR, f"{task_id}-{slug}.md")
             write_text_atomic(spec_path, spec_lib.spec_from_template(title, task_id, intent, acceptance))
             spec_ref = os.path.relpath(spec_path, WORKSPACE).replace(os.sep, "/")
-        meta = {
+        meta: dict = {
             "id": task_id,
             "title": title,
             "status": "todo",

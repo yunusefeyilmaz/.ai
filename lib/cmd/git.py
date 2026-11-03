@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 import sys
 
+from lib.git import flow, repo
 from lib.runtime.leases import (
     acquire_lock,
     release_lock,
 )
-from lib.git import flow
-from lib.git import repo
 from lib.tasks import scope as task_scope
 from lib.tasks import store
 

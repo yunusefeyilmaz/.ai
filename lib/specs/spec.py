@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 import re
 
+from lib.core.fsio import (
+    MAX_TASK_ID_DIGITS,
+    normalize_id,
+    read_text,
+)
 from lib.core.paths import (
     PROJECT,
     SPECS_ACTIVE_DIR,
@@ -13,12 +18,6 @@ from lib.core.paths import (
     SPECS_TEMPLATE,
     WORKSPACE,
 )
-from lib.core.fsio import (
-    MAX_TASK_ID_DIGITS,
-    normalize_id,
-    read_text,
-)
-
 
 FALLBACK_SPEC = """---
 status: draft

@@ -4,13 +4,6 @@ from __future__ import annotations
 
 import os
 
-from lib.core.paths import (
-    CHECKPOINT_ARCHIVE,
-    PROJECT,
-    SPECS_ACTIVE_DIR,
-    SPECS_DONE_DIR,
-    WORKSPACE,
-)
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
     CorruptStateError,
@@ -18,12 +11,19 @@ from lib.core.fsio import (
     normalize_id,
     read_json,
 )
+from lib.core.paths import (
+    CHECKPOINT_ARCHIVE,
+    PROJECT,
+    SPECS_ACTIVE_DIR,
+    SPECS_DONE_DIR,
+    WORKSPACE,
+)
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.leases import (
     list_locks,
     lock_is_stale,
     resources_overlap,
 )
-from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 

@@ -144,7 +144,7 @@ def checkpoint_age_minutes(task_id: str) -> float | None:
         return None
     meta, _, _ = data
     try:
-        return (now() - parse_iso(meta.get("created"))).total_seconds() / 60.0
+        return (now() - parse_iso(str(meta.get("created") or ""))).total_seconds() / 60.0
     except (TypeError, ValueError):
         return None
 

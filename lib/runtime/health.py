@@ -456,7 +456,7 @@ def collect_checks() -> list[Finding]:
                 if not dependency:
                     continue
                 try:
-                    known = normalize_id(dependency) in ids or store.find_task(dependency)
+                    known = normalize_id(dependency) in ids or bool(store.find_task(dependency))
                 except ValueError:
                     known = False
                 if not known:
@@ -525,7 +525,7 @@ def collect_checks() -> list[Finding]:
             if status == "in_progress":
                 warn_after = int(config.get("handoff", {}).get("warnAfterMinutes", 30)) if config else 30
                 checkpoint_hint = f"ai checkpoint {task_id} --agent {owner or 'agent'} --next \"<step>\""
-                age = ckpt.checkpoint_age_minutes(task_id)
+                age = ckpt.checkpoint_age_minutes(str(task_id))
                 if age is None:
                     claimed_age = age_minutes(
                         (held or {}).get("started_at") or task.get("updated")

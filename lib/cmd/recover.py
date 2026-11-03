@@ -6,19 +6,19 @@ import json
 import os
 import sys
 
+from lib.config.settings import lock_settings
+from lib.core.fsio import lock_path
 from lib.core.paths import (
     DONE_DIR,
     HANDOFF_DIR,
 )
-from lib.config.settings import lock_settings
-from lib.core.fsio import lock_path
 from lib.core.timeutil import iso
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.leases import (
     list_locks,
     lock_is_stale,
 )
 from lib.runtime.mutex import workspace_state_guard
-from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 
@@ -78,8 +78,10 @@ def cmd_recover_inner(args) -> int:
                 store.write_task(p, meta, body)
             repairs.append(fix_owner)
         if task["_folder"] == "active" and lock and not owner:
-            actions.append((f"restore owner on {task_id}", f"lock held by {lock.get('agent')}"))
-            def fix_owner2(p=path, agent=lock.get("agent"), res=resource):
+            lock_agent = lock.get("agent")
+            actions.append((f"restore owner on {task_id}", f"lock held by {lock_agent}"))
+
+            def fix_owner2(p=path, agent=lock_agent, res=resource):
                 meta, body = store.parse_task(p)
                 meta["owner"] = agent
                 meta["lock"] = res
@@ -95,7 +97,11 @@ def cmd_recover_inner(args) -> int:
         checkpoint_problem = ckpt.sidecar_mismatch(task_id)
         if checkpoint_problem:
             actions.append((f"rebuild checkpoint sidecar {task_id}", checkpoint_problem))
-            repairs.append(lambda tid=task_id: ckpt.rebuild_sidecar(tid))
+
+            def rebuild_sidecar(tid=task_id) -> None:
+                ckpt.rebuild_sidecar(tid)
+
+            repairs.append(rebuild_sidecar)
 
     known = {str(task.get("id")) for task in tasks}
     for resource in list(locks):
@@ -118,7 +124,8 @@ def cmd_recover_inner(args) -> int:
         path = store.find_task(task_id)
         if not path or os.path.dirname(path) == DONE_DIR:
             actions.append((f"remove orphan handoff marker for {task_id}", "task is gone or done"))
-            repairs.append(lambda p=os.path.join(HANDOFF_DIR, marker["_file"]): os.remove(p))
+            marker_file = os.path.join(HANDOFF_DIR, marker["_file"])
+            repairs.append(lambda p=marker_file: os.remove(p))
 
     if args.json:
         print(json.dumps({"actions": [action for action, _ in actions], "applied": args.apply}, indent=2))

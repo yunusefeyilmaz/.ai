@@ -130,11 +130,11 @@ def setup_git(yes: bool = False, json_out: bool = False) -> int:
             print("Gitflow setup could not establish a committed production base.", file=sys.stderr)
             return 1
     elif not repo.branch_exists(config["production"]):
-        base_commit = state.get("head") or repo.git_commit_id("HEAD")
-        if not base_commit:
+        head_commit = state.get("head") or repo.git_commit_id("HEAD")
+        if not head_commit:
             print("Cannot create the production branch: current HEAD has no commit.", file=sys.stderr)
             return 1
-        code, _, err = repo.run_git(["branch", config["production"], base_commit])
+        code, _, err = repo.run_git(["branch", config["production"], head_commit])
         if code != 0:
             print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
             return 1

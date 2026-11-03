@@ -1,0 +1,41 @@
+# Development tooling only: the runtime is stdlib-only and imports neither tool.
+#
+#   python -m ruff check .
+#   python -m mypy
+#
+# CI runs exactly these two commands (see .github/workflows/ci.yml), so a
+# contributor can reproduce a red build locally.
+
+[tool.ruff]
+target-version = "py38"
+line-length = 120
+extend-exclude = ["runtime", "templates", "adapters"]
+
+[tool.ruff.lint]
+# The rule families this codebase actually holds itself to. `ALL` was never the
+# intent: it flags style opinions that would drown the real findings.
+select = ["E4", "E7", "E9", "F", "W", "I", "B"]
+ignore = [
+    # Long lines are help text and log messages; wrapping them costs more than it buys.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately assert on malformed state and compile-disabled imports.
+"lib/tests/*" = ["F401", "F811", "E402"]
+
+[tool.mypy]
+python_version = "3.9"
+files = ["ai.py", "lib"]
+exclude = ["^lib/tests/"]
+# The runtime is stdlib-only, but contributors may have third-party stubs absent.
+ignore_missing_imports = true
+# Lenient on purpose: this gate exists to catch broken names and signatures, not
+# to demand annotations everywhere. Tighten per-module when a module is ready.
+disallow_untyped_defs = false
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+no_implicit_optional = true
+show_error_codes = true

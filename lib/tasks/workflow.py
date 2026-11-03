@@ -6,9 +6,9 @@ future skills all give the same answer. It never mutates anything.
 
 from __future__ import annotations
 
-from lib.runtime import checkpoints as ckpt
 from lib.config.settings import configured_checks, preference
 from lib.git import repo
+from lib.runtime import checkpoints as ckpt
 from lib.runtime import evidence
 from lib.tasks import gates
 
@@ -78,7 +78,7 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
     dirty = [] if not git_on else [p for p in (git.get("dirty") or []) if not repo.is_workspace_ledger_path(p) and not p.startswith(".ai/")]
     if dirty:
         return {
-            "cmd": f"ai git verify --strict",
+            "cmd": "ai git verify --strict",
             "why": f"{len(dirty)} uncommitted product path(s); stage your owned paths, verify, then `ai git commit --task {task_id} --agent {a} --type feat --message \"<subject>\"`",
             "extra": extra,
         }

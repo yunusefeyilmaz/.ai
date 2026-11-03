@@ -29,3 +29,22 @@ jobs:
         run: python ai.py check --strict
       - name: Workspace self-tests
         run: python lib/tests/run.py
+
+  lint:
+    # ruff and mypy are development tools and need Python 3.9+; the runtime matrix
+    # above keeps proving the CLI still runs on 3.8.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the development tools
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: python -m ruff check .
+      - name: Types (mypy)
+        run: python -m mypy
+      - name: CLI contract (capabilities == argparse)
+        run: python -m unittest test_capabilities -q
+        working-directory: lib/tests

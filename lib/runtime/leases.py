@@ -52,7 +52,7 @@ def lock_is_stale(payload: dict | None, stale_after: int) -> bool:
     if not isinstance(payload, dict):
         return True
     try:
-        updated = parse_iso(payload.get("updated_at") or payload.get("started_at"))
+        updated = parse_iso(str(payload.get("updated_at") or payload.get("started_at") or ""))
         # parse_iso already normalizes naive datetimes to UTC, but keep this
         # guard in case a future change removes that normalization.
         if updated.tzinfo is None:
@@ -121,9 +121,6 @@ def resource_has_glob(resource: str) -> bool:
 def resources_overlap(first: str, second: str) -> bool:
     first = normalize_resource(first)
     second = normalize_resource(second)
-    # If either resource is corrupt (e.g. None after _corrupt_payload), treat as conflicting
-    if first is None or second is None:
-        return True
     if first == second:
         return True
     if "." in (first, second) or "project" in (first, second):
@@ -455,7 +452,7 @@ def list_locks(ensure: bool = True) -> list[dict]:
 def lock_remaining_seconds(lock: dict) -> int | None:
     ttl = lock.get("ttl_seconds")
     try:
-        updated = parse_iso(lock.get("updated_at") or lock.get("started_at"))
+        updated = parse_iso(str(lock.get("updated_at") or lock.get("started_at") or ""))
         age = (now() - updated).total_seconds()
     except (TypeError, ValueError):
         return None
@@ -519,7 +516,7 @@ def print_lock_table(locks: list[dict]) -> None:
         else:
             state = "stale"
             try:
-                updated = parse_iso(lock.get("updated_at") or lock.get("started_at"))
+                updated = parse_iso(str(lock.get("updated_at") or lock.get("started_at") or ""))
                 seconds = int((now() - updated).total_seconds())
                 age = f"{seconds}s"
                 state = "stale" if lock_is_stale(lock, stale_after) else "held"

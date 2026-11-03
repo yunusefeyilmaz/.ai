@@ -16,14 +16,13 @@ import argparse
 import json
 import sys
 
+from lib.config.roles import DEFAULT_ROLES
 from lib.core.paths import (
     TASK_STATUSES,
     VERSION,
 )
-from lib.config.roles import DEFAULT_ROLES
 from lib.git import repo
 from lib.git.repo import COMMIT_TYPES
-
 
 CAPABILITIES = {
     "name": "ai",
@@ -97,8 +96,10 @@ def _build_parser(argv: list[str] | None = None) -> argparse.ArgumentParser:
     """
     entry = sys.modules.get("__main__")
     build = getattr(entry, "build_parser", None)
-    if build is None:
-        from ai import build_parser as build  # noqa: WPS433 - deliberate late import
+    if not callable(build):
+        from ai import build_parser  # noqa: WPS433 - deliberate late import
+
+        build = build_parser
     return build([])
 
 
@@ -138,7 +139,7 @@ def command_descriptions(contract: dict[str, list[str]]) -> dict[str, str]:
 
 def cmd_capabilities(args) -> int:
     contract = parser_contract()
-    payload = dict(CAPABILITIES)
+    payload: dict[str, object] = dict(CAPABILITIES)
     payload["commands"] = command_descriptions(contract)
     # Subcommand paths ("task new") carry their own flags; consumers that only
     # know top-level names can still read `commands`.

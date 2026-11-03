@@ -53,7 +53,7 @@ def validate_adapter(data: dict, schema: dict, path: Path) -> list[str]:
     for field in schema.get("required", []):
         if field not in data:
             errors.append(f"{path} missing required field: {field}")
-    for field, value in data.items():
+    for field in data:
         if field not in schema.get("properties", {}):
             errors.append(f"{path} has unexpected field: {field}")
     if "version" in data and data["version"] is not None:

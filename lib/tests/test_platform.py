@@ -24,10 +24,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
+from test_start import WorkspaceCase, run  # noqa: E402
+
 from lib.core import console, fsio  # noqa: E402
 from lib.git import repo  # noqa: E402
 from lib.tasks import store  # noqa: E402
-from test_start import WorkspaceCase, run  # noqa: E402
 
 
 class AtomicWriteFaultTest(unittest.TestCase):
