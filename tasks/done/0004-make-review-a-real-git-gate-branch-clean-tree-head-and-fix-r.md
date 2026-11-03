@@ -1,21 +1,23 @@
 ---
 id: 0004
 title: "Make review a real git gate (branch, clean tree, HEAD) and fix rename parsing"
-status: review
+status: done
 owner: reviewer
 priority: high
-spec: specs/active/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-fix-r.md
+spec: specs/done/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-fix-r.md
 depends_on: 0003
 scope_allowed: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
 scope_forbidden: null
 locks: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
 branch: null
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:35:37Z
-lock: task-0004
+updated: 2026-11-03T07:35:41Z
+lock: null
 submitted_by: implementer
 merged_into: develop
 merged_at: 2026-11-03T07:35:37Z
+reviewed_by: reviewer
+reviewed_at: 2026-11-03T07:35:41Z
 ---
 
 # 0004 - Make review a real git gate (branch, clean tree, HEAD) and fix rename parsing
@@ -52,3 +54,4 @@ Spec: `specs/active/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-
 - 2026-11-03T07:35:18Z | implementer | in_progress -> review | submitted for independent review | check passed @741327e6 by implementer (no commands)
 - 2026-11-03T07:35:22Z | reviewer | review -> review | claimed
 - 2026-11-03T07:35:37Z merged feature/0004-make-review-a-real-git-gate-branch-clean into develop by reviewer
+- 2026-11-03T07:35:41Z | reviewer | review -> done | approved | check passed @37197774 by reviewer (no commands)
