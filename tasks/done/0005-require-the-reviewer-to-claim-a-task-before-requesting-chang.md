@@ -1,21 +1,23 @@
 ---
 id: 0005
 title: "Require the reviewer to claim a task before requesting changes"
-status: review
+status: done
 owner: reviewer
 priority: high
-spec: specs/active/0005-require-the-reviewer-to-claim-a-task-before-requesting-chang.md
+spec: specs/done/0005-require-the-reviewer-to-claim-a-task-before-requesting-chang.md
 depends_on: 0004
 scope_allowed: "lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_request_changes.py, lib/tests/test_protocol.py, lib/tests/test_field_report.py, lib/tests/test_chief.py, AGENTS.md, docs/task-flow.md"
 scope_forbidden: null
 locks: "lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_request_changes.py, lib/tests/test_protocol.py, lib/tests/test_field_report.py, lib/tests/test_chief.py, AGENTS.md, docs/task-flow.md"
 branch: null
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:40:50Z
-lock: task-0005
+updated: 2026-11-03T07:40:55Z
+lock: null
 submitted_by: implementer
 merged_into: develop
 merged_at: 2026-11-03T07:40:50Z
+reviewed_by: reviewer
+reviewed_at: 2026-11-03T07:40:55Z
 ---
 
 # 0005 - Require the reviewer to claim a task before requesting changes
@@ -51,3 +53,4 @@ Spec: `specs/active/0005-require-the-reviewer-to-claim-a-task-before-requesting-
 - 2026-11-03T07:40:41Z | implementer | in_progress -> review | submitted for independent review | check passed @22ae83e8 by implementer (no commands)
 - 2026-11-03T07:40:45Z | reviewer | review -> review | claimed
 - 2026-11-03T07:40:50Z merged feature/0005-require-the-reviewer-to-claim-a-task-bef into develop by reviewer
+- 2026-11-03T07:40:55Z | reviewer | review -> done | approved | check passed @34e97b1b by reviewer (no commands)
