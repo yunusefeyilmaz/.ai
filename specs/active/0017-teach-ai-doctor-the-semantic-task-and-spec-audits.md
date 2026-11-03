@@ -17,9 +17,9 @@ approved_on: 2026-11-03
 
 `health.collect_checks()` gains four audits, each a `Finding` with an actionable hint:
 
-1. **Unfilled spec** (warn): every task in `tasks/active` whose `spec:` reference is set must resolve to a file with at least one non-placeholder acceptance criterion. Reuses `lib.specs.spec.spec_problem`; the hint names the spec path and says the chief fills it. `spec: null` (deliberate `--no-spec`) stays exempt.
+1. **Unfilled spec** (warn): with `workflow.requireSpec` on, every task in `tasks/active` whose `spec:` reference is set must resolve to a file with at least one non-placeholder acceptance criterion. Reuses `lib.specs.spec.spec_problem`; the hint names the spec path and says the chief fills it. `spec: null` (deliberate `--no-spec`) stays exempt, and a project that turned `requireSpec` off is left alone.
 2. **Dependency cycle** (error): cycles among *active* tasks are detected over the `depends_on` graph (unknowable/unknown ids ignored, they already produce their own warning). The message names the cycle, e.g. `0016 -> 0017 -> 0016`; the hint says to break the edge.
-3. **Unowned work** (warn): a task in `in_progress`, `review` or `blocked` with an empty `owner` is reported, with `ai task claim`/`ai recover --apply` as the hint.
+3. **Unowned work** (warn): a task in `in_progress` or `blocked` with an empty `owner` is reported, with `ai task claim`/`ai recover --apply` as the hint. A task in `review` with no owner is *not* reported: that is the review queue, and a reviewer has not claimed it yet.
 4. **Branchless work** (warn): with `git.enabled` and a real repository, an active `in_progress` or `review` task with no `branch` is reported, hint `ai git start --task <id> --agent <owner>`.
 
 Audits 1, 3 and 4 are warnings (doctor --strict fails on them, as it already does for warnings); a cycle is an error because the ready queue can never resolve it.
@@ -33,9 +33,9 @@ Audits 1, 3 and 4 are warnings (doctor --strict fails on them, as it already doe
 
 ## Acceptance criteria
 
-- [ ] `ai doctor` warns about every active task whose spec is missing, unreadable or still the template, with the spec path and a fill-it hint
+- [ ] `ai doctor` warns about every active task whose spec is missing, unreadable or still the template while `workflow.requireSpec` is on, with the spec path and a fill-it hint
 - [ ] `ai doctor` reports dependency cycles among active tasks as an error naming the cycle, and still reports unknown dependencies as before
-- [ ] `ai doctor` warns about in_progress/review/blocked tasks with no owner, and about in_progress/review tasks with no branch while git is enabled, each with the next command as the hint
+- [ ] `ai doctor` warns about in_progress/blocked tasks with no owner (review is the queue, so it is exempt), and about in_progress/review tasks with no branch while git is enabled, each with the next command as the hint
 - [ ] a clean workspace with no active tasks still reports zero findings and `ai doctor --strict` exits 0
 - [ ] Tests cover the new behavior and pass
 
