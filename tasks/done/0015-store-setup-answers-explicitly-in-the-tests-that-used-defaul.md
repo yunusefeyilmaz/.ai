@@ -1,21 +1,23 @@
 ---
 id: 0015
 title: "Store setup answers explicitly in the tests that used --defaults"
-status: review
+status: done
 owner: null
 priority: high
-spec: specs/active/0015-store-setup-answers-explicitly-in-the-tests-that-used-defaul.md
+spec: specs/done/0015-store-setup-answers-explicitly-in-the-tests-that-used-defaul.md
 depends_on: null
 scope_allowed: "lib/tests/test_start.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py, lib/tests/test_chief.py"
 scope_forbidden: null
 locks: "lib/tests/test_start.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py, lib/tests/test_chief.py"
 branch: null
 created: 2026-11-03T09:02:13Z
-updated: 2026-11-03T09:05:30Z
+updated: 2026-11-03T09:05:31Z
 lock: null
 submitted_by: buffy-s3
 merged_into: develop
 merged_at: 2026-11-03T09:05:30Z
+reviewed_by: buffy-reviewer
+reviewed_at: 2026-11-03T09:05:30Z
 ---
 
 # 0015 - Store setup answers explicitly in the tests that used --defaults
@@ -46,3 +48,4 @@ Spec: `specs/active/0015-store-setup-answers-explicitly-in-the-tests-that-used-d
 - 2026-11-03T09:05:25Z committed: fix: state the setup answers the tests rely on and keep worktrees ignored
 - 2026-11-03T09:05:27Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @ff8df36e by buffy-s3 (no commands)
 - 2026-11-03T09:05:30Z merged feature/0015-store-setup-answers-explicitly-in-the-te into develop by buffy-reviewer
+- 2026-11-03T09:05:31Z | buffy-reviewer | review -> done | approved | check passed @e67c99a7 by buffy-reviewer (no commands)
