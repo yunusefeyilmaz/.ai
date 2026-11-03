@@ -1,17 +1,18 @@
 ---
 id: 0017
 title: "Teach ai doctor the semantic task and spec audits"
-status: todo
-owner: null
+status: in_progress
+owner: buffy-s4
 priority: high
 spec: specs/active/0017-teach-ai-doctor-the-semantic-task-and-spec-audits.md
 depends_on: null
 scope_allowed: "lib/runtime/health.py, lib/tests/test_doctor_semantics.py"
 scope_forbidden: null
 locks: "lib/runtime/health.py, lib/tests/test_doctor_semantics.py"
+branch: feature/0017-teach-ai-doctor-the-semantic-task-and-sp
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:12:54Z
-lock: null
+updated: 2026-11-03T09:45:56Z
+lock: task-0017
 ---
 
 # 0017 - Teach ai doctor the semantic task and spec audits
@@ -39,3 +40,6 @@ Spec: `specs/active/0017-teach-ai-doctor-the-semantic-task-and-spec-audits.md`
 ## Log
 
 - 2026-11-03T09:12:54Z | orchestrator | - -> todo | created
+- 2026-11-03T09:28:51Z | buffy-s4 | todo -> in_progress | claimed
+- 2026-11-03T09:28:52Z created branch feature/0017-teach-ai-doctor-the-semantic-task-and-sp from develop by buffy-s4
+- 2026-11-03T09:45:56Z committed: feat: audit specs, dependency cycles, owners and branches in ai doctor

@@ -30,6 +30,7 @@ from lib.config.settings import (
     ConfigError,
     config_path,
     default_config,
+    git_enabled,
     load_config,
     lock_settings,
 )
@@ -52,6 +53,7 @@ from lib.config import adopt as config_adopt
 from lib.config import roles
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
+from lib.specs import spec as spec_lib
 from lib.tasks import store
 
 
@@ -189,6 +191,66 @@ def task_frontmatter_findings() -> list[Finding]:
     return findings
 
 
+def _dependencies(task: dict) -> list[str]:
+    """Task ids this task waits for, in the same comma/space form the store writes."""
+    raw = task.get("depends_on")
+    if not raw:
+        return []
+    wanted = []
+    for piece in re.split(r"[,\s]+", str(raw)):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            wanted.append(normalize_id(piece))
+        except ValueError:
+            continue  # already reported as an unknown dependency
+    return wanted
+
+
+def dependency_cycles(tasks: list[dict]) -> list[list[str]]:
+    """Cycles among active tasks' `depends_on` edges, each cycle listed once.
+
+    A cycle can never become ready, so it is an error rather than a warning: the
+    planner broke the graph and only a human or the chief can break it back.
+    """
+    edges: dict[str, list[str]] = {}
+    for task in tasks:
+        if task.get("_folder") != "active":
+            continue
+        try:
+            task_id = normalize_id(str(task.get("id")))
+        except ValueError:
+            continue
+        edges[task_id] = [dep for dep in _dependencies(task) if dep != task_id]
+    cycles: list[list[str]] = []
+    seen: set[frozenset[str]] = set()
+    state: dict[str, int] = {}  # 0 unvisited, 1 on the stack, 2 finished
+    stack: list[str] = []
+
+    def visit(node: str) -> None:
+        state[node] = 1
+        stack.append(node)
+        for dep in edges.get(node, []):
+            if dep not in edges:
+                continue  # a dependency outside the active set cannot close a cycle
+            if state.get(dep) == 1:
+                cycle = stack[stack.index(dep):]
+                key = frozenset(cycle)
+                if key not in seen:
+                    seen.add(key)
+                    cycles.append(cycle)
+            elif state.get(dep) != 2:
+                visit(dep)
+        stack.pop()
+        state[node] = 2
+
+    for node in sorted(edges):
+        if not state.get(node):
+            visit(node)
+    return cycles
+
+
 def tmp_debris_findings() -> list[Finding]:
     return [
         Finding("warn", f"leftover temp file: {_rel(path)}", "ai doctor --fix removes stale temp files")
@@ -297,6 +359,22 @@ def collect_checks() -> list[Finding]:
         resource = str(lock.get("resource") or "")
         if resource.startswith("task-"):
             lock_by_task[resource[5:]] = lock
+
+    try:
+        branches_enabled = git_enabled() and bool(repo.git_state().get("repo"))
+        if branches_enabled:
+            branches = repo.git_config()
+            # Without the Gitflow base a claim cannot open a branch yet, and that
+            # is a setup step (`ai git setup`), not an unowned task branch.
+            branches_enabled = (
+                repo.branch_exists(branches["integration"])
+                and repo.branch_exists(branches["production"])
+            )
+    except (OSError, ValueError, KeyError):
+        branches_enabled = False
+    # Auditing spec content next to the claim gate is only fair when the project
+    # asked for specs at all.
+    require_spec = bool((config.get("workflow") or {}).get("requireSpec", True))
 
     ids: dict[str, str] = {}
     tasks = store.load_tasks()
@@ -416,6 +494,34 @@ def collect_checks() -> list[Finding]:
                         "ai recover --apply",
                     )
                 )
+            # A task in `review` without an owner is the normal handover state: it
+            # waits in the review queue until a reviewer claims it. Only work that
+            # should be actively moving can be orphaned.
+            if status in ("in_progress", "blocked") and not owner:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {status} without an owner",
+                        f"ai task claim {task_id} --agent <name>, or `ai recover --apply` if it was abandoned",
+                    )
+                )
+            if status in ("in_progress", "review") and not task.get("branch") and branches_enabled:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {status} without a task branch",
+                        f"ai git start --task {task_id} --agent {owner or '<name>'} --type feature",
+                    )
+                )
+            spec_problem = spec_lib.spec_problem(task) if require_spec else None
+            if spec_problem:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {spec_problem}",
+                        f"fill {task.get('spec')} (intent, behavior, acceptance criteria) before any worker claims it",
+                    )
+                )
             if status == "in_progress":
                 warn_after = int(config.get("handoff", {}).get("warnAfterMinutes", 30)) if config else 30
                 checkpoint_hint = f"ai checkpoint {task_id} --agent {owner or 'agent'} --next \"<step>\""
@@ -455,6 +561,16 @@ def collect_checks() -> list[Finding]:
                     "ai recover --apply",
                 )
             )
+
+    for cycle in dependency_cycles(tasks):
+        path = " -> ".join(cycle + [cycle[0]])
+        problems.append(
+            Finding(
+                "error",
+                f"dependency cycle among active tasks: {path}",
+                "remove one edge of the cycle in the task's depends_on (none of these tasks can ever be ready)",
+            )
+        )
 
     try:
         _, stale_after = lock_settings()
