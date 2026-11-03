@@ -1,8 +1,8 @@
 ---
 id: 0017
 title: "Teach ai doctor the semantic task and spec audits"
-status: in_progress
-owner: buffy-s4
+status: review
+owner: buffy-reviewer
 priority: high
 spec: specs/active/0017-teach-ai-doctor-the-semantic-task-and-spec-audits.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/runtime/health.py, lib/tests/test_doctor_semantics.py"
 branch: feature/0017-teach-ai-doctor-the-semantic-task-and-sp
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:45:56Z
+updated: 2026-11-03T09:46:07Z
 lock: task-0017
+submitted_by: buffy-s4
 ---
 
 # 0017 - Teach ai doctor the semantic task and spec audits
@@ -43,3 +44,6 @@ Spec: `specs/active/0017-teach-ai-doctor-the-semantic-task-and-spec-audits.md`
 - 2026-11-03T09:28:51Z | buffy-s4 | todo -> in_progress | claimed
 - 2026-11-03T09:28:52Z created branch feature/0017-teach-ai-doctor-the-semantic-task-and-sp from develop by buffy-s4
 - 2026-11-03T09:45:56Z committed: feat: audit specs, dependency cycles, owners and branches in ai doctor
+- 2026-11-03T09:46:02Z | buffy-s4 | in_progress -> review | submitted for independent review | check passed @e41f8301 by buffy-s4 (no commands)
+- 2026-11-03T09:46:06Z | buffy-reviewer | review -> review | claimed
+- 2026-11-03T09:46:07Z committed: chore: chore(0017): record the review handover
