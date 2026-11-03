@@ -184,7 +184,7 @@ class WorkerFlowTest(WorkspaceCase):
 class ReviewerFlowTest(WorkspaceCase):
     def delivered(self):
         workspace = self.make_workspace(git_repo=False)
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "setup", "--set", "checks=no", "git=no")
         run(workspace, "plan", "apply", write_plan(workspace))
         run(workspace, "task", "next", "--agent", "w1")

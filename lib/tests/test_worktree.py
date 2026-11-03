@@ -178,7 +178,15 @@ class HostLayoutTest(WorktreeCase):
         self.assertEqual(root.parent, workspace / "worktrees")
         self.assertTrue((root / "src" / "app.py").exists())          # a real checkout of the host
         self.assertFalse((root / ".ai").exists())                      # the workspace is not duplicated
-        self.assertEqual(git_out(host, "status", "--porcelain"), "")   # the host stays clean
+        # The ledger is committed state, so a clean host means no *product*
+        # changes: workspace edits are expected, worktrees must stay ignored.
+        dirty = [
+            line[3:].strip().strip('"')
+            for line in git_out(host, "status", "--porcelain").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual([path for path in dirty if not path.startswith(".ai/")], [])
+        self.assertEqual([path for path in dirty if path.startswith(".ai/worktrees")], [])
         self.assertEqual(git_out(root, "status", "--porcelain"), "")   # so does the worktree
         # a worker inside the worktree reaches the shared workspace by absolute path
         inside = subprocess.run(
