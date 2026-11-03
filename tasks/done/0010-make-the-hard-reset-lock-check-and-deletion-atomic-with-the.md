@@ -1,10 +1,10 @@
 ---
 id: 0010
 title: "Make the hard-reset lock check and deletion atomic with the state mutex"
-status: review
+status: done
 owner: null
 priority: medium
-spec: specs/active/0010-make-the-hard-reset-lock-check-and-deletion-atomic-with-the.md
+spec: specs/done/0010-make-the-hard-reset-lock-check-and-deletion-atomic-with-the.md
 depends_on: null
 scope_allowed: "lib/cmd/reset.py, lib/tests/test_reset_mutex.py"
 scope_forbidden: null
@@ -16,6 +16,8 @@ lock: null
 submitted_by: buffy-impl
 merged_into: develop
 merged_at: 2026-11-03T08:40:01Z
+reviewed_by: buffy-reviewer
+reviewed_at: 2026-11-03T08:40:01Z
 ---
 
 # 0010 - Make the hard-reset lock check and deletion atomic with the state mutex
@@ -49,3 +51,4 @@ Spec: `specs/active/0010-make-the-hard-reset-lock-check-and-deletion-atomic-with
 - 2026-11-03T08:38:22Z committed: fix: check locks and delete reset state under the registry mutex
 - 2026-11-03T08:38:27Z | buffy-impl | in_progress -> review | submitted for independent review | check passed @66e381bd by buffy-impl (no commands)
 - 2026-11-03T08:40:01Z merged feature/0010-make-the-hard-reset-lock-check-and-delet into develop by buffy-reviewer
+- 2026-11-03T08:40:01Z | buffy-reviewer | review -> done | approved | check passed @4142fe29 by buffy-reviewer (no commands)
