@@ -35,6 +35,7 @@ from lib.config.settings import (
 )
 from lib.core.findings import Finding
 from lib.core.fsio import (
+    MAX_TASK_ID_DIGITS,
     normalize_id,
     write_json_atomic,
 )
@@ -52,6 +53,12 @@ from lib.config import roles
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
+
+
+TASK_ID_HINT = (
+    f"task ids are numeric (up to {MAX_TASK_ID_DIGITS} digits); "
+    "rename the file and fix `id:`"
+)
 
 
 def worktree_findings() -> list[Finding]:
@@ -316,7 +323,7 @@ def collect_checks() -> list[Finding]:
                     Finding(
                         "error",
                         f"{path}: invalid task id '{task_id}'",
-                        "task ids are numeric (up to nine digits); rename the file and fix `id:`",
+                        TASK_ID_HINT,
                     )
                 )
             else:

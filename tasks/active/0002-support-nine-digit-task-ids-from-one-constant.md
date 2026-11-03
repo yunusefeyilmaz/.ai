@@ -1,17 +1,19 @@
 ---
 id: 0002
 title: "Support nine-digit task ids from one constant"
-status: todo
-owner: null
+status: review
+owner: reviewer
 priority: high
 spec: specs/active/0002-support-nine-digit-task-ids-from-one-constant.md
 depends_on: null
 scope_allowed: "lib/core/fsio.py, lib/runtime/health.py, lib/specs/spec.py, lib/tests/test_task_ids.py"
 scope_forbidden: null
 locks: "lib/core/fsio.py, lib/runtime/health.py, lib/specs/spec.py, lib/tests/test_task_ids.py"
+branch: feature/0002-support-nine-digit-task-ids-from-one-con
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:17:31Z
-lock: null
+updated: 2026-11-03T07:20:39Z
+lock: task-0002
+submitted_by: implementer
 ---
 
 # 0002 - Support nine-digit task ids from one constant
@@ -40,3 +42,8 @@ Spec: `specs/active/0002-support-nine-digit-task-ids-from-one-constant.md`
 ## Log
 
 - 2026-11-03T07:17:31Z | orchestrator | - -> todo | created
+- 2026-11-03T07:19:39Z | implementer | todo -> in_progress | claimed
+- 2026-11-03T07:19:40Z created branch feature/0002-support-nine-digit-task-ids-from-one-con from develop by implementer
+- 2026-11-03T07:20:30Z committed: fix: support nine-digit task ids from one constant
+- 2026-11-03T07:20:35Z | implementer | in_progress -> review | submitted for independent review | check passed @b214bd8d by implementer (no commands)
+- 2026-11-03T07:20:39Z | reviewer | review -> review | claimed

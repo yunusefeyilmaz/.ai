@@ -14,6 +14,7 @@ from lib.core.paths import (
     WORKSPACE,
 )
 from lib.core.fsio import (
+    MAX_TASK_ID_DIGITS,
     normalize_id,
     read_text,
 )
@@ -147,7 +148,7 @@ def resolve_spec_path(meta: dict | None) -> str | None:
         candidates.append(spec)
     else:
         candidates.extend([os.path.join(PROJECT, spec), os.path.join(WORKSPACE, spec)])
-    if re.fullmatch(r"\d{1,4}", spec):
+    if re.fullmatch(rf"\d{{1,{MAX_TASK_ID_DIGITS}}}", spec):
         prefix = normalize_id(spec) + "-"
         for folder in ("active", "done"):
             directory = os.path.join(SPECS_DIR, folder)
