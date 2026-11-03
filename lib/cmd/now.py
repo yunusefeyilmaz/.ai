@@ -23,7 +23,15 @@ def cmd_now(args) -> int:
     data = overview.build(args.agent, role=args.role)
     if args.json:
         payload = overview.compact(data)
-        payload["schema"] = 1  # contract version of this payload
+        payload["schema"] = 2  # contract version of this payload
+        # Promoted out of `recommended` so a harness reads four flat fields: act
+        # with next_args, or ask the user `question`. `blocker` says why there is
+        # no command to run.
+        rec = data.get("recommended") or {}
+        payload["needs_human"] = bool(rec.get("needs_human"))
+        payload["question"] = rec.get("question")
+        payload["next_args"] = list(rec.get("next_args") or [])
+        payload["blocker"] = rec.get("blocker")
         print(json.dumps(payload, indent=2, default=str))
         return 0
     git = data["git"]

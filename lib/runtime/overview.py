@@ -6,6 +6,8 @@ this structure. Keep it small: every extra line costs an agent tokens.
 
 from __future__ import annotations
 
+import shlex
+
 from lib.config import preferences, roles as roles_cfg
 from lib.config import settings
 from lib.config.settings import load_config
@@ -35,6 +37,50 @@ def resolve_role(agent: str | None, explicit: str | None) -> str | None:
 
 def _line_of(task: dict) -> str:
     return f"{task.get('id')} [{task.get('priority') or '-'}] {task.get('title')}"
+
+
+def _argv(cmd: str | None) -> list[str]:
+    """`ai task next --agent x` -> `['task', 'next', '--agent', 'x']`.
+
+    The JSON contract hands a harness an argv it can run unchanged; the printed
+    line stays as it is. A command that is not `ai ...` is kept whole so nothing
+    is silently dropped.
+    """
+    if not cmd:
+        return []
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:  # unbalanced quotes in a message: never crash the overview
+        return []
+    return tokens[1:] if tokens[:1] == ["ai"] else tokens
+
+
+def _human_question(recommended: dict) -> str | None:
+    """The question to put to the user when the next move is theirs, else None.
+
+    Derived from the recommendation so JSON consumers never have to read the
+    prose in `why` to know whether the agent should act or ask.
+    """
+    cmd = str(recommended.get("cmd") or "")
+    why = str(recommended.get("why") or "")
+    if cmd == "ai setup":
+        return (
+            "Before planning: how much process do you want for this project "
+            "(independent review, checks required, Git, tests, auto-continue, number of workers)?"
+        )
+    if not cmd:
+        return why or "nothing can proceed without a decision from the user"
+    return None
+
+
+def _contract(recommended: dict) -> dict:
+    """Attach the machine-readable part of a recommendation (args, needs_human)."""
+    question = _human_question(recommended)
+    recommended["next_args"] = _argv(recommended.get("cmd"))
+    recommended["needs_human"] = question is not None
+    recommended["question"] = question
+    recommended["blocker"] = (question or "nothing to do") if question is not None else None
+    return recommended
 
 
 def _answer_text(value) -> str:
@@ -137,6 +183,8 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
             recommended = {"task": review_queue[0].get("id"), "cmd": f"ai task next --review --agent {who}", "why": "no ready work; a task waits for independent review", "extra": []}
         else:
             recommended = {**nothing, "why": "nothing is ready; tell the user and stop (the chief plans new work)"}
+
+    _contract(recommended)
 
     last_done = sorted(done, key=lambda t: str(t.get("updated") or ""), reverse=True)[:history]
     events = [e for e in read_events() if str(e.get("event", "")).startswith(("task_", "checkpoint", "resume"))][-history * 2:]

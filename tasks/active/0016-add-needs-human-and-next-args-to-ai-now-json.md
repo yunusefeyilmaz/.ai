@@ -1,17 +1,19 @@
 ---
 id: 0016
 title: "Add needs_human and next_args to ai now --json"
-status: todo
-owner: null
+status: review
+owner: buffy-reviewer
 priority: high
 spec: specs/active/0016-add-needs-human-and-next-args-to-ai-now-json.md
 depends_on: null
-scope_allowed: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py"
+scope_allowed: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
 scope_forbidden: null
-locks: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py"
+locks: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
+branch: feature/0016-add-needs-human-and-next-args-to-ai-now
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:12:54Z
-lock: null
+updated: 2026-11-03T09:28:34Z
+lock: task-0016
+submitted_by: buffy-s4
 ---
 
 # 0016 - Add needs_human and next_args to ai now --json
@@ -39,3 +41,9 @@ Spec: `specs/active/0016-add-needs-human-and-next-args-to-ai-now-json.md`
 ## Log
 
 - 2026-11-03T09:12:54Z | orchestrator | - -> todo | created
+- 2026-11-03T09:14:43Z | buffy-s4 | todo -> in_progress | claimed
+- 2026-11-03T09:14:44Z created branch feature/0016-add-needs-human-and-next-args-to-ai-now from develop by buffy-s4
+- 2026-11-03T09:27:53Z committed: feat: publish needs_human and next_args in ai now --json
+- 2026-11-03T09:28:17Z | buffy-s4 | in_progress -> review | submitted for independent review | check passed @b766c14e by buffy-s4 (no commands)
+- 2026-11-03T09:28:24Z | buffy-reviewer | review -> review | claimed
+- 2026-11-03T09:28:34Z committed: chore: chore(0016): record the review handover
