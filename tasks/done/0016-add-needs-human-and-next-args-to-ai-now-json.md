@@ -1,21 +1,23 @@
 ---
 id: 0016
 title: "Add needs_human and next_args to ai now --json"
-status: review
+status: done
 owner: buffy-reviewer
 priority: high
-spec: specs/active/0016-add-needs-human-and-next-args-to-ai-now-json.md
+spec: specs/done/0016-add-needs-human-and-next-args-to-ai-now-json.md
 depends_on: null
 scope_allowed: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
 scope_forbidden: null
 locks: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
 branch: null
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:28:36Z
-lock: task-0016
+updated: 2026-11-03T09:28:40Z
+lock: null
 submitted_by: buffy-s4
 merged_into: develop
 merged_at: 2026-11-03T09:28:36Z
+reviewed_by: buffy-reviewer
+reviewed_at: 2026-11-03T09:28:40Z
 ---
 
 # 0016 - Add needs_human and next_args to ai now --json
@@ -50,3 +52,4 @@ Spec: `specs/active/0016-add-needs-human-and-next-args-to-ai-now-json.md`
 - 2026-11-03T09:28:24Z | buffy-reviewer | review -> review | claimed
 - 2026-11-03T09:28:34Z committed: chore: chore(0016): record the review handover
 - 2026-11-03T09:28:36Z merged feature/0016-add-needs-human-and-next-args-to-ai-now into develop by buffy-reviewer
+- 2026-11-03T09:28:40Z | buffy-reviewer | review -> done | approved | check passed @efa443cb by buffy-reviewer (no commands)
