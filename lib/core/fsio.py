@@ -148,26 +148,31 @@ def normalize_rel_path(path: str) -> str:
     return "/" + result if absolute else result
 
 
-_TASK_ID = re.compile(r"^(?:T-|task-)?([0-9]{1,9})$", re.IGNORECASE)
+MAX_TASK_ID_DIGITS = 9
+
+_TASK_ID = re.compile(r"^(?:T-|task-)?([0-9]+)$", re.IGNORECASE)
 
 
 def normalize_id(task_id: str) -> str:
-    """Canonical four-digit task id; rejects anything that is not numeric.
+    """Canonical task id (at least four digits); rejects anything not numeric.
 
     Task ids end up inside file names, so a value such as `../../etc/passwd`
     must never be joined into a path. Only pure numeric ids (optionally
     prefixed with `T-` or `task-`) are accepted, and leading zeros do not
     let a caller smuggle in an arbitrarily long value.
 
-    The regex is strict: the entire id (minus the optional T-/task- prefix)
-    must be digits only, 1-9 characters long. This prevents collisions such as
-    "12" and "012" both normalizing to "0012" or "T-12a" being accepted.
+    The numeric part is limited to `MAX_TASK_ID_DIGITS` (nine) digits so the
+    id fits the documented contract and the regex stays a single source of
+    truth. This prevents collisions such as "12" and "012" both normalizing
+    to "0012" or "T-12a" being accepted.
     """
     text = str(task_id).strip()
     match = _TASK_ID.fullmatch(text)
     if not match:
         raise ValueError(f"invalid task id: {task_id!r}")
     digits = match.group(1).lstrip("0") or "0"
-    if len(digits) > 4:
-        raise ValueError(f"invalid task id: {task_id!r} — id exceeds 4 digits")
+    if len(digits) > MAX_TASK_ID_DIGITS:
+        raise ValueError(
+            f"invalid task id: {task_id!r} — id exceeds {MAX_TASK_ID_DIGITS} digits"
+        )
     return f"{int(digits):04d}"
