@@ -9,13 +9,15 @@ depends_on: null
 scope_allowed: "lib/runtime/events.py, lib/tests/test_events_fallback.py"
 scope_forbidden: null
 locks: "lib/runtime/events.py, lib/tests/test_events_fallback.py"
-branch: feature/0001-fix-the-audit-event-fallback-path-and-pr
+branch: null
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:19:07Z
+updated: 2026-11-03T07:19:23Z
 lock: null
 submitted_by: implementer
 reviewed_by: reviewer
 reviewed_at: 2026-11-03T07:19:07Z
+merged_into: develop
+merged_at: 2026-11-03T07:19:23Z
 ---
 
 # 0001 - Fix the audit-event fallback path and prove it with a test
@@ -49,3 +51,4 @@ Spec: `specs/active/0001-fix-the-audit-event-fallback-path-and-prove-it-with-a-t
 - 2026-11-03T07:18:54Z | implementer | in_progress -> review | submitted for independent review | check passed @265edb6e by implementer (no commands)
 - 2026-11-03T07:19:05Z | reviewer | review -> review | claimed
 - 2026-11-03T07:19:07Z | reviewer | review -> done | approved | check passed @265edb6e by reviewer (no commands)
+- 2026-11-03T07:19:23Z merged feature/0001-fix-the-audit-event-fallback-path-and-pr into develop by reviewer
