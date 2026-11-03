@@ -170,6 +170,33 @@ def _write_lock_file(path: str, payload: dict) -> None:
         os.close(descriptor)
 
 
+def effective_holder(resource: str) -> dict:
+    """The live holder of `resource`, or {} when it is free or stale.
+
+    `ai task done` used to read the lease file raw and refuse whenever one
+    existed, so a crashed reviewer's stale lock kept a finished task in review
+    forever even though `ai task claim` and `ai recover` already treated the same
+    lock as gone. One helper now answers "who really holds this?".
+
+    A corrupt lease is returned with ``corrupt: True`` instead of ``{}``: it
+    cannot prove the resource is free, so callers must still fail closed.
+    """
+    try:
+        holder = _read_holder(lock_path(normalize_resource(resource)))
+    except ValueError as exc:
+        return {"corrupt": True, "agent": "unknown", "error": str(exc)}
+    if not holder:
+        return {}
+    if holder.get("corrupt"):
+        return holder
+    try:
+        _, stale_after = lock_settings()
+    except (OSError, ValueError):
+        # A broken config is reported by `ai doctor`; staleness still needs a value.
+        stale_after = 3600
+    return {} if lock_is_stale(holder, stale_after) else holder
+
+
 def acquire_lock(
     resource: str,
     agent: str | None = None,

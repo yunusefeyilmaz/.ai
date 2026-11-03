@@ -1,17 +1,18 @@
 ---
 id: 0009
 title: "Let task done inherit a stale task lock instead of refusing forever"
-status: todo
-owner: null
+status: in_progress
+owner: cline-impl
 priority: medium
 spec: specs/active/0009-let-task-done-inherit-a-stale-task-lock-instead-of-refusing.md
 depends_on: null
 scope_allowed: "lib/cmd/task.py, lib/runtime/leases.py, lib/tests/test_done_stale_lock.py, lib/tests/test_workflow.py"
 scope_forbidden: null
 locks: "lib/cmd/task.py, lib/runtime/leases.py, lib/tests/test_done_stale_lock.py, lib/tests/test_workflow.py"
+branch: feature/0009-let-task-done-inherit-a-stale-task-lock
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T07:45:14Z
-lock: null
+updated: 2026-11-03T08:21:02Z
+lock: task-0009
 ---
 
 # 0009 - Let task done inherit a stale task lock instead of refusing forever
@@ -40,3 +41,6 @@ Spec: `specs/active/0009-let-task-done-inherit-a-stale-task-lock-instead-of-refu
 ## Log
 
 - 2026-11-03T07:45:14Z | orchestrator | - -> todo | created
+- 2026-11-03T08:17:07Z | cline-impl | todo -> in_progress | claimed
+- 2026-11-03T08:17:09Z created branch feature/0009-let-task-done-inherit-a-stale-task-lock from develop by cline-impl
+- 2026-11-03T08:21:02Z committed: fix: let task done inherit a stale task lock instead of refusing
