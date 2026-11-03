@@ -55,8 +55,10 @@ def append_event(event: str, **fields) -> None:
     """Append one local JSONL event, rotating the active file by UTC date.
 
     Contention is retried once; audit events matter more than one lost tick.
-    On final failure a minimal fallback record is written so the audit trail
-    is never completely empty.
+    If both attempts fail, a minimal fallback record is attempted so the audit
+    trail is not left empty. Logging is best-effort: a broken ledger must never
+    crash the command that was trying to record progress, so the fallback also
+    fails softly and the reason is reported on stderr.
     """
     record = {"timestamp": iso(), "event": event}
     record.update({key: value for key, value in fields.items() if value is not None})
@@ -69,10 +71,19 @@ def append_event(event: str, **fields) -> None:
             last_error = exc
             if attempt == 0:
                 time.sleep(0.05)
-    # Final failure: write a minimal fallback record so the audit trail is never empty.
-    fallback = {"timestamp": iso(), "event": event, "_fallback": True, "_error": str(last_error)}
-    _write_event(fallback, fallback=True)
-    print(f"WARN  could not record metrics event '{event}': {last_error}", file=sys.stderr)
+    # Final failure: try one minimal record, but never let the fallback raise.
+    fallback = {"timestamp": iso(), "event": event}
+    fallback.update({key: value for key, value in fields.items() if value is not None})
+    fallback.update({"_fallback": True, "_error": str(last_error)})
+    fallback_error: Exception | None = None
+    try:
+        _write_event(fallback)
+    except Exception as exc:  # noqa: BLE001 - audit logging must not mask the caller
+        fallback_error = exc
+    detail = str(last_error)
+    if fallback_error is not None:
+        detail += f"; fallback also failed: {fallback_error}"
+    print(f"WARN  could not record metrics event '{event}': {detail}", file=sys.stderr)
 
 
 def read_events() -> list[dict]:
