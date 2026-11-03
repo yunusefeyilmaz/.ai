@@ -17,8 +17,74 @@ from lib.core.fsio import (
 )
 
 
+def parse_flow_list(raw: str) -> str | None:
+    """Turn a YAML-style flow list into the canonical comma-separated value.
+
+    Model-written task files often use `depends_on: [0001, 0002]`. The schema
+    stores one comma-separated string, so the list is normalized here instead of
+    surviving as an opaque `[...]` string that every reader then splits wrong.
+    A malformed list raises ValueError: silently keeping the brackets is the one
+    behavior this parser must not have.
+    """
+    text = raw.strip()
+    items: list[str] = []
+    token: list[str] = []
+    quote: str | None = None
+    closed = False
+    for index, char in enumerate(text):
+        if quote is not None:
+            if char == quote:
+                quote = None
+            elif char == "\\" and quote == '"':
+                token.append(char)
+                continue
+            token.append(char)
+            continue
+        if char in ("'", '"'):
+            quote = char
+            token.append(char)
+            continue
+        if char == "[":
+            if index != 0:
+                raise ValueError(f"nested flow list is not supported: {text!r}")
+            continue
+        if char == "]":
+            trailing = text[index + 1 :].strip()
+            if trailing:
+                raise ValueError(f"unexpected text after flow list: {trailing!r}")
+            items.append("".join(token))
+            closed = True
+            break
+        if char == ",":
+            items.append("".join(token))
+            token = []
+            continue
+        token.append(char)
+    if not closed:
+        raise ValueError(f"unterminated flow list: {text!r}")
+    if quote is not None:
+        raise ValueError(f"unterminated quote in flow list: {text!r}")
+    normalized: list[str] = []
+    for item in items:
+        item = item.strip()
+        if not item:
+            continue
+        if item[0] in ("'", '"'):
+            if len(item) < 2 or item[-1] != item[0]:
+                raise ValueError(f"unterminated quote in flow list item: {item!r}")
+            item = item[1:-1].strip()
+        if "," in item:
+            # The canonical form is comma-separated; a comma inside one item
+            # cannot round-trip, so refuse instead of splitting it later.
+            raise ValueError(f"flow-list item contains a comma: {item!r}")
+        normalized.append(item)
+    return ", ".join(normalized) if normalized else None
+
+
 def parse_value(raw: str):
     value = raw.strip()
+    if value.startswith("["):
+        return parse_flow_list(value)
     if value in ("", "null", "~", "None"):
         return None
     if value.lower() in ("true", "false"):
@@ -32,6 +98,11 @@ def parse_value(raw: str):
 
 
 def format_value(value) -> str:
+    if isinstance(value, (list, tuple)):
+        # The accepted schema is one comma-separated string; never write a
+        # Python repr that the parser would then read back as a scalar.
+        joined = ", ".join(str(item) for item in value)
+        return joined or "null"
     if value is None or value == "":
         return "null"
     if isinstance(value, bool):
@@ -95,7 +166,11 @@ def _parse_frontmatter(text: str) -> tuple[dict, str, list[str]]:
             block_separator = "\n" if raw.startswith("|") else " "
             meta.setdefault(key, None)
             continue
-        meta[key] = parse_value(value)
+        try:
+            meta[key] = parse_value(value)
+        except ValueError as exc:
+            problems.append(f"{key}: {exc}")
+            meta[key] = None
     flush_block()
     return meta, body, problems
 
