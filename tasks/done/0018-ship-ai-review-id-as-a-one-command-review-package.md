@@ -1,21 +1,23 @@
 ---
 id: 0018
 title: "Ship ai review <id> as a one-command review package"
-status: review
+status: done
 owner: buffy-reviewer
 priority: high
-spec: specs/active/0018-ship-ai-review-id-as-a-one-command-review-package.md
+spec: specs/done/0018-ship-ai-review-id-as-a-one-command-review-package.md
 depends_on: null
 scope_allowed: "lib/cmd/review.py, lib/cmd/capabilities.py, lib/specs/spec.py, ai.py, lib/git/repo.py, lib/tests/test_review_package.py, AGENTS.md, GUIDE.md, docs/**"
 scope_forbidden: null
 locks: "lib/cmd/review.py, lib/cmd/capabilities.py, lib/specs/spec.py, ai.py, lib/git/repo.py, lib/tests/test_review_package.py, AGENTS.md, GUIDE.md, docs/**"
 branch: null
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:52:45Z
-lock: task-0018
+updated: 2026-11-03T09:52:46Z
+lock: null
 submitted_by: buffy-s4
 merged_into: develop
 merged_at: 2026-11-03T09:52:45Z
+reviewed_by: buffy-reviewer
+reviewed_at: 2026-11-03T09:52:46Z
 ---
 
 # 0018 - Ship ai review <id> as a one-command review package
@@ -51,3 +53,4 @@ Spec: `specs/active/0018-ship-ai-review-id-as-a-one-command-review-package.md`
 - 2026-11-03T09:52:38Z | buffy-reviewer | review -> review | claimed
 - 2026-11-03T09:52:39Z committed: chore: chore(0018): record the review handover
 - 2026-11-03T09:52:45Z merged feature/0018-ship-ai-review-id-as-a-one-command-revie into develop by buffy-reviewer
+- 2026-11-03T09:52:46Z | buffy-reviewer | review -> done | approved | check passed @26344af6 by buffy-reviewer (no commands)
