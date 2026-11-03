@@ -11,7 +11,7 @@ scope_forbidden: null
 locks: "lib/git/repo.py, lib/tests/test_metadata_commit.py"
 branch: feature/0007-refuse-to-amend-unrelated-staged-files-i
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T08:03:44Z
+updated: 2026-11-03T08:06:18Z
 lock: task-0007
 submitted_by: cline-impl
 ---
@@ -47,3 +47,4 @@ Spec: `specs/active/0007-refuse-to-amend-unrelated-staged-files-into-the-metadat
 - 2026-11-03T07:59:10Z | cline-impl | in_progress -> review | submitted for independent review | check passed @7a12b785 by cline-impl (no commands)
 - 2026-11-03T08:01:58Z | reviewer-1 | review -> review | claimed
 - 2026-11-03T08:03:44Z committed: chore: record the review claim for task 0007
+- 2026-11-03T08:06:18Z committed: chore: refresh the board timestamp
