@@ -13,6 +13,7 @@ from lib.runtime.leases import (
     acquire_lock,
     release_lock,
 )
+from lib.runtime.mutex import registry_mutex
 from lib.runtime import reset as runtime_reset
 from lib.tasks import board
 from lib.tasks import store
@@ -55,48 +56,60 @@ def cmd_reset(args) -> int:
 
     resource = "project"
     agent = "operator-reset"
-    result = acquire_lock(resource, agent=agent, task=None, ttl=600)
-    if not result["ok"]:
-        holder = result["holder"] or {}
-        print(
-            f"Could not start reset; '{resource}' overlaps a lock held by "
-            f"{holder.get('agent')} ({holder.get('resource')}).",
-            file=sys.stderr,
-        )
-        return 1
+    acquired = False
+    exit_code = 1
     try:
-        unexpected_locks = [path for path in runtime_reset.reset_lock_files() if path != lock_path(resource)]
-        if unexpected_locks:
-            print("A lock appeared during confirmation; reset cancelled.", file=sys.stderr)
-            return 1
-        decisions_error = runtime_reset.reset_decisions_dir_error()
-        if decisions_error:
-            print(decisions_error, file=sys.stderr)
-            return 1
-        targets = runtime_reset.workspace_reset_targets()
-        target_error = runtime_reset.reset_target_error(targets)
-        if target_error:
-            print(target_error, file=sys.stderr)
-            return 1
-        removed = 0
-        try:
-            for target in targets:
-                if os.path.islink(target) and os.path.isdir(target):
-                    os.rmdir(target)
-                else:
-                    os.remove(target)
-                removed += 1
-        finally:
-            # Keep the board accurate even if the operator needs to retry after
-            # a partial filesystem failure.
-            board.write_board(store.load_tasks())
-        print(f"Hard reset complete; removed {removed} file(s).")
-        return 0
+        # The project lock, the final lock re-check, the target validation and
+        # the deletions form one critical section. `workspace_state_guard()`
+        # waits on this mutex, so a state writer either runs before the reset or
+        # after it - never over a half-deleted workspace.
+        with registry_mutex():
+            result = acquire_lock(resource, agent=agent, task=None, ttl=600)
+            if not result["ok"]:
+                holder = result["holder"] or {}
+                print(
+                    f"Could not start reset; '{resource}' overlaps a lock held by "
+                    f"{holder.get('agent')} ({holder.get('resource')}).",
+                    file=sys.stderr,
+                )
+                return 1
+            acquired = True
+            unexpected_locks = [path for path in runtime_reset.reset_lock_files() if path != lock_path(resource)]
+            if unexpected_locks:
+                print("A lock appeared during confirmation; reset cancelled.", file=sys.stderr)
+                return 1
+            decisions_error = runtime_reset.reset_decisions_dir_error()
+            if decisions_error:
+                print(decisions_error, file=sys.stderr)
+                return 1
+            targets = runtime_reset.workspace_reset_targets()
+            target_error = runtime_reset.reset_target_error(targets)
+            if target_error:
+                print(target_error, file=sys.stderr)
+                return 1
+            removed = 0
+            try:
+                for target in targets:
+                    if os.path.islink(target) and os.path.isdir(target):
+                        os.rmdir(target)
+                    else:
+                        os.remove(target)
+                    removed += 1
+            finally:
+                # Keep the board accurate even if the operator needs to retry after
+                # a partial filesystem failure.
+                board.write_board(store.load_tasks())
+            print(f"Hard reset complete; removed {removed} file(s).")
+            exit_code = 0
     except OSError as exc:
         print(f"Hard reset stopped after a partial cleanup: {exc}. Run `ai reset --hard` again.", file=sys.stderr)
-        return 1
+        exit_code = 1
     finally:
-        release_lock(resource, agent=agent)
+        if acquired:
+            # Released only after the mutex: a writer that raced us sees the
+            # reset lock inside `workspace_state_guard()` and refuses.
+            release_lock(resource, agent=agent)
+    return exit_code
 
 
 ORDER = 140
