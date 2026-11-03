@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/tests/test_start.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py, lib/tests/test_chief.py"
 scope_forbidden: null
 locks: "lib/tests/test_start.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py, lib/tests/test_chief.py"
-branch: feature/0015-store-setup-answers-explicitly-in-the-te
+branch: null
 created: 2026-11-03T09:02:13Z
-updated: 2026-11-03T09:05:27Z
+updated: 2026-11-03T09:05:30Z
 lock: null
 submitted_by: buffy-s3
+merged_into: develop
+merged_at: 2026-11-03T09:05:30Z
 ---
 
 # 0015 - Store setup answers explicitly in the tests that used --defaults
@@ -43,3 +45,4 @@ Spec: `specs/active/0015-store-setup-answers-explicitly-in-the-tests-that-used-d
 - 2026-11-03T09:02:15Z created branch feature/0015-store-setup-answers-explicitly-in-the-te from develop by buffy-s3
 - 2026-11-03T09:05:25Z committed: fix: state the setup answers the tests rely on and keep worktrees ignored
 - 2026-11-03T09:05:27Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @ff8df36e by buffy-s3 (no commands)
+- 2026-11-03T09:05:30Z merged feature/0015-store-setup-answers-explicitly-in-the-te into develop by buffy-reviewer
