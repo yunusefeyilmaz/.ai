@@ -385,9 +385,10 @@ class UnitRegressionTest(unittest.TestCase):
         task = temp / "tasks" / "0001-x.md"
         task.write_text("---\nid: 0001\n---\nbody\n", encoding="utf-8")
         (temp / "BOARD.md").write_text("# board\n", encoding="utf-8")
-        git = lambda *args: subprocess.run(
-            ["git", *args], cwd=temp, check=True, capture_output=True, text=True, timeout=10
-        )
+        def git(*args):
+            return subprocess.run(
+                ["git", *args], cwd=temp, check=True, capture_output=True, text=True, timeout=10
+            )
         git("init", "-q")
         git("config", "user.name", "Regression Test")
         git("config", "user.email", "regression@example.test")

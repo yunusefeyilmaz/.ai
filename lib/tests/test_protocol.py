@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import unittest
-
 import sys
+import unittest
 
 from test_start import ROOT, WorkspaceCase, git, run
 

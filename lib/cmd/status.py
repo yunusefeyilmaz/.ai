@@ -6,21 +6,20 @@ import json
 import os
 import sys
 
+from lib.config.settings import load_config
+from lib.core.fsio import CorruptStateError, read_json
 from lib.core.paths import (
     CHECKPOINT_DIR,
     MANIFEST_PATH,
     PROJECT,
     WORKSPACE,
 )
-from lib.config.settings import load_config
-from lib.core.fsio import CorruptStateError, read_json
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.leases import (
     list_locks,
     print_lock_table,
 )
-from lib.runtime import checkpoints as ckpt
-from lib.tasks import board
-from lib.tasks import store
+from lib.tasks import board, store
 
 
 def cmd_status(args) -> int:

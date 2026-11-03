@@ -55,16 +55,23 @@ else:  # pragma: no cover - exercised on POSIX CI
     except ImportError:  # unlikely, but keep the fallback reachable
         _ADVISORY = False
     else:
+        # Read the constants through getattr: typeshed types `fcntl` as a bare
+        # module on platforms where it does not exist, so direct attribute access
+        # is an error for a type checker even inside this POSIX-only branch.
+        _flock = getattr(fcntl, "flock")
+        _LOCK_EX_NB = getattr(fcntl, "LOCK_EX") | getattr(fcntl, "LOCK_NB")
+        _LOCK_UN = getattr(fcntl, "LOCK_UN")
+
         def _try_lock(descriptor: int) -> bool:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _flock(descriptor, _LOCK_EX_NB)
                 return True
             except OSError:
                 return False
 
         def _unlock(descriptor: int) -> None:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                _flock(descriptor, _LOCK_UN)
             except OSError:
                 pass
 

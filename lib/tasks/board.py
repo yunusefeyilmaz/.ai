@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-
+from lib.config.settings import lock_settings
+from lib.core.fsio import write_text_atomic
 from lib.core.paths import (
     BOARD_PATH,
 )
-from lib.config.settings import lock_settings
-from lib.core.fsio import write_text_atomic
 from lib.core.timeutil import iso
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.leases import (
     lock_is_stale,
     lock_remaining_seconds,
     recent_refusals,
     refusal_detail,
 )
-from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 

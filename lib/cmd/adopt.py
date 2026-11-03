@@ -5,17 +5,17 @@ from __future__ import annotations
 import os
 import sys
 
-from lib.core.paths import (
-    PROJECT,
-    WORKSPACE,
-)
+from lib.config import adopt as config_adopt
 from lib.config.settings import (
     config_path,
     default_config,
 )
 from lib.core.fsio import write_json_atomic
+from lib.core.paths import (
+    PROJECT,
+    WORKSPACE,
+)
 from lib.runtime.dirs import ensure_dirs
-from lib.config import adopt as config_adopt
 
 
 def cmd_adopt(args) -> int:

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 from lib.core.paths import (
     CONFIG_PATH,
     PROJECT,
 )
-
-import json
-import os
 
 
 class ConfigError(ValueError):

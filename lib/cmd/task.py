@@ -7,12 +7,7 @@ import json
 import os
 import sys
 
-from lib.core.paths import (
-    ACTIVE_DIR,
-    DONE_DIR,
-    PROJECT,
-    WORKSPACE,
-)
+from lib.config import roles, settings
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
     CorruptStateError,
@@ -20,7 +15,16 @@ from lib.core.fsio import (
     normalize_id,
     read_json,
 )
+from lib.core.paths import (
+    ACTIVE_DIR,
+    DONE_DIR,
+    PROJECT,
+    WORKSPACE,
+)
 from lib.core.timeutil import iso
+from lib.git import flow, repo, worktrees
+from lib.runtime import checkpoints as ckpt
+from lib.runtime import evidence, health
 from lib.runtime.events import append_event
 from lib.runtime.leases import (
     acquire_lock,
@@ -34,24 +38,8 @@ from lib.runtime.mutex import (
     registry_mutex,
     workspace_state_guard,
 )
-from lib.runtime import checkpoints as ckpt
-from lib.config import roles
-from lib.config import settings
-from lib.git import flow
-from lib.git import repo
-from lib.git import worktrees
-from lib.runtime import evidence
 from lib.specs import spec as spec_lib
-from lib.runtime import health
-from lib.tasks import gates
-from lib.tasks import history
-from lib.tasks import scope
-from lib.tasks import board
-from lib.tasks import discard
-from lib.tasks import lifecycle
-from lib.tasks import links
-from lib.tasks import store
-from lib.tasks import transition
+from lib.tasks import board, discard, gates, history, lifecycle, links, scope, store, transition
 
 
 def cmd_task_new(args) -> int:
@@ -247,7 +235,11 @@ def _next_review(args) -> int:
         if not ok:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
-        meta, _ = store.parse_task(store.find_task(message))
+        claimed_path = store.find_task(message)
+        if not claimed_path:
+            print(f"Claimed {message}, but its task file disappeared.", file=sys.stderr)
+            return 1
+        meta, _ = store.parse_task(claimed_path)
         if args.json:
             print(json.dumps({"meta": meta}, indent=2, default=str))
             return 0
@@ -274,9 +266,12 @@ def cmd_task_next(args) -> int:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
         claimed_path = store.find_task(message)
+        if not claimed_path:
+            print(f"Claimed {message}, but its task file disappeared.", file=sys.stderr)
+            return 1
         meta, body = store.parse_task(claimed_path)
         if args.json:
-            payload = {"meta": meta, "body": body}
+            payload: dict = {"meta": meta, "body": body}
             if meta.get("worktree"):
                 payload["worktree"] = meta.get("worktree")
                 payload["cli"] = worktrees.cli_command()

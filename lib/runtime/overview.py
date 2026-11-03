@@ -143,7 +143,7 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
     delivered = [t for t in active if agent and t.get("status") == "review" and t.get("submitted_by") == agent]
     rework = [t for t in ready_all if agent and t.get("status") == "changes_requested" and t.get("submitted_by") == agent]
     who = agent or "<n>"
-    nothing = {"task": None, "cmd": None, "extra": []}
+    nothing: dict = {"task": None, "cmd": None, "extra": []}
 
     if mine:
         task = sorted(mine, key=lambda t: str(t.get("updated") or ""), reverse=True)[0]

@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 
-from lib.core.paths import (
-    PROJECT,
-)
 from lib.core.fsio import (
     read_text,
     write_text_atomic,
 )
-
+from lib.core.paths import (
+    PROJECT,
+)
 
 ROOT_BLOCK = """<!-- ai-workspace:start -->
 ## AI workspace

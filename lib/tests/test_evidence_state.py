@@ -19,8 +19,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(ROOT))
 
-from lib.runtime import evidence  # noqa: E402
 from test_start import WorkspaceCase, run  # noqa: E402
+
+from lib.runtime import evidence  # noqa: E402
 
 HEAD = "a" * 40
 OTHER = "b" * 40

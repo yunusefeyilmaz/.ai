@@ -8,22 +8,20 @@ import re
 import subprocess
 import sys
 
+from lib.config import roles
+from lib.config.settings import load_config
 from lib.core.paths import (
     ACTIVE_DIR,
     PROJECT,
     SCRIPT_DIR,
 )
 from lib.core.timeutil import iso
+from lib.git import repo, worktrees
+from lib.git.setup import setup_git  # re-exported for lib.cmd.git
 from lib.runtime.events import append_event
 from lib.runtime.mutex import workspace_state_guard
-from lib.config.settings import load_config
-from lib.config import roles
-from lib.git import repo
-from lib.git import worktrees
-from lib.git.setup import setup_git  # re-exported for lib.cmd.git
+from lib.tasks import board, store
 from lib.tasks import scope as task_scope
-from lib.tasks import board
-from lib.tasks import store
 
 
 def checks_seconds_budget() -> int:
@@ -44,10 +42,6 @@ def checks_seconds_budget() -> int:
         except (TypeError, ValueError):
             total += 1800
     return total or 1800
-
-
-def cmd_git_setup(args) -> int:
-    return setup_git(yes=bool(getattr(args, "yes", False)), json_out=bool(getattr(args, "json", False)))
 
 
 def cmd_git_setup(args) -> int:

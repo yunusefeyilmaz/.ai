@@ -125,7 +125,7 @@ def remove(path: str, force: bool = False) -> tuple[bool, str]:
 
 def listing(tasks: list[dict]) -> list[dict]:
     """Every folder under worktrees/, with the task that owns it (if any)."""
-    rows = []
+    rows: list[dict] = []
     if not os.path.isdir(WORKTREES_DIR):
         return rows
     by_path = {str(t.get("worktree")): t for t in tasks if t.get("worktree")}

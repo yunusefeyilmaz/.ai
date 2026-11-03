@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import argparse
-
 import json
 import os
 import sys
 
+from lib.cmd._taskroot import task_scoped
+from lib.core.fsio import write_json_atomic
 from lib.core.paths import (
     WORKSPACE,
     ws_rel,
 )
-from lib.core.fsio import write_json_atomic
 from lib.core.timeutil import iso
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.events import append_event
 from lib.runtime.mutex import workspace_state_guard
-from lib.cmd._taskroot import task_scoped
-from lib.runtime import checkpoints as ckpt
 from lib.tasks import store
 
 
@@ -136,6 +135,9 @@ def cmd_resume(args) -> int:
         print("No task to resume.", file=sys.stderr)
         return 1
     path = store.find_task(task_id)
+    if not path:
+        print(f"No task file for {task_id}; it may have been archived.", file=sys.stderr)
+        return 1
     meta, body = store.parse_task(path)
     data = ckpt.read_checkpoint(task_id)
     drift = ckpt.current_drift(task_id)

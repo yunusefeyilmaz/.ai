@@ -63,8 +63,8 @@ def cmd_setup(args) -> int:
     for row in result["questions"]:
         mark = "answered" if row["answered"] else "ASK"
         current = row["current"]
-        shown = "yes" if current is True else "no" if current is False else current
-        print(f"  [{mark:<8}] {row['key']:<9} now={shown!s:<5} recommended={'yes' if row['recommended'] is True else 'no' if row['recommended'] is False else row['recommended']}")
+        current_text = "yes" if current is True else "no" if current is False else current
+        print(f"  [{mark:<8}] {row['key']:<9} now={current_text!s:<5} recommended={'yes' if row['recommended'] is True else 'no' if row['recommended'] is False else row['recommended']}")
         print(f"             {row['ask']}")
     if result["checks"]:
         print(f"  project checks: {', '.join(result['checks'])}")

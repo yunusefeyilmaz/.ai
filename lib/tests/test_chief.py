@@ -132,8 +132,8 @@ class WorkerFlowTest(WorkspaceCase):
         second = run(workspace, "task", "next", "--agent", "w2")
         self.assertEqual((first.returncode, second.returncode), (0, 0), first.stderr + second.stderr)
         self.assertNotEqual(
-            [l for l in first.stdout.splitlines() if l.startswith("Claimed")],
-            [l for l in second.stdout.splitlines() if l.startswith("Claimed")],
+            [line for line in first.stdout.splitlines() if line.startswith("Claimed")],
+            [line for line in second.stdout.splitlines() if line.startswith("Claimed")],
         )
 
     def test_conflicting_file_locks_refuse_the_claim(self) -> None:

@@ -5,18 +5,17 @@ from __future__ import annotations
 import os
 import sys
 
+from lib.core.fsio import lock_path
 from lib.core.paths import (
     WORKSPACE,
 )
-from lib.core.fsio import lock_path
+from lib.runtime import reset as runtime_reset
 from lib.runtime.leases import (
     acquire_lock,
     release_lock,
 )
 from lib.runtime.mutex import registry_mutex
-from lib.runtime import reset as runtime_reset
-from lib.tasks import board
-from lib.tasks import store
+from lib.tasks import board, store
 
 
 def cmd_reset(args) -> int:

@@ -15,8 +15,7 @@ import os
 from lib.core.paths import ACTIVE_DIR
 from lib.core.timeutil import iso
 from lib.runtime.mutex import workspace_state_guard
-from lib.tasks import board
-from lib.tasks import store
+from lib.tasks import board, store
 
 
 class TransitionError(RuntimeError):

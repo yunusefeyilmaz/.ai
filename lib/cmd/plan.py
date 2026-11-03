@@ -47,9 +47,9 @@ def cmd_plan(args) -> int:
         print(json.dumps({"created": created, "warnings": warnings}, indent=2))
         return 0
     print(f"Created {len(created)} task(s):")
-    for item in created:
-        deps = f" after {', '.join(item['depends_on'])}" if item["depends_on"] else ""
-        print(f"  {item['id']}  {item['key']:<14} {item['title']}{deps}")
+    for created_task in created:
+        deps = f" after {', '.join(created_task['depends_on'])}" if created_task["depends_on"] else ""
+        print(f"  {created_task['id']}  {created_task['key']:<14} {created_task['title']}{deps}")
     print("Workers now: `ai now --agent <n>` (they claim ready tasks themselves). Fill specs/ for each task first.")
     return 0
 

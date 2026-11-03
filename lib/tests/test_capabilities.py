@@ -69,6 +69,16 @@ class CapabilitiesContractTest(unittest.TestCase):
         self.assertTrue({"--task", "--agent", "--no-commands"} <= check, sorted(check))
         self.assertIn("--review", set(self.payload["flags"]["task next"]))
 
+    def test_every_published_command_has_a_real_description(self) -> None:
+        # A command the parser defines but DESCRIPTIONS forgets still ships with a
+        # `--help` pointer, which is the drift a machine-readable contract exists to
+        # prevent. Keep that fallback honest by refusing it in the published map.
+        unpublished = sorted(
+            name for name, text in self.payload["commands"].items()
+            if "--help" in text
+        )
+        self.assertEqual(unpublished, [], f"add these to DESCRIPTIONS: {unpublished}")
+
     def test_a_subcommand_path_carries_its_own_flags(self) -> None:
         self.assertIn("--set", set(self.payload["flags"]["setup"]))
         self.assertIn("--reason", set(self.payload["flags"]["task request-changes"]))

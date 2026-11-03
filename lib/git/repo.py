@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import contextlib
+import json
 import os
 import re
 import subprocess
 import sys
 
-from lib.core.paths import (
-    BOARD_PATH,
-    CONFIG_DIR,
-    DECISIONS_DIR,
-    PROJECT,
-    SPECS_DIR,
-    TASKS_DIR,
-    WORKSPACE,
-)
 from lib.config.settings import (
     load_config,
     lock_settings,
@@ -29,8 +20,16 @@ from lib.core.fsio import (
     read_json,
     slugify,
 )
+from lib.core.paths import (
+    BOARD_PATH,
+    CONFIG_DIR,
+    DECISIONS_DIR,
+    PROJECT,
+    SPECS_DIR,
+    TASKS_DIR,
+    WORKSPACE,
+)
 from lib.runtime.events import append_event
-from lib.runtime.mutex import registry_mutex
 from lib.runtime.leases import (
     acquire_lock,
     heartbeat_lock,
@@ -39,7 +38,7 @@ from lib.runtime.leases import (
     normalize_resource,
     resources_overlap,
 )
-
+from lib.runtime.mutex import registry_mutex
 
 _ROOT: list[str | None] = [None]  # active override of the git working directory
 _GIT_TIMEOUT = 300  # seconds; a credential/hook prompt must not hang the CLI forever
@@ -148,7 +147,9 @@ def parse_porcelain_z(output: str) -> list[tuple[str, str]]:
 
 
 def git_state() -> dict:
-    state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
+    state: dict[str, object] = {
+        "repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None,
+    }
     code, top, err = run_git(["rev-parse", "--show-toplevel"])
     if code != 0 or not top:
         state["error"] = err or None
@@ -162,10 +163,14 @@ def git_state() -> dict:
         "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
     ])
     state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
+    dirty: list[str] = []
+    staged: list[str] = []
     for code_part, path in parse_porcelain_z(run_git_stdout(["status", "--porcelain", "-z"])):
-        state["dirty"].append(path)
+        dirty.append(path)
         if code_part[0] not in (" ", "?"):
-            state["staged"].append(path)
+            staged.append(path)
+    state["dirty"] = dirty
+    state["staged"] = staged
     return state
 
 

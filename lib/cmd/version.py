@@ -7,7 +7,6 @@ from lib.core.paths import (
 )
 
 
-
 def cmd_version(args) -> int:
     print(f"ai workspace {VERSION}")
     return 0

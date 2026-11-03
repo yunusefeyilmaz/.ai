@@ -14,8 +14,8 @@ import json
 import sys
 
 from lib.config.settings import git_enabled
-from lib.core.paths import ws_rel
 from lib.core.fsio import read_text
+from lib.core.paths import ws_rel
 from lib.git import repo
 from lib.runtime import evidence
 from lib.specs import spec as spec_lib
@@ -169,7 +169,7 @@ def cmd_review(args) -> int:
     checklist = list(CHECKLIST)
     checklist.append("claim it before approving: ai task next --review --agent <you>")
 
-    payload = {
+    payload: dict = {
         "task": _task_payload(meta, path),
         "git": {
             "branch": state.get("branch"), "head": state.get("head"),
