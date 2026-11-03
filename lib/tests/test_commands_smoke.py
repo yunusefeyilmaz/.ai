@@ -126,7 +126,7 @@ class ContextPayloadTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         run(workspace, "task", "new", "Compact")
         payload = json.loads(run(workspace, "now", "--json").stdout)
-        self.assertEqual(payload["schema"], 1)
+        self.assertEqual(payload["schema"], 2)
         for task in payload["active"]:
             self.assertNotIn("_body", task)
             self.assertNotIn("_path", task)
