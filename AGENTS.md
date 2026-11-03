@@ -120,6 +120,7 @@ ai lock acquire|release|heartbeat|status
 ai checkpoint|handoff <id> --agent <n>   ai resume <id>   ai recover [--apply]
 ai git setup|start|commit|verify|finish|begin|end   (start --carry, commit --verify)
 ai history <id> [--evidence]     ai decision new|list     ai artifact put|list|clean
+ai review <id> [--stat] [--max-lines N] [--json]   # the reviewer's one-command package (read-only)
 ai status [--board]   ai capabilities   ai metrics   ai adopt   ai init   ai version   ai clean   ai reset
 ```
 
