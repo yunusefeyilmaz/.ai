@@ -9,13 +9,15 @@ depends_on: null
 scope_allowed: "lib/cmd/task.py, lib/runtime/leases.py, lib/tests/test_done_stale_lock.py, lib/tests/test_workflow.py"
 scope_forbidden: null
 locks: "lib/cmd/task.py, lib/runtime/leases.py, lib/tests/test_done_stale_lock.py, lib/tests/test_workflow.py"
-branch: feature/0009-let-task-done-inherit-a-stale-task-lock
+branch: null
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T08:29:56Z
+updated: 2026-11-03T08:30:57Z
 lock: null
 submitted_by: cline-impl
 reviewed_by: buffy-reviewer
 reviewed_at: 2026-11-03T08:29:56Z
+merged_into: develop
+merged_at: 2026-11-03T08:30:57Z
 ---
 
 # 0009 - Let task done inherit a stale task lock instead of refusing forever
@@ -50,3 +52,4 @@ Spec: `specs/active/0009-let-task-done-inherit-a-stale-task-lock-instead-of-refu
 - 2026-11-03T08:21:08Z | cline-impl | in_progress -> review | submitted for independent review | check passed @b021ace4 by cline-impl (no commands)
 - 2026-11-03T08:27:22Z | buffy-reviewer | review -> review | claimed
 - 2026-11-03T08:29:56Z | buffy-reviewer | review -> done | approved | check failed @b021ace4 by buffy-reviewer (no commands)
+- 2026-11-03T08:30:57Z merged feature/0009-let-task-done-inherit-a-stale-task-lock into develop by buffy-reviewer
