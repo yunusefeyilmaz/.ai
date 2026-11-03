@@ -9,11 +9,13 @@ depends_on: 0004
 scope_allowed: "lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_request_changes.py, lib/tests/test_protocol.py, lib/tests/test_field_report.py, lib/tests/test_chief.py, AGENTS.md, docs/task-flow.md"
 scope_forbidden: null
 locks: "lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_request_changes.py, lib/tests/test_protocol.py, lib/tests/test_field_report.py, lib/tests/test_chief.py, AGENTS.md, docs/task-flow.md"
-branch: feature/0005-require-the-reviewer-to-claim-a-task-bef
+branch: null
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:40:45Z
+updated: 2026-11-03T07:40:50Z
 lock: task-0005
 submitted_by: implementer
+merged_into: develop
+merged_at: 2026-11-03T07:40:50Z
 ---
 
 # 0005 - Require the reviewer to claim a task before requesting changes
@@ -48,3 +50,4 @@ Spec: `specs/active/0005-require-the-reviewer-to-claim-a-task-before-requesting-
 - 2026-11-03T07:40:37Z committed: fix: require the reviewer to hold the claim before requesting changes
 - 2026-11-03T07:40:41Z | implementer | in_progress -> review | submitted for independent review | check passed @22ae83e8 by implementer (no commands)
 - 2026-11-03T07:40:45Z | reviewer | review -> review | claimed
+- 2026-11-03T07:40:50Z merged feature/0005-require-the-reviewer-to-claim-a-task-bef into develop by reviewer
