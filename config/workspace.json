@@ -14,11 +14,11 @@
     "qa"
   ],
   "orchestration": {
-    "maxParallel": 1
+    "maxParallel": 3
   },
   "workflow": {
     "requireReview": true,
-    "requireCheck": true,
+    "requireCheck": "strict",
     "autoContinue": false,
     "chiefOnlyTasks": true,
     "requireSpec": true
@@ -76,23 +76,8 @@
     "writeTests": true
   },
   "preferences": {
-    "confirmed": true,
-    "answered": [
-      "checks",
-      "continue",
-      "git",
-      "review",
-      "tests",
-      "workers"
-    ],
-    "at": "2026-11-03T09:11:29Z"
+    "confirmed": false,
+    "answered": []
   },
-  "checks": [
-    {
-      "name": "tests",
-      "command": "python lib/tests/run.py",
-      "addedBy": "orchestrator",
-      "addedAt": "2026-11-03T09:11:29Z"
-    }
-  ]
+  "checks": []
 }
