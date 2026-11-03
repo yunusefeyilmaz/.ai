@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/git/repo.py, lib/tests/test_metadata_commit.py"
 scope_forbidden: null
 locks: "lib/git/repo.py, lib/tests/test_metadata_commit.py"
-branch: feature/0007-refuse-to-amend-unrelated-staged-files-i
+branch: null
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T08:06:18Z
+updated: 2026-11-03T08:06:31Z
 lock: task-0007
 submitted_by: cline-impl
+merged_into: develop
+merged_at: 2026-11-03T08:06:31Z
 ---
 
 # 0007 - Refuse to amend unrelated staged files into the metadata commit
@@ -48,3 +50,4 @@ Spec: `specs/active/0007-refuse-to-amend-unrelated-staged-files-into-the-metadat
 - 2026-11-03T08:01:58Z | reviewer-1 | review -> review | claimed
 - 2026-11-03T08:03:44Z committed: chore: record the review claim for task 0007
 - 2026-11-03T08:06:18Z committed: chore: refresh the board timestamp
+- 2026-11-03T08:06:31Z merged feature/0007-refuse-to-amend-unrelated-staged-files-i into develop by reviewer-1
