@@ -1,8 +1,8 @@
 ---
 id: 0013
 title: "Commit the ledger in subfolder installs instead of ignoring all of .ai/"
-status: in_progress
-owner: buffy-s3
+status: review
+owner: null
 priority: high
 spec: specs/active/0013-commit-the-ledger-in-subfolder-installs-instead-of-ignoring.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/config/adopt.py, lib/tests/test_adopt_ignore.py"
 branch: feature/0013-commit-the-ledger-in-subfolder-installs
 created: 2026-11-03T08:44:09Z
-updated: 2026-11-03T08:57:53Z
-lock: task-0013
+updated: 2026-11-03T08:57:55Z
+lock: null
+submitted_by: buffy-s3
 ---
 
 # 0013 - Commit the ledger in subfolder installs instead of ignoring all of .ai/
@@ -42,3 +43,4 @@ Spec: `specs/active/0013-commit-the-ledger-in-subfolder-installs-instead-of-igno
 - 2026-11-03T08:57:13Z | buffy-s3 | todo -> in_progress | claimed
 - 2026-11-03T08:57:14Z created branch feature/0013-commit-the-ledger-in-subfolder-installs from develop by buffy-s3
 - 2026-11-03T08:57:53Z committed: fix: commit the ledger in subfolder installs instead of ignoring all of .ai/
+- 2026-11-03T08:57:55Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @2f61ae0b by buffy-s3 (no commands)
