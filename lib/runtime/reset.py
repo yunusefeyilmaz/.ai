@@ -77,8 +77,15 @@ def reset_decisions_dir_error() -> str | None:
     decisions_dir = DECISIONS_DIR
     if os.path.islink(decisions_dir):
         return "Refusing to reset decision records through a symlinked docs/decisions directory."
-    if os.path.exists(decisions_dir) and os.path.realpath(decisions_dir) != os.path.abspath(decisions_dir):
-        return "Refusing to reset decision records outside docs/decisions."
+    if os.path.exists(decisions_dir):
+        workspace = os.path.realpath(WORKSPACE)
+        decisions = os.path.realpath(decisions_dir)
+        try:
+            inside_workspace = os.path.commonpath([decisions, workspace]) == workspace
+        except ValueError:
+            inside_workspace = False
+        if not inside_workspace:
+            return "Refusing to reset decision records outside docs/decisions."
     return None
 
 
