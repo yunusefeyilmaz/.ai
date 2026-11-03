@@ -281,6 +281,22 @@ def heartbeat_git_guard(agent: str) -> bool:
     return heartbeat_lock("@git/index", agent=agent, quiet=True) == 0
 
 
+def ledger_path(path: str) -> str:
+    """A git-comparable form of `path`: git reports `/`, Windows builds report `\\`."""
+    return str(path).replace("\\", "/")
+
+
+def unexpected_staged(rels: list[str], staged: list[str]) -> list[str]:
+    """Staged paths the metadata commit does not own.
+
+    `commit_task_metadata` may only amend the task file and the board. Anything
+    else in the index belongs to the user's own work and must never be folded
+    into a previous commit.
+    """
+    expected = {ledger_path(item) for item in rels}
+    return sorted({ledger_path(item) for item in staged} - expected)
+
+
 def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> str | None:
     """Record the task/board metadata in git; returns the short hash or None.
 
@@ -288,10 +304,14 @@ def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> s
     the commit - which left the task ledger silently out of sync with git. Every
     failure now names itself on stderr and lands in the event log; only a
     "nothing to commit" case is silent.
+
+    The amend path is deliberately narrow: it runs only when the staged paths are
+    exactly the task file and the board. A path the user staged earlier would
+    otherwise be swallowed by `git commit --amend`.
     """
     paths = [task_path, BOARD_PATH]
     rels = [
-        os.path.relpath(item, PROJECT).replace(os.sep, "/")
+        ledger_path(os.path.relpath(item, PROJECT))
         for item in paths
         if os.path.exists(item)
     ]
@@ -301,9 +321,30 @@ def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> s
     if code != 0:
         _metadata_failure("git add", err)
         return None
-    if not git_state().get("staged"):
+    staged = [ledger_path(item) for item in (git_state().get("staged") or [])]
+    owned = [path for path in rels if path in staged]
+    if not owned:
         return None
-    args = ["commit", "--amend", "--no-edit"] if amend else ["commit", "-m", message]
+    if amend:
+        unexpected = unexpected_staged(rels, staged)
+        if unexpected:
+            listed = ", ".join(unexpected[:5]) + (" ..." if len(unexpected) > 5 else "")
+            print(
+                f"WARN  task metadata was not amended: unrelated staged paths ({listed}) "
+                "stay staged and out of the commit. Unstage them (`git restore --staged "
+                "<path>`) or commit them, then re-run the command.",
+                file=sys.stderr,
+            )
+            try:
+                append_event("git_metadata_amend_skipped", paths=unexpected)
+            except Exception:  # the ledger must never mask the original result
+                pass
+            return None
+        args = ["commit", "--amend", "--no-edit"]
+    else:
+        # Pathspec commit: record only the ledger paths and leave anything else
+        # the user staged untouched.
+        args = ["commit", "-m", message, "--"] + owned
     code, _, err = run_git(args)
     if code != 0:
         _metadata_failure("git commit", err)
