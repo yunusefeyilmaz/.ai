@@ -2,27 +2,41 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import sys
+import time
 
 from lib.core.paths import (
+    CONFIG_DIR,
+    COUNTER_PATH,
+    DECISIONS_DIR,
+    LOCKS_DIR,
+    MANIFEST_PATH,
     PROJECT,
     REQUIRED_PATHS,
+    RUNTIME_DIR,
     SCAN_SKIP,
+    SPECS_DIR,
+    STATE_DIR,
     TASK_STATUSES,
+    TASKS_DIR,
     WORKSPACE,
     workspace_shape,
 )
 from lib.config.settings import (
+    ConfigError,
     config_path,
     default_config,
+    git_enabled,
     load_config,
     lock_settings,
 )
 from lib.core.findings import Finding
 from lib.core.fsio import (
+    MAX_TASK_ID_DIGITS,
     normalize_id,
     write_json_atomic,
 )
@@ -39,7 +53,14 @@ from lib.config import adopt as config_adopt
 from lib.config import roles
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
+from lib.specs import spec as spec_lib
 from lib.tasks import store
+
+
+TASK_ID_HINT = (
+    f"task ids are numeric (up to {MAX_TASK_ID_DIGITS} digits); "
+    "rename the file and fix `id:`"
+)
 
 
 def worktree_findings() -> list[Finding]:
@@ -85,6 +106,158 @@ def adapter_findings() -> list[Finding]:
     return findings
 
 
+_TMP_STALE_SECONDS = 300
+_TMP_ROOTS = (TASKS_DIR, SPECS_DIR, RUNTIME_DIR, CONFIG_DIR, DECISIONS_DIR)
+
+
+def _rel(path: str) -> str:
+    return os.path.relpath(path, WORKSPACE).replace(os.sep, "/")
+
+
+def tmp_debris() -> list[str]:
+    """Temp files a killed atomic write left behind (`.tmp-*.part`)."""
+    found: list[str] = []
+    for root in _TMP_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for base, dirs, names in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in SCAN_SKIP]
+            for name in names:
+                if name.startswith(".tmp-") and name.endswith(".part"):
+                    found.append(os.path.join(base, name))
+    return found
+
+
+def _state_files() -> list[str]:
+    """Every JSON/lease file the CLI reads as shared state."""
+    paths = [COUNTER_PATH, MANIFEST_PATH]
+    for root in (STATE_DIR, LOCKS_DIR):
+        if not os.path.isdir(root):
+            continue
+        for base, dirs, names in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in SCAN_SKIP]
+            paths.extend(
+                os.path.join(base, name)
+                for name in names
+                if name.endswith((".json", ".lock"))
+            )
+    return [path for path in paths if os.path.isfile(path)]
+
+
+def _is_corrupt_json(path: str) -> str | None:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            json.load(handle)
+    except ValueError as exc:
+        return str(exc)
+    except OSError as exc:
+        return str(exc)
+    return None
+
+
+def corrupt_state_findings() -> list[Finding]:
+    """State files that exist but cannot be parsed, instead of a traceback later."""
+    findings: list[Finding] = []
+    for path in _state_files():
+        error = _is_corrupt_json(path)
+        if not error:
+            continue
+        rel = _rel(path)
+        if path == COUNTER_PATH:
+            hint = "ai doctor --fix (the counter is rebuilt from the task files)"
+        elif rel.startswith("runtime/locks/"):
+            hint = "ai lock release <resource> --force, or wait for the lease to expire"
+        elif path == MANIFEST_PATH:
+            hint = "move runtime/artifacts/MANIFEST.json aside, then rerun `ai artifact list`"
+        else:
+            hint = f"move {rel} aside, then rerun the command that needs it"
+        level = "error" if rel.startswith("runtime/locks/") else "warn"
+        findings.append(Finding(level, f"corrupt state file: {rel} ({error})", hint))
+    return findings
+
+
+def task_frontmatter_findings() -> list[Finding]:
+    """Task files the CLI would refuse to load, named instead of only warned."""
+    findings: list[Finding] = []
+    for folder in ("active", "done"):
+        for path in store.task_paths(folder):
+            problems = store.frontmatter_problems(path)
+            if problems:
+                findings.append(Finding(
+                    "warn",
+                    f"malformed task front matter: {_rel(path)} ({'; '.join(problems)})",
+                    "fix the front matter, or move the file aside if it is not a task",
+                ))
+    return findings
+
+
+def _dependencies(task: dict) -> list[str]:
+    """Task ids this task waits for, in the same comma/space form the store writes."""
+    raw = task.get("depends_on")
+    if not raw:
+        return []
+    wanted = []
+    for piece in re.split(r"[,\s]+", str(raw)):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            wanted.append(normalize_id(piece))
+        except ValueError:
+            continue  # already reported as an unknown dependency
+    return wanted
+
+
+def dependency_cycles(tasks: list[dict]) -> list[list[str]]:
+    """Cycles among active tasks' `depends_on` edges, each cycle listed once.
+
+    A cycle can never become ready, so it is an error rather than a warning: the
+    planner broke the graph and only a human or the chief can break it back.
+    """
+    edges: dict[str, list[str]] = {}
+    for task in tasks:
+        if task.get("_folder") != "active":
+            continue
+        try:
+            task_id = normalize_id(str(task.get("id")))
+        except ValueError:
+            continue
+        edges[task_id] = [dep for dep in _dependencies(task) if dep != task_id]
+    cycles: list[list[str]] = []
+    seen: set[frozenset[str]] = set()
+    state: dict[str, int] = {}  # 0 unvisited, 1 on the stack, 2 finished
+    stack: list[str] = []
+
+    def visit(node: str) -> None:
+        state[node] = 1
+        stack.append(node)
+        for dep in edges.get(node, []):
+            if dep not in edges:
+                continue  # a dependency outside the active set cannot close a cycle
+            if state.get(dep) == 1:
+                cycle = stack[stack.index(dep):]
+                key = frozenset(cycle)
+                if key not in seen:
+                    seen.add(key)
+                    cycles.append(cycle)
+            elif state.get(dep) != 2:
+                visit(dep)
+        stack.pop()
+        state[node] = 2
+
+    for node in sorted(edges):
+        if not state.get(node):
+            visit(node)
+    return cycles
+
+
+def tmp_debris_findings() -> list[Finding]:
+    return [
+        Finding("warn", f"leftover temp file: {_rel(path)}", "ai doctor --fix removes stale temp files")
+        for path in tmp_debris()
+    ]
+
+
 def apply_safe_fixes() -> list[str]:
     """Repair missing, regenerable state. Never overwrite files or touch Git."""
     fixes: list[str] = []
@@ -105,6 +278,22 @@ def apply_safe_fixes() -> list[str]:
         if missing_ignore:
             config_adopt.adopt_gitignore()
             fixes.append("added .gitignore rules: " + ", ".join(missing_ignore))
+    for path in tmp_debris():
+        try:
+            if time.time() - os.path.getmtime(path) < _TMP_STALE_SECONDS:
+                continue  # a live writer owns it
+            os.remove(path)
+            fixes.append(f"removed stale temp file {_rel(path)}")
+        except OSError:
+            pass
+    if _is_corrupt_json(COUNTER_PATH):
+        # The allocator rebuilds the next id from the task files, so a damaged
+        # counter is safe to drop rather than a permanent blocker.
+        try:
+            os.remove(COUNTER_PATH)
+            fixes.append("removed corrupt runtime/state/task-counter.json (ids are rebuilt from the tasks)")
+        except OSError:
+            pass
     return fixes
 
 
@@ -125,8 +314,8 @@ def collect_checks() -> list[Finding]:
             problems.append(Finding("error", f"missing required path: {rel}", hint))
     try:
         config = load_config()
-    except FileNotFoundError:
-        problems.append(Finding("error", "config/workspace.json is missing", "ai doctor --fix"))
+    except ConfigError as exc:
+        problems.append(Finding("error", str(exc), "ai doctor --fix"))
         config = {}
     except (OSError, ValueError) as exc:
         problems.append(
@@ -171,6 +360,22 @@ def collect_checks() -> list[Finding]:
         if resource.startswith("task-"):
             lock_by_task[resource[5:]] = lock
 
+    try:
+        branches_enabled = git_enabled() and bool(repo.git_state().get("repo"))
+        if branches_enabled:
+            branches = repo.git_config()
+            # Without the Gitflow base a claim cannot open a branch yet, and that
+            # is a setup step (`ai git setup`), not an unowned task branch.
+            branches_enabled = (
+                repo.branch_exists(branches["integration"])
+                and repo.branch_exists(branches["production"])
+            )
+    except (OSError, ValueError, KeyError):
+        branches_enabled = False
+    # Auditing spec content next to the claim gate is only fair when the project
+    # asked for specs at all.
+    require_spec = bool((config.get("workflow") or {}).get("requireSpec", True))
+
     ids: dict[str, str] = {}
     tasks = store.load_tasks()
     for task in tasks:
@@ -189,14 +394,25 @@ def collect_checks() -> list[Finding]:
                     )
                 )
             ids[task_id] = path
-            if task["_folder"] == "active" and normalize_id(task_id) + "-" not in os.path.basename(path):
+            try:
+                canonical = normalize_id(task_id)
+            except ValueError:
                 problems.append(
                     Finding(
-                        "warn",
-                        f"{path}: filename does not start with {task_id}-",
-                        f"rename {path} to {task_id}-<slug>.md",
+                        "error",
+                        f"{path}: invalid task id '{task_id}'",
+                        TASK_ID_HINT,
                     )
                 )
+            else:
+                if task["_folder"] == "active" and canonical + "-" not in os.path.basename(path):
+                    problems.append(
+                        Finding(
+                            "warn",
+                            f"{path}: filename does not start with {task_id}-",
+                            f"rename {path} to {task_id}-<slug>.md",
+                        )
+                    )
         if not task.get("title"):
             problems.append(Finding("error", f"{path}: missing title", f"add a `title:` field to {path}"))
         status = task.get("status")
@@ -237,7 +453,13 @@ def collect_checks() -> list[Finding]:
         if depends:
             for dependency in re.split(r"[,\s]+", str(depends)):
                 dependency = dependency.strip()
-                if dependency and normalize_id(dependency) not in ids and not store.find_task(dependency):
+                if not dependency:
+                    continue
+                try:
+                    known = normalize_id(dependency) in ids or bool(store.find_task(dependency))
+                except ValueError:
+                    known = False
+                if not known:
                     problems.append(
                         Finding(
                             "warn",
@@ -272,10 +494,38 @@ def collect_checks() -> list[Finding]:
                         "ai recover --apply",
                     )
                 )
+            # A task in `review` without an owner is the normal handover state: it
+            # waits in the review queue until a reviewer claims it. Only work that
+            # should be actively moving can be orphaned.
+            if status in ("in_progress", "blocked") and not owner:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {status} without an owner",
+                        f"ai task claim {task_id} --agent <name>, or `ai recover --apply` if it was abandoned",
+                    )
+                )
+            if status in ("in_progress", "review") and not task.get("branch") and branches_enabled:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {status} without a task branch",
+                        f"ai git start --task {task_id} --agent {owner or '<name>'} --type feature",
+                    )
+                )
+            spec_problem = spec_lib.spec_problem(task) if require_spec else None
+            if spec_problem:
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: {spec_problem}",
+                        f"fill {task.get('spec')} (intent, behavior, acceptance criteria) before any worker claims it",
+                    )
+                )
             if status == "in_progress":
                 warn_after = int(config.get("handoff", {}).get("warnAfterMinutes", 30)) if config else 30
                 checkpoint_hint = f"ai checkpoint {task_id} --agent {owner or 'agent'} --next \"<step>\""
-                age = ckpt.checkpoint_age_minutes(task_id)
+                age = ckpt.checkpoint_age_minutes(str(task_id))
                 if age is None:
                     claimed_age = age_minutes(
                         (held or {}).get("started_at") or task.get("updated")
@@ -311,6 +561,16 @@ def collect_checks() -> list[Finding]:
                     "ai recover --apply",
                 )
             )
+
+    for cycle in dependency_cycles(tasks):
+        path = " -> ".join(cycle + [cycle[0]])
+        problems.append(
+            Finding(
+                "error",
+                f"dependency cycle among active tasks: {path}",
+                "remove one edge of the cycle in the task's depends_on (none of these tasks can ever be ready)",
+            )
+        )
 
     try:
         _, stale_after = lock_settings()
@@ -386,6 +646,9 @@ def collect_checks() -> list[Finding]:
 
     problems.extend(adapter_findings())
     problems.extend(worktree_findings())
+    problems.extend(corrupt_state_findings())
+    problems.extend(tmp_debris_findings())
+    problems.extend(task_frontmatter_findings())
     return problems
 
 
@@ -422,16 +685,35 @@ def run_commands(fast_only: bool, results: list | None = None, out=None) -> list
         command = item.get("command")
         if not command:
             continue
+        try:
+            timeout = int(item.get("timeoutSeconds") or config.get("checksTimeoutSeconds") or 1800)
+        except (TypeError, ValueError):
+            timeout = 1800
         # `out` (e.g. stderr in --json mode) keeps stdout machine-readable
         print(f"\n$ {command}", file=out or sys.stdout)
-        result = subprocess.run(command, shell=True, cwd=repo.current_root(), stdout=out)
+        started = time.monotonic()
+        try:
+            # Checks are project-owned shell commands by design ("run this
+            # command"); a timeout keeps a hung suite from blocking a merge.
+            result = subprocess.run(
+                command, shell=True, cwd=repo.current_root(), stdout=out, timeout=timeout
+            )
+            exit_code = result.returncode
+        except subprocess.TimeoutExpired:
+            exit_code = 124
+            print(f"check '{name}' timed out after {timeout}s", file=out or sys.stderr)
         if results is not None:
-            results.append({"name": name, "command": command, "exit_code": result.returncode})
-        if result.returncode != 0:
+            results.append({
+                "name": name,
+                "command": command,
+                "exit_code": exit_code,
+                "seconds": round(time.monotonic() - started, 2),
+            })
+        if exit_code != 0:
             problems.append(
                 Finding(
                     "error",
-                    f"check '{name}' failed with exit code {result.returncode}",
+                    f"check '{name}' failed with exit code {exit_code}",
                     f"run the failing command yourself: {command}",
                 )
             )

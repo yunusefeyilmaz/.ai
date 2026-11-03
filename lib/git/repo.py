@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import contextlib
+import json
 import os
 import re
 import subprocess
 import sys
 
+from lib.config.settings import (
+    load_config,
+    lock_settings,
+)
+from lib.core.fsio import (
+    CorruptStateError,
+    lock_path,
+    normalize_id,
+    read_json,
+    slugify,
+)
 from lib.core.paths import (
     BOARD_PATH,
     CONFIG_DIR,
@@ -18,27 +29,20 @@ from lib.core.paths import (
     TASKS_DIR,
     WORKSPACE,
 )
-from lib.config.settings import (
-    load_config,
-    lock_settings,
-)
-from lib.core.fsio import (
-    lock_path,
-    normalize_id,
-    read_json,
-    slugify,
-)
 from lib.runtime.events import append_event
 from lib.runtime.leases import (
     acquire_lock,
+    heartbeat_lock,
     list_locks,
     lock_is_stale,
     normalize_resource,
     resources_overlap,
 )
-
+from lib.runtime.mutex import registry_mutex
 
 _ROOT: list[str | None] = [None]  # active override of the git working directory
+_GIT_TIMEOUT = 300  # seconds; a credential/hook prompt must not hang the CLI forever
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
 def current_root() -> str:
@@ -89,14 +93,18 @@ def run_git(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_GIT_TIMEOUT,
+            creationflags=_CREATE_NO_WINDOW,
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 124, "", f"git {args[0] if args else ''} timed out after {_GIT_TIMEOUT}s"
     except (OSError, ValueError):
         return 127, "", "git is not available"
 
 
 def run_git_stdout(args: list[str]) -> str:
-    """Git stdout without stripping: porcelain's first column is meaningful."""
+    """Git stdout without stripping: NUL-separated porcelain is path-safe."""
     try:
         result = subprocess.run(
             ["git"] + args,
@@ -105,14 +113,43 @@ def run_git_stdout(args: list[str]) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_GIT_TIMEOUT,
+            creationflags=_CREATE_NO_WINDOW,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return ""
     return result.stdout if result.returncode == 0 else ""
 
 
+def parse_porcelain_z(output: str) -> list[tuple[str, str]]:
+    """Parse `git status --porcelain -z` into (status, path) records.
+
+    In -z form a rename/copy record is two NUL-separated tokens: the new path
+    followed by the old path. Consuming both keeps the old path from being
+    read as its own entry (which used to slice three characters off it and
+    report a phantom dirty file, making clean-tree checks unreliable).
+    """
+    tokens = output.split("\0")
+    entries: list[tuple[str, str]] = []
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        index += 1
+        if len(entry) < 3:
+            continue
+        status, path = entry[:2], entry[3:]
+        if not path:
+            continue
+        if "R" in status or "C" in status:
+            index += 1  # the old path belongs to this record
+        entries.append((status, path))
+    return entries
+
+
 def git_state() -> dict:
-    state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
+    state: dict[str, object] = {
+        "repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None,
+    }
     code, top, err = run_git(["rev-parse", "--show-toplevel"])
     if code != 0 or not top:
         state["error"] = err or None
@@ -126,19 +163,14 @@ def git_state() -> dict:
         "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
     ])
     state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
-    for line in run_git_stdout(["status", "--porcelain"]).splitlines():
-        if len(line) < 3:
-            continue
-        code_part = line[:2]
-        path = line[3:].strip()
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        path = path.strip('"')
-        if not path:
-            continue
-        state["dirty"].append(path)
+    dirty: list[str] = []
+    staged: list[str] = []
+    for code_part, path in parse_porcelain_z(run_git_stdout(["status", "--porcelain", "-z"])):
+        dirty.append(path)
         if code_part[0] not in (" ", "?"):
-            state["staged"].append(path)
+            staged.append(path)
+    state["dirty"] = dirty
+    state["staged"] = staged
     return state
 
 
@@ -214,7 +246,13 @@ def task_branch_name(meta: dict, branch_type: str) -> str:
     return f"{branch_type}/{normalize_id(str(meta.get('id')))}-{slug or 'task'}"
 
 
-def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
+def acquire_git_guard(agent: str, task_id: str, ttl: int = 600) -> tuple[bool, bool, str]:
+    """Take the git index for one orchestrating step.
+
+    `ttl` must cover the longest child command run while the guard is held
+    (e.g. a project check), or the lease expires mid-step and another agent can
+    interleave a commit between the check and the merge.
+    """
     _, stale_after = lock_settings()
     current = next(
         (
@@ -232,7 +270,7 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
                 f"(task {current.get('task') or '-'})."
             )
         return True, False, ""
-    result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=600)
+    result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=ttl)
     if not result["ok"]:
         holder = result["holder"] or {}
         append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
@@ -243,38 +281,114 @@ def acquire_git_guard(agent: str, task_id: str) -> tuple[bool, bool, str]:
     return True, True, ""
 
 
+def heartbeat_git_guard(agent: str) -> bool:
+    """Prove the index lease is still ours after a long child command."""
+    return heartbeat_lock("@git/index", agent=agent, quiet=True) == 0
+
+
+def ledger_path(path: str) -> str:
+    """A git-comparable form of `path`: git reports `/`, Windows builds report `\\`."""
+    return str(path).replace("\\", "/")
+
+
+def unexpected_staged(rels: list[str], staged: list[str]) -> list[str]:
+    """Staged paths the metadata commit does not own.
+
+    `commit_task_metadata` may only amend the task file and the board. Anything
+    else in the index belongs to the user's own work and must never be folded
+    into a previous commit.
+    """
+    expected = {ledger_path(item) for item in rels}
+    return sorted({ledger_path(item) for item in staged} - expected)
+
+
 def commit_task_metadata(task_path: str, message: str, amend: bool = False) -> str | None:
+    """Record the task/board metadata in git; returns the short hash or None.
+
+    "None" used to swallow every failure - a locked index, a hook that rejected
+    the commit - which left the task ledger silently out of sync with git. Every
+    failure now names itself on stderr and lands in the event log; only a
+    "nothing to commit" case is silent.
+
+    The amend path is deliberately narrow: it runs only when the staged paths are
+    exactly the task file and the board. A path the user staged earlier would
+    otherwise be swallowed by `git commit --amend`.
+    """
     paths = [task_path, BOARD_PATH]
     rels = [
-        os.path.relpath(item, PROJECT).replace(os.sep, "/")
+        ledger_path(os.path.relpath(item, PROJECT))
         for item in paths
         if os.path.exists(item)
     ]
     if not rels:
         return None
-    code, _, _ = run_git(["add", "--"] + rels)
+    code, _, err = run_git(["add", "--"] + rels)
     if code != 0:
+        _metadata_failure("git add", err)
         return None
-    if not git_state().get("staged"):
+    staged = [ledger_path(item) for item in (git_state().get("staged") or [])]
+    owned = [path for path in rels if path in staged]
+    if not owned:
         return None
-    args = ["commit", "--amend", "--no-edit"] if amend else ["commit", "-m", message]
-    code, _, _ = run_git(args)
+    if amend:
+        unexpected = unexpected_staged(rels, staged)
+        if unexpected:
+            listed = ", ".join(unexpected[:5]) + (" ..." if len(unexpected) > 5 else "")
+            print(
+                f"WARN  task metadata was not amended: unrelated staged paths ({listed}) "
+                "stay staged and out of the commit. Unstage them (`git restore --staged "
+                "<path>`) or commit them, then re-run the command.",
+                file=sys.stderr,
+            )
+            try:
+                append_event("git_metadata_amend_skipped", paths=unexpected)
+            except Exception:  # the ledger must never mask the original result
+                pass
+            return None
+        args = ["commit", "--amend", "--no-edit"]
+    else:
+        # Pathspec commit: record only the ledger paths and leave anything else
+        # the user staged untouched.
+        args = ["commit", "-m", message, "--"] + owned
+    code, _, err = run_git(args)
     if code != 0:
+        _metadata_failure("git commit", err)
         return None
     _, short, _ = run_git(["rev-parse", "--short", "HEAD"])
-    return short
+    return short or None
+
+
+def _metadata_failure(step: str, error: str) -> None:
+    detail = (error or "").strip().splitlines()
+    summary = detail[-1] if detail else "unknown error"
+    print(f"WARN  task metadata was not committed ({step}): {summary}", file=sys.stderr)
+    try:
+        append_event("git_metadata_failed", step=step, error=summary)
+    except Exception:  # the ledger must never mask the original failure
+        pass
 
 
 def release_git_guard(owned: bool, agent: str) -> None:
     if not owned:
         return
     path = lock_path(normalize_resource("@git/index"))
-    holder = read_json(path) or {}
-    if holder.get("agent") == agent:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+    try:
+        with registry_mutex():
+            # Re-read inside the mutex: the lease may have expired and been
+            # taken by another agent between the check and the delete.
+            try:
+                holder = read_json(path) or {}
+            except CorruptStateError:
+                # We cannot prove ownership of a damaged lease, so keep it: the
+                # next holder expires it and `ai doctor` reports it.
+                return
+            if holder.get("agent") == agent:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+    except TimeoutError:
+        pass
 
 
 def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
@@ -286,6 +400,10 @@ def uncovered_staged(state: dict) -> tuple[list[str], list[dict]]:
     ]
     uncovered = []
     for path in state.get("staged", []):
+        # Coordination state (tasks/specs/config/decisions) is committed by the
+        # CLI itself and is not product code; it never needs a file lease.
+        if is_workspace_ledger_path(path):
+            continue
         covered = False
         for lock in locks:
             try:
@@ -305,13 +423,14 @@ SENSITIVE = re.compile(
 )
 
 
-def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
+def confirm_initial_baseline(
+    production: str, assume_yes: bool = False, json_out: bool = False
+) -> tuple[bool, int]:
     code, listed, err = run_git(["ls-files", "--cached", "--others", "--exclude-standard"])
     if code != 0:
         print(f"Could not list files for the initial Git baseline: {err}", file=sys.stderr)
         return False, 1
     files = [line for line in listed.splitlines() if line]
-    assume_yes = bool(getattr(args, "yes", False))
     if assume_yes:
         # The user already agreed to Git during `ai setup`; an agent cannot type the phrase.
         risky = [path for path in files if SENSITIVE.search(path)]
@@ -328,7 +447,7 @@ def confirm_initial_baseline(args, production: str) -> tuple[bool, int]:
             print(f"  {path}")
         if len(files) > 30:
             print(f"  ... and {len(files) - 30} more")
-    elif args.json:
+    elif json_out:
         print(json.dumps({
             "repo": True,
             "baselineConfirmationRequired": True,

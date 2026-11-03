@@ -129,9 +129,10 @@ class DeliveryTest(WorktreeCase):
         workspace = self.parallel_workspace("Alpha")
         run(workspace, "task", "claim", "0001", "--agent", "w1")
         root = self.worktree_of(workspace)
+        reviewed = run(workspace, "task", "review", "0001", "--agent", "w1")
+        self.assertEqual(reviewed.returncode, 0, reviewed.stdout + reviewed.stderr)
+        # review is a Git gate now, so the dirty file has to appear after handover
         (root / "unfinished.txt").write_text("wip\n", encoding="utf-8")
-        run(workspace, "task", "review", "0001", "--agent", "w1")
-        run(workspace, "task", "release", "0001", "--agent", "w1")
         refused = run(workspace, "git", "finish", "--task", "0001", "--agent", "r1")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("uncommitted changes", refused.stderr)
@@ -158,6 +159,11 @@ class HostLayoutTest(WorktreeCase):
         git_do(host, "commit", "-qm", "init")
         workspace = host / ".ai"
         shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
+            folder = workspace / relative
+            shutil.rmtree(folder, ignore_errors=True)
+            folder.mkdir(parents=True)
+        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
         for sub in ("locks", "state", "artifacts", "logs"):
             shutil.rmtree(workspace / "runtime" / sub, ignore_errors=True)
         self.assertEqual(run(workspace, "adopt").returncode, 0)
@@ -172,7 +178,15 @@ class HostLayoutTest(WorktreeCase):
         self.assertEqual(root.parent, workspace / "worktrees")
         self.assertTrue((root / "src" / "app.py").exists())          # a real checkout of the host
         self.assertFalse((root / ".ai").exists())                      # the workspace is not duplicated
-        self.assertEqual(git_out(host, "status", "--porcelain"), "")   # the host stays clean
+        # The ledger is committed state, so a clean host means no *product*
+        # changes: workspace edits are expected, worktrees must stay ignored.
+        dirty = [
+            line[3:].strip().strip('"')
+            for line in git_out(host, "status", "--porcelain").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual([path for path in dirty if not path.startswith(".ai/")], [])
+        self.assertEqual([path for path in dirty if path.startswith(".ai/worktrees")], [])
         self.assertEqual(git_out(root, "status", "--porcelain"), "")   # so does the worktree
         # a worker inside the worktree reaches the shared workspace by absolute path
         inside = subprocess.run(

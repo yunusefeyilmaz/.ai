@@ -14,7 +14,7 @@
 
 ## Verification
 
-- [ ] `ai check --strict` is green (paste the summary)
+- [ ] `ai check --task <id> --agent <name>` is green and recorded as evidence
 - [ ] Acceptance criteria in the spec are covered by tests
 - [ ] A separate session reviewed the diff
 - [ ] No secrets, generated scratch files, or unrelated changes

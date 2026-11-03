@@ -8,202 +8,82 @@ import re
 import subprocess
 import sys
 
+from lib.config import roles
+from lib.config.settings import load_config
 from lib.core.paths import (
     ACTIVE_DIR,
     PROJECT,
     SCRIPT_DIR,
 )
 from lib.core.timeutil import iso
+from lib.git import repo, worktrees
+from lib.git.setup import setup_git  # re-exported for lib.cmd.git
 from lib.runtime.events import append_event
-from lib.config import roles
-from lib.git import repo
-from lib.git import worktrees
+from lib.runtime.mutex import workspace_state_guard
+from lib.tasks import board, store
 from lib.tasks import scope as task_scope
-from lib.tasks import board
-from lib.tasks import store
+
+
+def checks_seconds_budget() -> int:
+    """Longest wall time the configured checks may take, in seconds.
+
+    The index guard is held while `ai check` runs; its TTL has to cover every
+    configured check's own timeout, or the lease expires mid-check and another
+    agent can slip a commit between the check and the merge.
+    """
+    try:
+        config = load_config()
+    except (OSError, ValueError):
+        return 1800
+    total = 0
+    for item in config.get("checks", []) or []:
+        try:
+            total += int(item.get("timeoutSeconds") or config.get("checksTimeoutSeconds") or 1800)
+        except (TypeError, ValueError):
+            total += 1800
+    return total or 1800
 
 
 def cmd_git_setup(args) -> int:
-    state = repo.git_state()
-    if not state.get("repo") and state.get("error"):
-        error = str(state["error"])
-        if "dubious ownership" in error.lower():
-            project_path = os.path.abspath(PROJECT).replace("\\", "/")
-            print(
-                "Git found this repository but refused it because its ownership is untrusted. "
-                "Ask the user to approve this exact checkout with `git config --global "
-                f"--add safe.directory \"{project_path}\"`, then rerun `ai git setup`. "
-                "Do not use a wildcard safe.directory entry.",
-                file=sys.stderr,
-            )
-            return 1
-        if "not a git repository" not in error.lower():
-            print(f"Could not inspect the project Git repository: {error}", file=sys.stderr)
-            return 1
-
-    initialized = False
-    if not state.get("repo"):
-        production = repo.git_config()["production"]
-        code, _, err = repo.run_git(["init", f"--initial-branch={production}"])
-        if code != 0 and any(
-            marker in err.lower()
-            for marker in ("unknown option", "unrecognized option", "unknown switch")
-        ):
-            code, _, err = repo.run_git(["init"])
-        if code != 0:
-            print(f"Could not initialize Git in {PROJECT}: {err}", file=sys.stderr)
-            return 1
-        code, _, err = repo.run_git(["symbolic-ref", "HEAD", f"refs/heads/{production}"])
-        if code != 0:
-            print(f"Could not select the production branch: {err}", file=sys.stderr)
-            return 1
-        initialized = True
-        state = repo.git_state()
-        if not state.get("repo"):
-            print(f"Git initialization did not produce a readable repository: {state.get('error') or 'unknown error'}", file=sys.stderr)
-            return 1
-    config = repo.git_config()
-    template = repo.git_template_path()
-    if not os.path.isfile(template):
-        print(f"Commit template not found: {os.path.relpath(template, PROJECT)}", file=sys.stderr)
-        return 1
-    config_code, current_template, _ = repo.run_git(["config", "--local", "--get", "commit.template"])
-    if (
-        config_code != 0
-        or os.path.normcase(os.path.abspath(current_template)) != os.path.normcase(os.path.abspath(template))
-    ):
-        code, _, err = repo.run_git(["config", "--local", "commit.template", template])
-        if code != 0:
-            print(f"Could not set commit.template: {err}", file=sys.stderr)
-            return 1
-    created_production = False
-    created_integration = False
-    created_baseline = False
-    if repo.branch_ref_exists(config["production"]) and not repo.branch_exists(config["production"]):
-        print(
-            f"Production branch '{config['production']}' exists but does not resolve to a commit. "
-            "Repair that ref manually before rerunning setup.",
-            file=sys.stderr,
-        )
-        return 1
-    if not state.get("head"):
-        refs_code, refs_output, refs_err = repo.run_git([
-            "for-each-ref", "--format=%(refname:short)", "refs/heads",
-        ])
-        if refs_code != 0:
-            print(f"Could not inspect local Git branches: {refs_err}", file=sys.stderr)
-            return 1
-        refs: list[tuple[str, str]] = []
-        for line in refs_output.splitlines():
-            candidate = line.strip()
-            if not candidate:
-                continue
-            commit = repo.git_commit_id(f"refs/heads/{candidate}")
-            if commit:
-                refs.append((candidate, commit))
-        if repo.branch_exists(config["production"]):
-            pass
-        elif refs:
-            current_ref = f"refs/heads/{state.get('branch')}"
-            base_commit = next(
-                (commit for ref, commit in refs if ref == current_ref), refs[0][1],
-            )
-            code, _, err = repo.run_git(["branch", config["production"], base_commit])
-            if code != 0:
-                print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
-                return 1
-            created_production = True
-        else:
-            code, _, err = repo.run_git(["symbolic-ref", "HEAD", f"refs/heads/{config['production']}"])
-            if code != 0:
-                print(f"Could not select production branch '{config['production']}': {err}", file=sys.stderr)
-                return 1
-            completed, result = repo.confirm_initial_baseline(args, config["production"])
-            if not completed:
-                return result
-            created_baseline = True
-            created_production = True
-        if not repo.branch_exists(config["production"]):
-            print(f"Production branch '{config['production']}' is still missing.", file=sys.stderr)
-            return 1
-        state = repo.git_state()
-        if not state.get("head"):
-            code, _, err = repo.run_git(["symbolic-ref", "HEAD", f"refs/heads/{config['production']}"])
-            if code != 0:
-                print(f"Could not select production branch '{config['production']}': {err}", file=sys.stderr)
-                return 1
-            state = repo.git_state()
-        if not state.get("head"):
-            print("Gitflow setup could not establish a committed production base.", file=sys.stderr)
-            return 1
-    elif not repo.branch_exists(config["production"]):
-        base_commit = state.get("head") or repo.git_commit_id("HEAD")
-        if not base_commit:
-            print("Cannot create the production branch: current HEAD has no commit.", file=sys.stderr)
-            return 1
-        code, _, err = repo.run_git(["branch", config["production"], base_commit])
-        if code != 0:
-            print(f"Could not create production branch '{config['production']}': {err}", file=sys.stderr)
-            return 1
-        created_production = True
-    if not repo.branch_exists(config["integration"]):
-        if repo.branch_ref_exists(config["integration"]):
-            print(
-                f"Integration branch '{config['integration']}' exists but does not resolve to a commit. "
-                "Repair that ref manually before rerunning setup.",
-                file=sys.stderr,
-            )
-            return 1
-        production_commit = repo.git_commit_id(f"refs/heads/{config['production']}")
-        if not production_commit:
-            print(
-                f"Cannot create integration branch '{config['integration']}': "
-                f"production branch '{config['production']}' has no commit.",
-                file=sys.stderr,
-            )
-            return 1
-        code, _, err = repo.run_git([
-            "branch", config["integration"], production_commit,
-        ])
-        if code != 0:
-            print(f"Could not create integration branch '{config['integration']}': {err}", file=sys.stderr)
-            return 1
-        created_integration = True
-    if args.json:
-        print(json.dumps({
-            "repo": True,
-            "commitTemplate": os.path.relpath(template, PROJECT).replace(os.sep, "/"),
-            "integration": config["integration"],
-            "production": config["production"],
-            "initializedRepository": initialized,
-            "createdBaseline": created_baseline,
-            "createdProduction": created_production,
-            "createdIntegration": created_integration,
-        }, indent=2))
-        return 0
-    print(f"commit.template = {os.path.relpath(template, PROJECT)}")
-    if initialized:
-        print("Git repository: initialized")
-    if created_baseline:
-        print(f"production branch: {config['production']} (created with the confirmed baseline)")
-    else:
-        print(f"production branch: {config['production']}" + (" (created)" if created_production else " (exists)"))
-    print(f"integration branch: {config['integration']}" + (" (created)" if created_integration else " (exists)"))
-    print("Next: ai task claim <id> --agent <name>, then ai git start ...")
-    return 0
+    return setup_git(yes=bool(getattr(args, "yes", False)), json_out=bool(getattr(args, "json", False)))
 
 
 def cmd_git_start(args) -> int:
-    path = store.find_task(args.task)
+    return start_branch(
+        args.task,
+        args.agent,
+        branch_type=getattr(args, "type", "feature"),
+        base=getattr(args, "base", None),
+        force=bool(getattr(args, "force", False)),
+        carry=bool(getattr(args, "carry", False)),
+        json_out=bool(getattr(args, "json", False)),
+    )
+
+
+def start_branch(
+    task_id: str,
+    agent: str,
+    branch_type: str = "feature",
+    base: str | None = None,
+    force: bool = False,
+    carry: bool = False,
+    json_out: bool = False,
+) -> int:
+    """Create or switch to a task's branch.
+
+    Explicit parameters on purpose: `ai task claim` calls this in-process, and a
+    fabricated argparse Namespace would break silently when a flag is renamed.
+    """
+    path = store.find_task(task_id)
     if not path:
-        print(f"No task with id {args.task}.", file=sys.stderr)
+        print(f"No task with id {task_id}.", file=sys.stderr)
         return 1
     if os.path.dirname(path) != ACTIVE_DIR:
         print("The task is already in done/. Start a branch before finishing it.", file=sys.stderr)
         return 1
     meta, body = store.parse_task(path)
     task_id = str(meta.get("id"))
-    owner_error = store.task_owner_error(meta, args.agent, args.force)
+    owner_error = store.task_owner_error(meta, agent, force)
     if owner_error:
         print(owner_error, file=sys.stderr)
         return 1
@@ -212,17 +92,16 @@ def cmd_git_start(args) -> int:
         print("Not a git repository.", file=sys.stderr)
         return 1
     isolated = repo.git_config()["isolation"] == "worktree"
-    if not isolated and not getattr(args, "carry", False) and not repo.git_clean(ignore_ledger=True):
+    if not isolated and not carry and not repo.git_clean(ignore_ledger=True):
         print(
             "Working tree has product changes (uncommitted or untracked files outside tasks/specs/config). "
             "If they belong to this task, carry them onto the new branch: "
-            f"`ai git start --task {args.task} --agent {args.agent} --carry`. "
+            f"`ai git start --task {task_id} --agent {agent} --carry`. "
             "Otherwise commit or stash them first.",
             file=sys.stderr,
         )
         return 1
     config = repo.git_config()
-    branch_type = args.type
     if branch_type not in config["branchTypes"]:
         print(
             f"Unknown branch type '{branch_type}'. Use one of: {', '.join(config['branchTypes'])}.",
@@ -232,14 +111,14 @@ def cmd_git_start(args) -> int:
     if not repo.branch_exists(config["integration"]):
         print(f"Integration branch '{config['integration']}' is missing. Run `ai git setup`.", file=sys.stderr)
         return 1
-    base = args.base or (
+    base = base or (
         config["production"] if branch_type == "hotfix" else config["integration"]
     )
     if not repo.branch_exists(base):
         print(f"Base branch '{base}' does not exist.", file=sys.stderr)
         return 1
     branch = repo.task_branch_name(meta, branch_type)
-    ok, owned, error = repo.acquire_git_guard(args.agent, task_id)
+    ok, owned, error = repo.acquire_git_guard(agent, task_id)
     if not ok:
         print(error, file=sys.stderr)
         return 1
@@ -269,12 +148,12 @@ def cmd_git_start(args) -> int:
                 action = "created"
         meta["branch"] = branch
         meta["updated"] = iso()
-        body = body.rstrip("\n") + f"\n- {iso()} {action} branch {branch} from {base} by {args.agent}\n"
+        body = body.rstrip("\n") + f"\n- {iso()} {action} branch {branch} from {base} by {agent}\n"
         store.write_task(path, meta, body)
         board.write_board(store.load_tasks())
     finally:
-        repo.release_git_guard(owned, args.agent)
-    if args.json:
+        repo.release_git_guard(owned, agent)
+    if json_out:
         print(json.dumps({"task": task_id, "branch": branch, "base": base, "action": action,
                           "worktree": worktree_path}, indent=2))
     else:
@@ -282,7 +161,7 @@ def cmd_git_start(args) -> int:
         if worktree_path:
             print(f"  worktree: {worktree_path}")
             print("  Edit product files ONLY there (cd into it). Run the workspace CLI by absolute path:")
-            print(f"  {worktrees.cli_command()} now --agent {args.agent}")
+            print(f"  {worktrees.cli_command()} now --agent {agent}")
         else:
             print(f"Task {task_id} now points at that branch. Commit only files you own.")
     return 0
@@ -333,15 +212,8 @@ def _git_commit(args) -> int:
     if not state.get("staged") and not args.allow_empty:
         print("Nothing is staged. Stage only the files you own, then retry.", file=sys.stderr)
         return 1
-    if args.verify:
-        uncovered, _ = repo.uncovered_staged(state)
-        if uncovered:
-            print("Refusing commit; staged paths have no held file lock:", file=sys.stderr)
-            for item in uncovered:
-                print(f"  {item}", file=sys.stderr)
-            return 1
-    scope_problems = task_scope.violations(
-        meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+    scope_problems = task_scope.staged_violations(
+        meta, state.get("staged", []), repo.is_workspace_ledger_path
     )
     if scope_problems and not getattr(args, "force", False):
         print(f"Refusing commit; staged paths leave the scope of task {task_id}:", file=sys.stderr)
@@ -349,6 +221,21 @@ def _git_commit(args) -> int:
             print(f"  {item}", file=sys.stderr)
         print("Unstage them, or widen the task's scope_allowed/scope_forbidden deliberately.", file=sys.stderr)
         return 1
+    # Verification is on by default when the task declares `locks`/scope: the
+    # docs promise a refusal, so silence must not be the difference. `--no-verify`
+    # is the deliberate, visible bypass for a task that only edits ledger files.
+    declared = bool(meta.get("locks") or meta.get("scope_allowed"))
+    verify = bool(getattr(args, "verify", False)) or (
+        declared and not getattr(args, "no_verify", False)
+    )
+    if verify:
+        uncovered, _ = repo.uncovered_staged(state)
+        if uncovered:
+            print("Refusing commit; staged paths have no held file lock:", file=sys.stderr)
+            for item in uncovered:
+                print(f"  {item}", file=sys.stderr)
+            print("Run `ai lock acquire <path>` for each, or pass `--no-verify` deliberately.", file=sys.stderr)
+            return 1
     ok, owned, error = repo.acquire_git_guard(args.agent, task_id)
     if not ok:
         print(error, file=sys.stderr)
@@ -368,8 +255,9 @@ def _git_commit(args) -> int:
         body = body.rstrip("\n") + f"\n- {iso()} committed: {subject}\n"
         if args.ci:
             body += f"- {iso()} CI: {args.ci}\n"
-        store.write_task(path, meta, body)
-        board.write_board(store.load_tasks())
+        with workspace_state_guard():
+            store.write_task(path, meta, body)
+            board.write_board(store.load_tasks())
         amended = repo.commit_task_metadata(path, "", amend=True)
         if amended:
             short = amended
@@ -433,7 +321,9 @@ def cmd_git_finish(args) -> int:
     if not repo.branch_exists(integration):
         print(f"Integration branch '{integration}' is missing. Run `ai git setup`.", file=sys.stderr)
         return 1
-    ok, owned, error = repo.acquire_git_guard(args.agent, task_id)
+    ok, owned, error = repo.acquire_git_guard(
+        args.agent, task_id, ttl=600 + checks_seconds_budget()
+    )
     if not ok:
         print(error, file=sys.stderr)
         return 1
@@ -447,6 +337,13 @@ def cmd_git_finish(args) -> int:
         if check.returncode != 0:
             print("ai check --strict failed; refusing to merge.", file=sys.stderr)
             return 1
+        if not repo.heartbeat_git_guard(args.agent):
+            print(
+                "The git index guard expired while the checks ran; nothing was merged. "
+                "Run `ai git finish` again.",
+                file=sys.stderr,
+            )
+            return 1
         current = repo.git_state().get("branch")
         if current != branch and not worktree:
             code, _, err = repo.run_git(["checkout", branch])
@@ -458,10 +355,23 @@ def cmd_git_finish(args) -> int:
             print(f"Could not switch to {integration}: {err}", file=sys.stderr)
             return 1
         merge_message = f"merge: {branch} ({task_id})"
-        code, _, err = repo.run_git(["merge", "--no-ff", branch, "-m", merge_message])
+        merge_args = ["merge", branch, "-m", merge_message]
+        if config.get("merge") == "ff":
+            merge_args.insert(1, "--ff")
+        else:
+            merge_args.insert(1, "--no-ff")
+        code, _, err = repo.run_git(merge_args)
         if code != 0:
-            repo.run_git(["merge", "--abort"])
-            print(f"Merge failed and was aborted: {err}", file=sys.stderr)
+            abort_code, _, abort_err = repo.run_git(["merge", "--abort"])
+            if abort_code == 0:
+                print(f"Merge failed and was aborted: {err}", file=sys.stderr)
+            else:
+                print(
+                    "Merge failed and could NOT be aborted "
+                    f"({abort_err or 'git merge --abort failed'}); the repository is still mid-merge. "
+                    "Resolve it manually before retrying: " + (err or "unknown merge error"),
+                    file=sys.stderr,
+                )
             return 1
         _, merged_head, _ = repo.run_git(["rev-parse", "--short", "HEAD"])
         deleted = False
@@ -482,8 +392,9 @@ def cmd_git_finish(args) -> int:
         meta["merged_at"] = iso()
         meta["updated"] = iso()
         body = body.rstrip("\n") + f"\n- {iso()} merged {branch} into {integration} by {args.agent}\n"
-        store.write_task(path, meta, body)
-        board.write_board(store.load_tasks())
+        with workspace_state_guard():
+            store.write_task(path, meta, body)
+            board.write_board(store.load_tasks())
         repo.commit_task_metadata(path, f"chore(task): record merge {task_id}")
     finally:
         repo.release_git_guard(owned, args.agent)

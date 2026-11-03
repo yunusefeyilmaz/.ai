@@ -2,33 +2,30 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import io
 import json
 import os
 import sys
 
-from lib.core.paths import (
-    PROJECT,
-    VERSION,
-    WORKSPACE,
-    workspace_shape,
-)
+from lib.cmd.task import claim_task
+from lib.config import adopt as config_adopt
+from lib.config import preferences, settings
 from lib.config.settings import (
     config_path,
     default_config,
     load_config,
 )
 from lib.core.fsio import write_json_atomic
+from lib.core.paths import (
+    PROJECT,
+    VERSION,
+    WORKSPACE,
+    workspace_shape,
+)
+from lib.git import flow, repo
 from lib.runtime.dirs import ensure_dirs
-from lib.config import adopt as config_adopt
-from lib.cmd.task import _claim
-from lib.config import preferences, settings
-from lib.git import flow
-from lib.git import repo
-from lib.tasks import lifecycle
-from lib.tasks import store
+from lib.tasks import lifecycle, store
 
 
 def cmd_start(args) -> int:
@@ -49,22 +46,22 @@ def cmd_start(args) -> int:
             print(f"Could not wire the local adapters: {exc}", file=sys.stderr)
             return 1
 
-    state = repo.git_state()
+    git_state = repo.git_state()
     setup_error = ""
     confirmed = preferences.status()["confirmed"]
     # Never set Git up behind the user's back: only after they chose the workflow.
-    if confirmed and settings.git_enabled() and state.get("repo") and state.get("head"):
+    if confirmed and settings.git_enabled() and git_state.get("repo") and git_state.get("head"):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            setup_code = flow.cmd_git_setup(argparse.Namespace(json=False))
+            setup_code = flow.setup_git()
         if setup_code != 0:
             setup_error = (out.getvalue() + err.getvalue()).strip()
             print(setup_error, file=sys.stderr)
-        state = repo.git_state()
+        git_state = repo.git_state()
     branches = repo.git_config()
     git_ready = bool(
-        state.get("repo")
-        and state.get("head")
+        git_state.get("repo")
+        and git_state.get("head")
         and repo.branch_exists(branches["integration"])
         and repo.branch_exists(branches["production"])
     )
@@ -80,6 +77,7 @@ def cmd_start(args) -> int:
             created = lifecycle.create_task(
                 "Try the workspace",
                 acceptance=["`ai doctor` reports 0 errors", "`ai task show` prints this task"],
+                demo=True,
             )
         except RuntimeError:
             created = None
@@ -93,7 +91,7 @@ def cmd_start(args) -> int:
     if target and args.agent and not target.get("owner"):
         # the same one-command claim workers use (file locks, branch); chatter off stdout for --json
         with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
-            ok, message = _claim(target["_path"], args.agent)
+            ok, message = claim_task(target["_path"], args.agent)
         if ok:
             claimed = True
             target = next(
@@ -108,7 +106,7 @@ def cmd_start(args) -> int:
         next_steps.append("ai git setup")
     if target:
         owner = target.get("owner") or (args.agent if claimed else None)
-        current_branch = state.get("branch")
+        current_branch = git_state.get("branch")
         if owner and target.get("branch") and target.get("branch") == current_branch:
             pass  # The task branch is already checked out.
         elif owner:
@@ -137,9 +135,9 @@ def cmd_start(args) -> int:
             "adapters": [{"path": path, "state": item} for path, item in adapter_report],
             "gitignore": ignore_report,
             "git": {
-                "repo": bool(state.get("repo")),
-                "head": bool(state.get("head")),
-                "branch": state.get("branch"),
+                "repo": bool(git_state.get("repo")),
+                "head": bool(git_state.get("head")),
+                "branch": git_state.get("branch"),
                 "integration": branches["integration"],
                 "production": branches["production"],
                 "ready": git_ready,
@@ -171,7 +169,7 @@ def cmd_start(args) -> int:
             f"Git       : ready (integration {branches['integration']}, "
             f"production {branches['production']})"
         )
-    elif state.get("repo"):
+    elif git_state.get("repo"):
         print("Git       : repository found, Gitflow base missing")
     else:
         print("Git       : not initialized")

@@ -23,12 +23,12 @@ Then:
 3. If no task covers it, split the request into the smallest independently
    verifiable tasks. Each task must fit one agent session and one context window.
 4. Create the tasks with `.ai/ai task new "<imperative title>"
-   --priority <low|medium|high> [--depends-on <ids>]`.
+   --priority <low|medium|high> [--depends-on <ids>] --role chief --agent <you>`.
+   (`ai plan apply plan.json --role chief` is the bulk form.)
    - Set `--depends-on` whenever a task needs another task's output.
    - Do not create a task without testable acceptance criteria.
-5. For every behavior change, create a spec from `.ai/specs/TEMPLATE.md` under
-   `.ai/specs/active/<id>-<slug>.md` and write the acceptance criteria. Link it
-   with `--spec`.
+5. For every behavior change, fill the spec that `ai task new` created under
+   `.ai/specs/active/<id>-<slug>.md`. If you link one by hand, pass `--spec`.
 6. Do not implement anything. Do not claim a task. Do not edit product code.
 7. Finish by printing a short table: id, title, priority, depends_on, spec path,
    and which tasks are ready now.

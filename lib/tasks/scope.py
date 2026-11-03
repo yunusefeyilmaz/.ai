@@ -14,12 +14,18 @@ from __future__ import annotations
 
 import re
 
+from lib.core.fsio import normalize_rel_path
+
 
 def split_globs(raw) -> list[str]:
     if raw is None:
         return []
     items = raw if isinstance(raw, (list, tuple)) else re.split(r"\s*,\s*", str(raw))
-    return [item.strip().replace("\\", "/").lstrip("./") for item in items if item and item.strip() not in ("", "null")]
+    return [
+        normalize_rel_path(item)
+        for item in items
+        if item and item.strip() not in ("", "null")
+    ]
 
 
 def join_globs(values) -> str | None:
@@ -52,10 +58,28 @@ def _regex(pattern: str) -> re.Pattern:
 
 
 def matches(pattern: str, path: str) -> bool:
-    path = path.replace("\\", "/").lstrip("./")
+    # `lstrip("./")` used to be a character strip, so "../secret" became
+    # "secret" and matched an allowed glob. Normalize lexically instead, and
+    # refuse anything that escapes the repository.
+    from lib.core.fsio import normalize_rel_path
+
+    pattern = pattern.replace("\\", "/")
+    path = normalize_rel_path(path)
+    if path == ".." or path.startswith("../"):
+        return False
     if pattern.endswith("/"):
         pattern += "**"
-    return bool(_regex(pattern).match(path))
+    return bool(_regex(normalize_rel_path(pattern)).match(path))
+
+
+def staged_violations(meta: dict, staged: list[str], is_ledger) -> list[str]:
+    """Scope violations for staged product paths.
+
+    Ledger paths (`tasks/`, `specs/`, `config/`, decisions) are the CLI's own
+    bookkeeping and are never in a task's scope. Shared by `ai git commit` and
+    `ai git verify` so the two cannot disagree.
+    """
+    return violations(meta, [path for path in staged if not is_ledger(path)])
 
 
 def violations(meta: dict, paths: list[str]) -> list[str]:

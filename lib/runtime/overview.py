@@ -6,6 +6,8 @@ this structure. Keep it small: every extra line costs an agent tokens.
 
 from __future__ import annotations
 
+import shlex
+
 from lib.config import preferences, roles as roles_cfg
 from lib.config import settings
 from lib.config.settings import load_config
@@ -37,6 +39,75 @@ def _line_of(task: dict) -> str:
     return f"{task.get('id')} [{task.get('priority') or '-'}] {task.get('title')}"
 
 
+def _argv(cmd: str | None) -> list[str]:
+    """`ai task next --agent x` -> `['task', 'next', '--agent', 'x']`.
+
+    The JSON contract hands a harness an argv it can run unchanged; the printed
+    line stays as it is. A command that is not `ai ...` is kept whole so nothing
+    is silently dropped.
+    """
+    if not cmd:
+        return []
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:  # unbalanced quotes in a message: never crash the overview
+        return []
+    return tokens[1:] if tokens[:1] == ["ai"] else tokens
+
+
+def _human_question(recommended: dict) -> str | None:
+    """The question to put to the user when the next move is theirs, else None.
+
+    Derived from the recommendation so JSON consumers never have to read the
+    prose in `why` to know whether the agent should act or ask.
+    """
+    cmd = str(recommended.get("cmd") or "")
+    why = str(recommended.get("why") or "")
+    if cmd == "ai setup":
+        return (
+            "Before planning: how much process do you want for this project "
+            "(independent review, checks required, Git, tests, auto-continue, number of workers)?"
+        )
+    if not cmd:
+        return why or "nothing can proceed without a decision from the user"
+    return None
+
+
+def _contract(recommended: dict) -> dict:
+    """Attach the machine-readable part of a recommendation (args, needs_human)."""
+    question = _human_question(recommended)
+    recommended["next_args"] = _argv(recommended.get("cmd"))
+    recommended["needs_human"] = question is not None
+    recommended["question"] = question
+    recommended["blocker"] = (question or "nothing to do") if question is not None else None
+    return recommended
+
+
+def _answer_text(value) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return str(value)
+
+
+def _setup_extras(preference_state: dict) -> list[str]:
+    """The chief's unanswered questions, inline, so `ai now` is self-contained."""
+    rows = preference_state["questions"]
+    pending = [row for row in rows if not row["answered"]]
+    if not pending:
+        return []
+    asks = ", ".join(
+        f"{row['key']} ({'yes' if row['recommended'] is True else 'no' if row['recommended'] is False else row['recommended']})"
+        for row in pending
+    )
+    answers = " ".join(f"{row['key']}={_answer_text(row['recommended'])}" for row in rows)
+    command = f"then: ai setup --set {answers}"
+    if not preference_state["checks"]:
+        command += ' --check "tests=<command>"'
+    return [f"ask the user: {asks}", command]
+
+
 def build(agent: str | None = None, history: int = 5, role: str | None = None) -> dict:
     config = load_config()
     tasks = store.load_tasks()
@@ -66,12 +137,13 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
 
     git_on = settings.git_enabled()
     role = resolve_role(agent, role)
-    confirmed = preferences.status(config)["confirmed"]
+    preference_state = preferences.status(config)
+    confirmed = preference_state["confirmed"]
     autocontinue = bool((config.get("workflow") or {}).get("autoContinue", False))
     delivered = [t for t in active if agent and t.get("status") == "review" and t.get("submitted_by") == agent]
     rework = [t for t in ready_all if agent and t.get("status") == "changes_requested" and t.get("submitted_by") == agent]
     who = agent or "<n>"
-    nothing = {"task": None, "cmd": None, "extra": []}
+    nothing: dict = {"task": None, "cmd": None, "extra": []}
 
     if mine:
         task = sorted(mine, key=lambda t: str(t.get("updated") or ""), reverse=True)[0]
@@ -85,10 +157,10 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
         h = handoffs[0]
         recommended = {"task": h.get("task"), "cmd": f"ai resume {h.get('task')}", "why": f"handoff from {h.get('agent')}: {h.get('reason')}", "extra": []}
     elif not active and not done and not confirmed:
-        recommended = {**nothing, "cmd": "ai setup", "why": "new project: ask the user which workflow features to use (review, checks, git, tests), then store the answers"}
+        recommended = {**nothing, "cmd": "ai setup", "extra": _setup_extras(preference_state), "why": "new project: ask the user which workflow features to use (review, checks, git, tests), then store the answers"}
     elif role == "chief" or (role is None and not active and not done):
         if not confirmed:
-            recommended = {**nothing, "cmd": "ai setup", "why": "ask the user the setup questions first; answers are stored in config"}
+            recommended = {**nothing, "cmd": "ai setup", "extra": _setup_extras(preference_state), "why": "ask the user the setup questions first; answers are stored in config"}
         elif not active:
             recommended = {**nothing, "cmd": "ai plan apply plan.json", "why": "no tasks yet: split the request into linked tasks (see `ai plan example`), then fill each spec"}
         else:
@@ -111,6 +183,8 @@ def build(agent: str | None = None, history: int = 5, role: str | None = None) -
             recommended = {"task": review_queue[0].get("id"), "cmd": f"ai task next --review --agent {who}", "why": "no ready work; a task waits for independent review", "extra": []}
         else:
             recommended = {**nothing, "why": "nothing is ready; tell the user and stop (the chief plans new work)"}
+
+    _contract(recommended)
 
     last_done = sorted(done, key=lambda t: str(t.get("updated") or ""), reverse=True)[:history]
     events = [e for e in read_events() if str(e.get("event", "")).startswith(("task_", "checkpoint", "resume"))][-history * 2:]

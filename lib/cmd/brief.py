@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 
+from lib.config.settings import load_config
+from lib.core.fsio import read_text
 from lib.core.paths import (
     PROJECT,
     ws_prefix,
     ws_rel,
 )
-from lib.config.settings import load_config
-from lib.core.fsio import read_text
 from lib.core.timeutil import iso
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
@@ -71,7 +71,7 @@ def cmd_brief(args) -> int:
             f"Priority:   {meta.get('priority') or '-'}",
             f"Spec:       {ws_rel(spec_path) if spec_path else (meta.get('spec') or 'none')}",
             f"Depends on: {meta.get('depends_on') or '-'}",
-            f"File:       {ws_rel(task_path)}",
+            f"File:       {ws_rel(task_path) if task_path else '-'}",
             "",
             (body or "(task body is empty)").strip(),
             "",

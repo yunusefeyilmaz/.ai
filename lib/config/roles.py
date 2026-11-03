@@ -25,6 +25,7 @@ from __future__ import annotations
 from lib.config.settings import load_config
 
 DEFAULT_ROLES = {
+    "chief": ["*"],  # the planning role in AGENTS.md; an alias of orchestrator
     "planner": ["task.new"],
     "implementer": ["task.claim", "task.review"],
     "reviewer": ["task.request_changes", "task.done", "git.finish"],

@@ -48,12 +48,21 @@ class SetupTest(WorkspaceCase):
         self.assertEqual(run(workspace, "setup", "--set", "review=maybe").returncode, 1)
         self.assertEqual(run(workspace, "setup", "--set", "colour=red").returncode, 1)
 
-    def test_defaults_and_check_commands(self) -> None:
+    def test_explicit_answers_and_check_commands(self) -> None:
         workspace = self.make_workspace(git_repo=False)
-        done = run(workspace, "setup", "--defaults", "--check", "unit=python -c \"print(1)\"")
+        done = run(
+            workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes",
+            "--check", 'unit=python -c "print(1)"',
+        )
         self.assertEqual(done.returncode, 0, done.stderr)
         config = json.loads((workspace / "config" / "workspace.json").read_text(encoding="utf-8"))
-        self.assertEqual(config["checks"], [{"name": "unit", "command": "python -c \"print(1)\""}])
+        self.assertEqual(len(config["checks"]), 1)
+        entry = config["checks"][0]
+        self.assertEqual(entry["name"], "unit")
+        self.assertEqual(entry["command"], "python -c \"print(1)\"")
+        # provenance: a persisted shell command says who added it and when
+        self.assertIn("addedBy", entry)
+        self.assertIn("addedAt", entry)
 
 
 class PlanTest(WorkspaceCase):
@@ -123,8 +132,8 @@ class WorkerFlowTest(WorkspaceCase):
         second = run(workspace, "task", "next", "--agent", "w2")
         self.assertEqual((first.returncode, second.returncode), (0, 0), first.stderr + second.stderr)
         self.assertNotEqual(
-            [l for l in first.stdout.splitlines() if l.startswith("Claimed")],
-            [l for l in second.stdout.splitlines() if l.startswith("Claimed")],
+            [line for line in first.stdout.splitlines() if line.startswith("Claimed")],
+            [line for line in second.stdout.splitlines() if line.startswith("Claimed")],
         )
 
     def test_conflicting_file_locks_refuse_the_claim(self) -> None:
@@ -175,7 +184,7 @@ class WorkerFlowTest(WorkspaceCase):
 class ReviewerFlowTest(WorkspaceCase):
     def delivered(self):
         workspace = self.make_workspace(git_repo=False)
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "setup", "--set", "checks=no", "git=no")
         run(workspace, "plan", "apply", write_plan(workspace))
         run(workspace, "task", "next", "--agent", "w1")

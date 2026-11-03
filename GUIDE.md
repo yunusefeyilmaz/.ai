@@ -89,8 +89,7 @@ ai lock acquire src/billing --agent implementer --task 0001
 ai check --fast
 
 # 5. Save your position before the context fills
-ai checkpoint 0001 --agent implementer --percent 70 \
-  --next "write the CSV writer" --files src/billing/export.py
+ai checkpoint 0001 --agent implementer --percent 70 --next "write the CSV writer" --files src/billing/export.py
 
 # 6. Prove it, then submit for review
 ai check
@@ -129,6 +128,7 @@ Only the chief creates tasks, and only after the user's answers are stored.
 ai now [--agent <name>] [--role chief|implementer|reviewer] [--json]
 ai context [--limit N] [--json]
 ai history <task> [--evidence] [--json]
+ai review <task> [--stat] [--max-lines N] [--json]   # the whole review package, read-only
 ai decision new "<title>" | list [--json]
 ai worktree list [--json] | path <task> | prune [--force]
 ai version
@@ -152,7 +152,7 @@ Without a commit it only prints `ai git setup`; it never prompts or force-claims
 
 ```sh
 ai doctor [--fix] [--strict] [--json]
-ai check [--fast] [--strict] [--json] [--no-commands]
+ai check [--fast] [--strict] [--json] [--no-commands] [--task <id>] [--agent <name>]
 ai status [--json] [--board]
 ai metrics [--json] [--since YYYY-MM-DD]
 ai capabilities
@@ -173,7 +173,10 @@ Without `--fix`, `doctor` and `check` only read: a missing runtime tree stays
 missing until you repair it on purpose.
 
 `--strict` promotes warnings to failures; it is meant for CI (`doctor --strict`,
-`check --strict`), not for agents' normal loop. `ai check` runs only the
+`check --strict`). `ai check --task <id> --agent <name>` records the per-task
+evidence the review gate reads, and `--strict --task` records that same
+evidence with warnings promoted, so CI and the reviewer read one record.
+`ai check` runs only the
 *project's* commands from `checks` in `config/workspace.json` (empty by default:
 add your test/lint commands). It never runs the workspace's own tests in
 `lib/tests/`. `--fast` runs only checks marked fast in
@@ -202,7 +205,7 @@ seconds. No event data is uploaded.
 ### Task ledger
 
 ```sh
-ai task new "<title>" [--priority low|medium|high] [--spec <path>] [--no-spec] [--depends-on 0002]
+ai task new "<title>" --role chief --agent <name> [--priority low|medium|high] [--allow GLOB] [--forbid GLOB] [--lock GLOB] [--spec <path>] [--no-spec] [--depends-on 0002]
 ai task list [--all] [--json]
 ai task show <id> [--json]
 ai task ready [--json]                 # claimable: todo, deps done, no live lease
@@ -386,16 +389,7 @@ Do not write secrets or personal data into a checkpoint. Do not assume the next
 agent can see this conversation.
 
 ```sh
-ai checkpoint 0007 --agent codex --reason context --percent 85 \
-  --objective "Export invoices as CSV" \
-  --status "writer raises KeyError on missing vat_id" \
-  --done "parser and 12 tests" \
-  --in-progress "writer.py:84, empty-row branch" \
-  --next "1. handle missing vat_id 2. add empty-row test 3. npm test" \
-  --decisions "stdlib csv only" \
-  --do-not "do not rewrite the parser" \
-  --files src/export/writer.py \
-  --verification "npm test: 12 passed, 1 failing"
+ai checkpoint 0007 --agent codex --reason context --percent 85 --objective "Export invoices as CSV" --status "writer raises KeyError on missing vat_id" --done "parser and 12 tests" --in-progress "writer.py:84, empty-row branch" --next "1. handle missing vat_id 2. add empty-row test 3. npm test" --decisions "stdlib csv only" --do-not "do not rewrite the parser" --files src/export/writer.py --verification "npm test: 12 passed, 1 failing"
 
 ai handoff 0007 --agent codex --reason "context limit"
 ```
@@ -521,10 +515,12 @@ from the first unchecked next step. Do not repeat finished work.
 ### Independent review
 
 ```text
-You are the reviewer, not the producer. Read the spec, the task and the diff
-against the base branch. Check each acceptance criterion with file:line evidence,
-then look for missing tests, security problems and scope creep. Do not edit the
-implementation. Report PASS or FAIL and run `ai check`.
+You are the reviewer, not the producer. Run `ai review <id>`: it prints the task,
+the spec with its acceptance criteria, the diff against the integration branch,
+the recorded check evidence and the history, and it writes nothing. Check each
+acceptance criterion with file:line evidence, then look for missing tests,
+security problems and scope creep. Do not edit the implementation. Report PASS or
+FAIL and run `ai check`.
 ```
 
 ### Repairing a session
@@ -544,6 +540,7 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | `todo` | none | Ready to be claimed |
 | `in_progress` | set | Being worked on; task lease held |
 | `review` | optional | Implementation finished; independent check pending |
+| `changes_requested` | none | A reviewer sent it back; reason in `ai history`; ready for rework |
 | `blocked` | optional | Waiting on a person or another task |
 | `done` | none | Archived under `tasks/done/` |
 

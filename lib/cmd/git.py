@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 import sys
 
+from lib.git import flow, repo
 from lib.runtime.leases import (
     acquire_lock,
     release_lock,
 )
-from lib.git import flow
-from lib.git import repo
 from lib.tasks import scope as task_scope
 from lib.tasks import store
 
@@ -53,8 +52,8 @@ def cmd_git(args) -> int:
             state = repo.git_state()
     uncovered, locks = repo.uncovered_staged(state)
     if getattr(args, "task", None):
-        out_of_scope = task_scope.violations(
-            meta, [p for p in state.get("staged", []) if not repo.is_workspace_ledger_path(p)]
+        out_of_scope = task_scope.staged_violations(
+            meta, state.get("staged", []), repo.is_workspace_ledger_path
         )
     if args.json:
         print(json.dumps({"staged": state.get("staged", []), "uncovered": uncovered,
@@ -105,7 +104,14 @@ def register(sub) -> None:
     git_commit.add_argument("--message", required=True)
     git_commit.add_argument("--body", default="")
     git_commit.add_argument("--allow-empty", action="store_true")
-    git_commit.add_argument("--verify", action="store_true", help="require a held lock for each staged path")
+    git_commit.add_argument(
+        "--verify", action="store_true",
+        help="require a held lock for each staged path (automatic when the task declares locks/scope)",
+    )
+    git_commit.add_argument(
+        "--no-verify", action="store_true",
+        help="skip the lock check for a task that declares locks/scope (deliberate bypass)",
+    )
     git_commit.add_argument("--force", action="store_true")
     git_commit.add_argument("--json", action="store_true")
     git_commit.add_argument("--ci", default=None, help="record CI result URL or identifier in task log")

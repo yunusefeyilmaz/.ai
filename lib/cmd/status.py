@@ -4,22 +4,22 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
+from lib.config.settings import load_config
+from lib.core.fsio import CorruptStateError, read_json
 from lib.core.paths import (
     CHECKPOINT_DIR,
     MANIFEST_PATH,
     PROJECT,
     WORKSPACE,
 )
-from lib.config.settings import load_config
-from lib.core.fsio import read_json
+from lib.runtime import checkpoints as ckpt
 from lib.runtime.leases import (
     list_locks,
     print_lock_table,
 )
-from lib.runtime import checkpoints as ckpt
-from lib.tasks import board
-from lib.tasks import store
+from lib.tasks import board, store
 
 
 def cmd_status(args) -> int:
@@ -30,7 +30,13 @@ def cmd_status(args) -> int:
         return 0
     active = [task for task in tasks if task["_folder"] == "active"]
     locks = list_locks()
-    artifacts = read_json(MANIFEST_PATH) or []
+    try:
+        artifacts = read_json(MANIFEST_PATH) or []
+    except CorruptStateError as exc:
+        # A summary command must still print the rest of the workspace; the
+        # damage is named here and `ai doctor` gives the repair.
+        print(f"WARN  artifact manifest is unreadable: {exc}", file=sys.stderr)
+        artifacts = []
     markers = ckpt.list_handoff_markers()
     checkpoints = [
         {"task": path.split(os.sep)[-1][:-3], "age_minutes": ckpt.checkpoint_age_minutes(path.split(os.sep)[-1][:-3])}
@@ -61,12 +67,12 @@ def cmd_status(args) -> int:
     print(f"Artifacts  : {len(artifacts)} quarantined")
     print()
     if active:
-        print(f"{'ID':<6} {'STATUS':<12} {'OWNER':<18} TITLE")
-        for task in active:
-            print(
-                f"{str(task.get('id')):<6} {str(task.get('status')):<12} "
-                f"{str(task.get('owner') or '-'):<18} {task.get('title')}"
-            )
+        for line in board.text_table(
+            [("ID", 6), ("STATUS", 12), ("OWNER", 18), ("TITLE", 0)],
+            [[task.get("id"), task.get("status"), task.get("owner"), task.get("title")]
+             for task in active],
+        ):
+            print(line)
         print()
     for marker in markers:
         print(f"HANDOFF    task {marker.get('task')} requested by {marker.get('agent')} ({marker.get('reason')})")

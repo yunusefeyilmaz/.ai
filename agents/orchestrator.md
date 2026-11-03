@@ -33,7 +33,8 @@ orchestrator keeps the loop moving without doing the other roles' work.
 
 ## Outputs
 
-- A claimed task, a clear next role, and an updated task log.
+- Tasks and filled specs, ready for an implementer to claim.
+- A clear next role and an updated task log (the orchestrator does not claim work).
 - An ADR when a lasting decision is made.
 
 ## Refusals

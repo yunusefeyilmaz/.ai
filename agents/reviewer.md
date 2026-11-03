@@ -37,8 +37,10 @@ session that did not produce it.
 
 ## Handoff
 
-Set `status: review` (awaiting triage) or `blocked` with the verdict and the
-first three things to address.
+Record the verdict in the task log and use the real verdict commands:
+`ai task done <id> --agent <n>` (approve), `ai task request-changes <id> --agent
+<n> --reason "..."` (send back), or `ai task block <id> --agent <n> --reason
+"..."` (needs a human). Do not hand-edit `status:`.
 
 ## Reviewer loop
 

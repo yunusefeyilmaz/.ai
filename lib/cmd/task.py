@@ -2,28 +2,33 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import os
 import sys
 
+from lib.config import roles, settings
+from lib.config.settings import lock_settings
+from lib.core.fsio import (
+    CorruptStateError,
+    lock_path,
+    normalize_id,
+    read_json,
+)
 from lib.core.paths import (
     ACTIVE_DIR,
     DONE_DIR,
     PROJECT,
     WORKSPACE,
 )
-from lib.config.settings import lock_settings
-from lib.core.fsio import (
-    lock_path,
-    normalize_id,
-    read_json,
-)
 from lib.core.timeutil import iso
+from lib.git import flow, repo, worktrees
+from lib.runtime import checkpoints as ckpt
+from lib.runtime import evidence, health
 from lib.runtime.events import append_event
 from lib.runtime.leases import (
     acquire_lock,
+    effective_holder,
     list_locks,
     lock_is_stale,
     release_lock,
@@ -33,22 +38,8 @@ from lib.runtime.mutex import (
     registry_mutex,
     workspace_state_guard,
 )
-from lib.runtime import checkpoints as ckpt
-from lib.config import roles
-from lib.config import settings
-from lib.git import flow
-from lib.git import repo
-from lib.runtime import evidence
 from lib.specs import spec as spec_lib
-from lib.runtime import health
-from lib.tasks import gates
-from lib.tasks import history
-from lib.tasks import scope
-from lib.tasks import board
-from lib.tasks import discard
-from lib.tasks import lifecycle
-from lib.tasks import links
-from lib.tasks import store
+from lib.tasks import board, discard, gates, history, lifecycle, links, scope, store, transition
 
 
 def cmd_task_new(args) -> int:
@@ -72,7 +63,8 @@ def cmd_task_new(args) -> int:
             locks=scope.join_globs(getattr(args, "lock", None)),
             actor=getattr(args, "agent", None),
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        print(f"Cannot create the task: {exc}.", file=sys.stderr)
         return 1
     print(f"Created {os.path.relpath(created['path'], PROJECT)}")
     if created["spec"]:
@@ -94,12 +86,13 @@ def cmd_task_list(args) -> int:
     if args.json:
         print(json.dumps({"active": active, "done": done}, indent=2, default=str))
         return 0
-    print(f"{'ID':<6} {'FOLDER':<8} {'STATUS':<12} {'OWNER':<18} TITLE")
-    for task in active + done if args.all else active:
-        print(
-            f"{str(task.get('id')):<6} {task['_folder']:<8} {str(task.get('status')):<12} "
-            f"{str(task.get('owner') or '-'):<18} {task.get('title')}"
-        )
+    shown = active + done if args.all else active
+    for line in board.text_table(
+        [("ID", 6), ("FOLDER", 8), ("STATUS", 12), ("OWNER", 18), ("TITLE", 0)],
+        [[task.get("id"), task["_folder"], task.get("status"), task.get("owner"), task.get("title")]
+         for task in shown],
+    ):
+        print(line)
     print(f"\nActive: {len(active)} | Done: {len(done)} | Board: tasks/BOARD.md")
     return 0
 
@@ -133,6 +126,11 @@ def cmd_task_show(args) -> int:
     return 0
 
 
+def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
+    """Public one-command claim, shared with `ai start` (no fabricated args)."""
+    return _claim(path, agent, force)
+
+
 def cmd_task_claim(args) -> int:
     path = store.find_task(args.task_id)
     if not path:
@@ -150,30 +148,53 @@ def _claim(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     """Claim a task and do the standard set-up so the worker does not have to.
 
     One command: task lock + in_progress, every file lock the task declared
-    (all or nothing), and the task branch when Git is enabled.
+    (all or nothing), and the task branch when Git is enabled. The claim is
+    atomic: if the branch cannot start, the task and its locks are released
+    again so the next agent is not stuck behind a half-claim.
     """
     meta, _ = store.parse_task(path)
-    held_ok, held = lifecycle.acquire_task_locks(meta, agent) if meta.get("status") != "review" else (True, "")
+    previous_status = meta.get("status")
+    held_ok, held = lifecycle.acquire_task_locks(meta, agent) if previous_status != "review" else (True, "")
     if not held_ok:
         return False, held
     ok, message = lifecycle.claim_task(path, agent, force)
     if not ok:
-        if meta.get("status") != "review":
+        if previous_status != "review":
             lifecycle.release_task_locks(meta, agent)
         return False, message
+    if previous_status != "review" and settings.git_enabled():
+        state = repo.git_state()
+        integration = repo.git_config()["integration"]
+        if not state.get("repo") or not state.get("head"):
+            print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
+        elif not repo.branch_exists(integration):
+            print(
+                f"  git: integration branch '{integration}' is missing; run `ai git setup` once, "
+                "then `ai git start` for this task."
+            )
+        else:
+            try:
+                started = flow.start_branch(message, agent)
+            except Exception as exc:  # noqa: BLE001 - a failed branch must roll the claim back
+                print(f"  git: starting the task branch raised: {exc}", file=sys.stderr)
+                started = 1
+            if started != 0:
+                rolled_back = lifecycle.rollback_claim(
+                    path, agent, previous_status, "the task branch could not start"
+                )
+                if rolled_back is None:
+                    return False, (
+                        f"Task {message} changed while its branch was starting; "
+                        "inspect it with `ai task show " + str(message) + "`."
+                    )
+                return False, (
+                    f"Claim of {message} was rolled back: the task branch could not start. "
+                    "The task is unowned again and its file locks were released; fix the Git "
+                    f"problem, then reclaim with `ai task claim {message} --agent {agent}`."
+                )
     print(f"Claimed {message} for {agent}.")
     if held:
         print(f"  file locks: {held}")
-    if meta.get("status") != "review" and settings.git_enabled():
-        state = repo.git_state()
-        if not state.get("repo") or not state.get("head"):
-            print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
-        else:
-            started = flow.cmd_git_start(argparse.Namespace(
-                task=message, agent=agent, type="feature", base=None, force=False, json=False, carry=False,
-            ))
-            if started != 0:
-                print(f"  git: could not start the task branch; fix the message above, then `ai git start --task {message} --agent {agent}`.")
     return True, message
 
 
@@ -186,12 +207,12 @@ def cmd_task_ready(args) -> int:
         }, indent=2, default=str))
         return 0
     if ready:
-        print(f"{'ID':<6} {'PRIORITY':<10} {'SPEC':<28} TITLE")
-        for task in ready:
-            print(
-                f"{str(task.get('id')):<6} {str(task.get('priority') or '-'):<10} "
-                f"{str(task.get('spec') or '-'):<28} {task.get('title')}"
-            )
+        for line in board.text_table(
+            [("ID", 6), ("PRIORITY", 10), ("SPEC", 28), ("TITLE", 0)],
+            [[task.get("id"), task.get("priority"), task.get("spec"), task.get("title")]
+             for task in ready],
+        ):
+            print(line)
     else:
         print("No ready task.")
     if waiting:
@@ -214,7 +235,11 @@ def _next_review(args) -> int:
         if not ok:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
-        meta, _ = store.parse_task(store.find_task(message))
+        claimed_path = store.find_task(message)
+        if not claimed_path:
+            print(f"Claimed {message}, but its task file disappeared.", file=sys.stderr)
+            return 1
+        meta, _ = store.parse_task(claimed_path)
         if args.json:
             print(json.dumps({"meta": meta}, indent=2, default=str))
             return 0
@@ -241,13 +266,23 @@ def cmd_task_next(args) -> int:
             print(f"Skipped {task.get('id')}: {message}", file=sys.stderr)
             continue
         claimed_path = store.find_task(message)
+        if not claimed_path:
+            print(f"Claimed {message}, but its task file disappeared.", file=sys.stderr)
+            return 1
         meta, body = store.parse_task(claimed_path)
         if args.json:
-            print(json.dumps({"meta": meta, "body": body}, indent=2, default=str))
+            payload: dict = {"meta": meta, "body": body}
+            if meta.get("worktree"):
+                payload["worktree"] = meta.get("worktree")
+                payload["cli"] = worktrees.cli_command()
+            print(json.dumps(payload, indent=2, default=str))
             return 0
         print(f"Task: {meta.get('title')}")
         if meta.get("spec"):
             print(f"Spec: {meta.get('spec')}")
+        if meta.get("worktree"):
+            print(f"Worktree: {meta.get('worktree')} (cd there; run the CLI by absolute path)")
+            print(f"CLI: {worktrees.cli_command()}")
         print(f"Read it: ai task show {message}")
         return 0
     if args.json:
@@ -351,47 +386,53 @@ def cmd_task_review(args) -> int:
     if not path or os.path.dirname(path) != ACTIVE_DIR:
         print(f"No active task with id {args.task_id}.", file=sys.stderr)
         return 1
+    current_meta, _ = store.parse_task(path)
+    git_error = gates.review_git_gate(current_meta, args.agent, include_evidence=False)
+    if git_error:
+        print(git_error, file=sys.stderr)
+        return 1
     auto_error = _auto_verify(path, args.agent)
     if auto_error:
         print(auto_error, file=sys.stderr)
         return 1
-    try:
-        with workspace_state_guard():
-            current_path = store.find_task(args.task_id)
-            if current_path != path or os.path.dirname(current_path or "") != ACTIVE_DIR:
-                print(f"Task {args.task_id} changed before review.", file=sys.stderr)
-                return 1
-            meta, body = store.parse_task(current_path)
-            task_id = str(meta.get("id"))
-            if meta.get("status") != "in_progress":
-                print(f"Task {task_id} must be in_progress to enter review.", file=sys.stderr)
-                return 1
-            if meta.get("owner") != args.agent:
-                print(f"Task {task_id} is not owned by {args.agent}.", file=sys.stderr)
-                return 1
+    def mutate(meta, body):
+        task_id = str(meta.get("id"))
+        if meta.get("status") != "in_progress":
+            raise transition.Refused(f"Task {task_id} must be in_progress to enter review.")
+        if meta.get("owner") != args.agent:
+            raise transition.Refused(f"Task {task_id} is not owned by {args.agent}.")
+        try:
             holder = read_json(lock_path(f"task-{task_id}")) or {}
-            if holder.get("agent") != args.agent:
-                print(f"Task {task_id} does not have a live claim for {args.agent}.", file=sys.stderr)
-                return 1
-            denied = roles.authorize(args.agent, "task.review")
-            if denied:
-                print(denied, file=sys.stderr)
-                return 1
-            gate_error, proof = gates.review_gate(meta, args.agent)
-            if gate_error:
-                print(gate_error, file=sys.stderr)
-                return 1
-            meta["status"] = "review"
-            meta["submitted_by"] = args.agent
-            meta["owner"] = None   # delivery hands the task over: no separate release step
-            meta["lock"] = None
-            meta["updated"] = iso()
-            body = history.append(body, args.agent, "in_progress", "review", "submitted for independent review", proof)
-            store.write_task(current_path, meta, body)
-            board.write_board(store.load_tasks())
-    except RuntimeError as exc:
+        except CorruptStateError:
+            holder = {}
+        if holder.get("agent") != args.agent:
+            raise transition.Refused(f"Task {task_id} does not have a live claim for {args.agent}.")
+        denied = roles.authorize(args.agent, "task.review")
+        if denied:
+            raise transition.Refused(denied)
+        gate_error, proof = gates.review_gate(meta, args.agent)
+        if gate_error:
+            raise transition.Refused(gate_error)
+        git_gate_error = gates.review_git_gate(meta, args.agent)
+        if git_gate_error:
+            raise transition.Refused(git_gate_error)
+        meta["status"] = "review"
+        meta["submitted_by"] = args.agent
+        meta["owner"] = None   # delivery hands the task over: no separate release step
+        meta["lock"] = None
+        return history.append(
+            body, args.agent, "in_progress", "review", "submitted for independent review", proof
+        )
+
+    try:
+        meta = transition.apply(args.task_id, path, mutate, active_only=True)
+    except transition.Refused as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except transition.GuardError as exc:
         print(f"Cannot submit task {args.task_id} for review: {exc}.", file=sys.stderr)
         return 1
+    task_id = str(meta.get("id"))
     append_event("task_reviewed", task=task_id, agent=args.agent)
     lifecycle.release_task_locks(meta, args.agent)
     release_lock(f"task-{task_id}", agent=args.agent, quiet=True)
@@ -411,30 +452,26 @@ def cmd_task_request_changes(args) -> int:
     if denied:
         print(denied, file=sys.stderr)
         return 1
+    def mutate(meta, body):
+        gate_error = gates.request_changes_gate(meta, args.agent)
+        if gate_error:
+            raise transition.Refused(gate_error)
+        meta["status"] = "changes_requested"
+        meta["changes_requested_by"] = args.agent
+        meta["owner"] = None
+        meta["lock"] = None
+        return history.append(body, args.agent, "review", "changes_requested", args.reason)
+
     try:
-        with workspace_state_guard():
-            current_path = store.find_task(args.task_id)
-            if current_path != path:
-                print(f"Task {args.task_id} changed before changes could be requested.", file=sys.stderr)
-                return 1
-            meta, body = store.parse_task(current_path)
-            task_id = str(meta.get("id"))
-            gate_error = gates.request_changes_gate(meta, args.agent)
-            if gate_error:
-                print(gate_error, file=sys.stderr)
-                return 1
-            meta["status"] = "changes_requested"
-            meta["changes_requested_by"] = args.agent
-            meta["owner"] = None
-            meta["lock"] = None
-            meta["updated"] = iso()
-            body = history.append(body, args.agent, "review", "changes_requested", args.reason)
-            store.write_task(current_path, meta, body)
-            board.write_board(store.load_tasks())
-        release_lock(f"task-{task_id}", force=True)
-    except RuntimeError as exc:
+        meta = transition.apply(args.task_id, path, mutate, active_only=True)
+    except transition.Refused as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except transition.GuardError as exc:
         print(f"Cannot request changes on task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
+    task_id = str(meta.get("id"))
+    release_lock(f"task-{task_id}", force=True)
     evidence.invalidate(task_id, f"changes requested by {args.agent}")
     append_event("task_changes_requested", task=task_id, agent=args.agent)
     print(f"Task {task_id} sent back to its producer ({meta.get('submitted_by')}): {args.reason}")
@@ -447,22 +484,42 @@ def cmd_task_block(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
+    meta, _ = store.parse_task(path)
+    owner = meta.get("owner")
+    if owner and owner != args.agent:
+        print(
+            f"Task {args.task_id} is owned by {owner}; only the owner (or the chief) may block it.",
+            file=sys.stderr,
+        )
+        return 1
+    task_id = str(meta.get("id"))
+
+    def mutate(current, body):
+        previous = current.get("status")
+        if previous == "blocked":
+            raise transition.Skip(f"Task {task_id} is already blocked.")
+        current["blocked_from"] = previous
+        current["status"] = "blocked"
+        if previous == "in_progress":
+            # A blocked worker no longer holds the task: release ownership
+            # and its claim lease so it is not reported as "leased by X".
+            current["owner"] = None
+            current["lock"] = None
+        return history.append(body, args.agent, previous, "blocked", args.reason)
+
     try:
-        with workspace_state_guard():
-            current_path = store.find_task(args.task_id)
-            if current_path != path:
-                print(f"Task {args.task_id} changed before it could be blocked.", file=sys.stderr)
-                return 1
-            meta, body = store.parse_task(current_path)
-            previous = meta.get("status")
-            meta["status"] = "blocked"
-            meta["updated"] = iso()
-            body = history.append(body, args.agent, previous, "blocked", args.reason)
-            store.write_task(current_path, meta, body)
-            board.write_board(store.load_tasks())
-    except RuntimeError as exc:
+        meta = transition.apply(args.task_id, path, mutate)
+    except transition.Skip as exc:
+        print(str(exc))
+        return 0
+    except transition.Refused as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except transition.GuardError as exc:
         print(f"Cannot block task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
+    if meta.get("blocked_from") == "in_progress":
+        release_lock(f"task-{task_id}", force=True)
     print(f"Blocked {meta.get('id')}: {args.reason}")
     return 0
 
@@ -472,23 +529,33 @@ def cmd_task_unblock(args) -> int:
     if not path:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
+    def mutate(meta, body):
+        previous = meta.get("status")
+        if previous != "blocked":
+            raise transition.Refused(
+                f"Task {args.task_id} is {previous or 'unknown'}, not blocked."
+            )
+        restore = meta.get("blocked_from")
+        if restore not in ("review", "changes_requested"):
+            # in_progress is deliberately not restored: the worker that was
+            # interrupted must reclaim the task and its lease explicitly.
+            restore = "todo"
+        meta["status"] = restore
+        meta.pop("blocked_from", None)
+        if restore == "todo":
+            meta["owner"] = None
+            meta["lock"] = None
+        return history.append(body, args.agent, previous, restore, "unblocked")
+
     try:
-        with workspace_state_guard():
-            current_path = store.find_task(args.task_id)
-            if current_path != path:
-                print(f"Task {args.task_id} changed before it could be unblocked.", file=sys.stderr)
-                return 1
-            meta, body = store.parse_task(current_path)
-            previous = meta.get("status")
-            meta["status"] = "todo"
-            meta["updated"] = iso()
-            body = history.append(body, args.agent, previous, "todo", "unblocked")
-            store.write_task(current_path, meta, body)
-            board.write_board(store.load_tasks())
-    except RuntimeError as exc:
+        meta = transition.apply(args.task_id, path, mutate)
+    except transition.Refused as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except transition.GuardError as exc:
         print(f"Cannot unblock task {args.task_id}: {exc}.", file=sys.stderr)
         return 1
-    print(f"Unblocked {meta.get('id')}.")
+    print(f"Unblocked {meta.get('id')} to {meta.get('status')}.")
     return 0
 
 
@@ -500,7 +567,7 @@ def cmd_task_done(args) -> int:
     if os.path.dirname(path) == DONE_DIR:
         print("Task is already done.")
         return 0
-    meta, body = store.parse_task(path)
+    meta, _ = store.parse_task(path)
     task_id = str(meta.get("id"))
     denied = None if args.force else roles.authorize(args.agent, "task.done")
     if denied:
@@ -511,32 +578,71 @@ def cmd_task_done(args) -> int:
         print(gate_error, file=sys.stderr)
         return 1
     resource = f"task-{task_id}"
-    holder = read_json(lock_path(resource))
-    if not holder:
+    holder = effective_holder(resource)
+    if holder.get("corrupt") and not args.force:
+        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
+        print(
+            f"Task {task_id} has a corrupt task lock ({resource}), which cannot prove the task "
+            f"is free. Inspect it, then repair it with `ai lock release {resource} --force`.",
+            file=sys.stderr,
+        )
+        return 1
+    if not holder or holder.get("agent") != args.agent:
+        # Free, stale (a crashed reviewer) or held by someone else: `acquire_lock`
+        # takes over a stale lease - recording `lock_replaced_stale` - and refuses
+        # a live one, so a finished task can never stay stuck in review.
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:
             append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
             print(f"Task {task_id} is locked by {result['holder'].get('agent')}.", file=sys.stderr)
             return 1
-    elif holder.get("agent") != args.agent and not args.force:
-        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
-        print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
-        return 1
-    previous = meta.get("status")
-    meta["status"] = "done"
-    meta["reviewed_by"] = args.agent
-    meta["updated"] = iso()
-    meta["lock"] = None
-    forced = "forced: review gate bypassed" if args.force and meta.get("submitted_by") in (None, args.agent) else "approved"
-    records = evidence.task_records(task_id)
-    proof = evidence.summary(records[-1]) if records else ""
-    body = history.append(body, args.agent, previous, "done", forced, proof)
-    archived_spec = spec_lib.archive_spec(meta)
-    if archived_spec:
-        meta["spec"] = archived_spec
-    store.write_task(path, meta, body)
     target = os.path.join(DONE_DIR, os.path.basename(path))
-    os.replace(path, target)
+    if os.path.exists(target):
+        print(
+            f"Cannot archive task {task_id}: {os.path.relpath(target, PROJECT)} already exists. "
+            "Rename one of the files, then rerun.",
+            file=sys.stderr,
+        )
+        return 1
+
+    def mutate(current, body):
+        if (
+            gates.workflow_config()["requireReview"]
+            and current.get("status") not in ("review", "done")
+            and not args.force
+        ):
+            raise transition.Refused(f"Task {task_id} is no longer in review; retry.")
+        previous = current.get("status")
+        current["status"] = "done"
+        current["reviewed_by"] = args.agent
+        current["reviewed_at"] = iso()
+        current["lock"] = None
+        forced = (
+            "forced: review gate bypassed"
+            if args.force and current.get("submitted_by") in (None, args.agent)
+            else "approved"
+        )
+        records = evidence.task_records(task_id)
+        proof = evidence.summary(records[-1]) if records else ""
+        # Archive the spec first so the written task points at specs/done.
+        archived_spec = spec_lib.archive_spec(current)
+        if archived_spec:
+            current["spec"] = archived_spec
+        return history.append(body, args.agent, previous, "done", forced, proof)
+
+    def finalize(current):
+        # Move the archived task inside the same guard as the write, so a
+        # failure leaves the active file readable and retryable.
+        os.replace(path, target)
+
+    try:
+        meta = transition.apply(task_id, path, mutate, finalize=finalize)
+    except transition.Refused as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except transition.GuardError as exc:
+        print(f"Cannot archive task {task_id}: {exc}.", file=sys.stderr)
+        return 1
     release_lock(resource, force=True)
     lifecycle.release_task_locks(meta, None)
     marker = ckpt.handoff_marker(task_id)
@@ -545,7 +651,6 @@ def cmd_task_done(args) -> int:
             os.remove(marker)
         except OSError:
             pass
-    board.write_board(store.load_tasks())
     append_event(
         "task_done", task=task_id, agent=args.agent, forced=True if args.force else None,
         submitted_by=meta.get("submitted_by"),
@@ -560,11 +665,11 @@ def cmd_task_discard(args) -> int:
         print(f"No task with id {args.task_id}.", file=sys.stderr)
         return 1
     meta, _ = store.parse_task(path)
-    task_id = normalize_id(str(meta.get("id") or args.task_id))
-    if not sys.stdin.isatty():
-        print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
+    try:
+        task_id = normalize_id(str(meta.get("id") or args.task_id))
+    except ValueError:
+        print(f"Task file has an invalid id: {meta.get('id')!r}.", file=sys.stderr)
         return 1
-
     spec_path, spec_error = discard.task_discard_spec_path(meta, task_id)
     if spec_error:
         print(f"Cannot safely discard task: {spec_error}", file=sys.stderr)
@@ -598,6 +703,11 @@ def cmd_task_discard(args) -> int:
                 file=sys.stderr,
             )
             return 1
+    # Ask for the terminal only once the discard can actually happen: a held
+    # task must report the holder, not a generic "needs a terminal".
+    if not sys.stdin.isatty():
+        print("Discard requires an interactive terminal; no files were changed.", file=sys.stderr)
+        return 1
     print(f"This permanently discards task {task_id}: {meta.get('title')}")
     print("It removes the task, its matching spec, and its continuation files.")
     expected = f"discard task {task_id}"

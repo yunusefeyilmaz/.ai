@@ -43,14 +43,27 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 nothing from the workspace ends up in your product history. Run it once per clone.
 `doctor` should end with `0 error(s)`.
 
-Optional: type `ai ...` instead of the long path. In the examples below, `ai` means
-this launcher:
+### First verified change (90 seconds)
 
-| System | Launcher | One-time shortcut for this terminal |
-| ------ | -------- | ----------------------------------- |
-| macOS / Linux | `.ai/ai` | `alias ai=.ai/ai` |
-| Windows PowerShell | `.\.ai\ai.cmd` | `Set-Alias ai .\.ai\ai.cmd` |
-| Windows cmd | `.ai\ai.cmd` | `doskey ai=.ai\ai.cmd $*` |
+```sh
+.ai/ai start --agent implementer            # wire the workspace, claim the demo task
+.ai/ai check --task 0001 --agent implementer # record evidence
+```
+
+`ai start` creates one task named "Try the workspace" so a fresh install has
+something to claim. It is the single documented demo/task-creation exception to
+"only the chief creates tasks"; use `--no-demo` to skip it. For real work, answer
+`ai setup` and let the chief plan (section 2).
+
+Optional: type `ai ...` instead of the long path. In the examples below, `ai` means
+this launcher. A PATH entry is more durable than a shell alias (aliases are
+session-scoped and relative paths break after `cd`):
+
+| System | Launcher | Shortcut |
+| ------ | -------- | -------- |
+| macOS / Linux | `.ai/ai` | add `<project>/.ai` to `PATH`, or `alias ai=<project>/.ai/ai` |
+| Windows PowerShell | `.\<project>\.ai\ai.cmd` | add `<project>\.ai` to `PATH`, or `Set-Alias ai <project>\.ai\ai.cmd` (absolute) |
+| Windows cmd | `.ai\ai.cmd` | add `<project>\.ai` to `PATH` |
 
 ## 2. Give your AI a job
 
@@ -136,10 +149,12 @@ The full list is in `GUIDE.md`. Rules for agents are in `AGENTS.md`.
   created it.
 - **Ownership with leases.** A task claim and any file lock are JSON leases with a
   TTL. A live lease is a refusal; an expired one can be reclaimed.
-- **Verification as evidence.** `ai check` records what ran and its exit codes
-  against the commit; review requires it when you asked for checks.
-- **A reviewer who is not the author.** `done` needs a different agent than the one
-  that delivered.
+- **Verification as evidence.** `ai check --task <id> --agent <n>` records what ran
+  and its exit codes against the commit; review requires it when you asked for
+  checks.
+- **A reviewer who is not the author — when you chose review.** `done` needs a
+  different agent than the one that delivered unless you answered `review=no` in
+  `ai setup`. A solo worker with review on must start a reviewer session.
 - **A place for operational state.** Checkpoints, locks and scratch artifacts live
   under `.ai/runtime/` and never enter the product tree.
 
@@ -214,15 +229,15 @@ refuses to call a staged set safe when a path has no held lease. Details:
 ## When a context window ends
 
 ```sh
-ai checkpoint 0007 --agent codex --percent 85 \
-  --status "writer fails on empty rows" \
-  --next "handle missing vat_id, add the empty-row test" \
-  --files src/export/writer.py \
-  --verification "npm test: 12 passed, 1 failing"
+# one line works in every shell (PowerShell, cmd, bash, zsh)
+ai checkpoint 0007 --agent codex --percent 85 --status "writer fails on empty rows" --next "handle missing vat_id, add the empty-row test" --files src/export/writer.py --verification "npm test: 12 passed, 1 failing"
 
 ai handoff 0007 --agent codex --reason "context limit"
 ai resume 0007
 ```
+
+PowerShell uses a backtick (`` ` ``) for line continuation, not `\`; when in doubt,
+keep the command on one line as above.
 
 A checkpoint is a structured snapshot: objective, current truth, done items,
 exact stopping point, next steps, decisions, forbidden approaches, files and

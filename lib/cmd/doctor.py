@@ -6,15 +6,14 @@ import json
 import os
 import sys
 
+from lib.core.findings import Finding
 from lib.core.paths import (
     PROJECT,
     VERSION,
     WORKSPACE,
 )
-from lib.core.findings import Finding
-from lib.runtime import evidence
 from lib.git import repo
-from lib.runtime import health
+from lib.runtime import evidence, health
 from lib.tasks import store
 
 
@@ -79,10 +78,24 @@ def _evidence_task(args) -> str | None:
 
 
 def cmd_check(args) -> int:
+    if getattr(args, "task", None) and not store.find_task(args.task):
+        print(
+            f"No task with id {args.task}; no evidence was recorded.",
+            file=sys.stderr,
+        )
+        return 1
     task_id = _evidence_task(args)
+    if getattr(args, "agent", None) and not task_id and not getattr(args, "task", None):
+        print(
+            f"WARN  no single in-progress task owned by {args.agent}; "
+            "the check result will not be attached as evidence. Use --task <id>.",
+            file=sys.stderr,
+        )
     meta: dict = {}
     if task_id:
-        meta = store.parse_task(store.find_task(task_id))[0]
+        path = store.find_task(task_id)
+        if path:
+            meta = store.parse_task(path)[0]
     # checks and the recorded HEAD belong to the task's own checkout when it has one
     with repo.in_task(meta):
         return _check(args, task_id)

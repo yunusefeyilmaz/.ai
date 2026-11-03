@@ -6,19 +6,21 @@ import contextlib
 import os
 import sys
 
-from lib.core.paths import (
-    ACTIVE_DIR,
-    COUNTER_PATH,
-    SPECS_ACTIVE_DIR,
-    WORKSPACE,
-)
+from lib.config import roles
 from lib.config.settings import lock_settings
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     read_json,
     slugify,
     write_json_atomic,
     write_text_atomic,
+)
+from lib.core.paths import (
+    ACTIVE_DIR,
+    COUNTER_PATH,
+    SPECS_ACTIVE_DIR,
+    WORKSPACE,
 )
 from lib.core.timeutil import iso
 from lib.runtime.dirs import ensure_dirs
@@ -30,13 +32,10 @@ from lib.runtime.leases import (
     lock_is_stale,
     release_lock,
 )
+from lib.runtime.mutex import workspace_state_guard
 from lib.specs import spec as spec_lib
-from lib.config import roles
-from lib.tasks import board
-from lib.tasks import gates
-from lib.tasks import history
+from lib.tasks import board, gates, history, store
 from lib.tasks import scope as task_scope
-from lib.tasks import store
 
 
 @contextlib.contextmanager
@@ -63,7 +62,17 @@ def allocate_task_number() -> int:
     holder = read_json(lock_path(resource)) or {}
     if holder.get("agent") != "task-index":
         raise RuntimeError("task ID allocation requires the tasks.index lock")
-    state = read_json(COUNTER_PATH) or {"last": 0}
+    try:
+        state = read_json(COUNTER_PATH) or {"last": 0}
+    except CorruptStateError as exc:
+        # A damaged counter must not block task creation: the scan below rebuilds
+        # the next id from the task files, and the counter is rewritten from it.
+        append_event(
+            "state_repaired",
+            file=os.path.relpath(COUNTER_PATH, WORKSPACE).replace(os.sep, "/"),
+            error=str(exc),
+        )
+        state = {"last": 0}
     last = int(state.get("last", 0) or 0)
     for task in store.load_tasks():
         digits = "".join(ch for ch in str(task.get("id") or "") if ch.isdigit())
@@ -86,11 +95,13 @@ def create_task(
     locks: str | None = None,
     intent: str | None = None,
     acceptance: list[str] | None = None,
+    demo: bool = False,
 ) -> dict:
     """Create a task and, unless told otherwise, its spec skeleton."""
     ensure_dirs()
-    with task_index_guard():
-        number = allocate_task_number()
+    with workspace_state_guard():
+        with task_index_guard():
+            number = allocate_task_number()
         task_id = f"{number:04d}"
         title = title.strip()
         slug = slugify(title)
@@ -100,7 +111,7 @@ def create_task(
             spec_path = os.path.join(SPECS_ACTIVE_DIR, f"{task_id}-{slug}.md")
             write_text_atomic(spec_path, spec_lib.spec_from_template(title, task_id, intent, acceptance))
             spec_ref = os.path.relpath(spec_path, WORKSPACE).replace(os.sep, "/")
-        meta = {
+        meta: dict = {
             "id": task_id,
             "title": title,
             "status": "todo",
@@ -115,6 +126,9 @@ def create_task(
             "updated": iso(),
             "lock": None,
         }
+        if demo:
+            # Marks the throwaway task `ai start` creates on a fresh install.
+            meta["demo"] = True
         criteria = "\n".join(f"- [ ] {item}" for item in (acceptance or [])) or "- [ ] "
         plan = (
             f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
@@ -159,51 +173,81 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
             return False, unready
     if os.path.dirname(path) != ACTIVE_DIR:
         return False, "This task is already in done/."
-    meta, body = store.parse_task(path)
-    task_id = str(meta.get("id"))
-    if meta.get("status") == "blocked" and not force:
-        return False, f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`."
-    blockers = store.dependency_blockers(meta)
-    if blockers and not force:
-        return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
-    resource = f"task-{task_id}"
-    result = acquire_lock(resource, agent=agent, task=task_id, force=force)
-    new_claim = bool(result["ok"])
-    if not result["ok"]:
-        if result.get("error"):
-            append_event("lock_refused", resource=resource, agent=agent, task=task_id)
-            return False, f"Could not claim task {task_id}: {result['error']}"
-        holder = result["holder"] or {}
-        if holder.get("agent") == agent:
-            heartbeat_lock(resource, agent=agent)
-        else:
-            append_event(
-                "lock_refused",
-                resource=resource,
-                agent=agent,
-                task=task_id,
-                conflict=holder.get("resource"),
-                conflict_agent=holder.get("agent"),
-            )
-            return False, (
-                f"Task {task_id} is locked by {holder.get('agent')} "
-                f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
-            )
-    if store.find_task(task_id) != path:
-        release_lock(resource, agent=agent, force=True)
-        return False, f"Task {task_id} was removed while it was being claimed."
-    previous = meta.get("status")
-    meta["owner"] = agent
-    # A reviewer taking over a task in review keeps it in review.
-    meta["status"] = "review" if previous == "review" else "in_progress"
-    meta["updated"] = iso()
-    meta["lock"] = resource
+    with workspace_state_guard():
+        meta, body = store.parse_task(path)
+        task_id = str(meta.get("id"))
+        if meta.get("status") == "blocked" and not force:
+            return False, f"Task {task_id} is blocked. Unblock it with `ai task unblock {task_id}`."
+        blockers = store.dependency_blockers(meta)
+        if blockers and not force:
+            return False, f"Task {task_id} is blocked by " + ", ".join(blockers) + ". Use --force to override."
+        resource = f"task-{task_id}"
+        result = acquire_lock(resource, agent=agent, task=task_id, force=force)
+        new_claim = bool(result["ok"])
+        if not result["ok"]:
+            if result.get("error"):
+                append_event("lock_refused", resource=resource, agent=agent, task=task_id)
+                return False, f"Could not claim task {task_id}: {result['error']}"
+            holder = result["holder"] or {}
+            if holder.get("agent") == agent:
+                heartbeat_lock(resource, agent=agent)
+            else:
+                append_event(
+                    "lock_refused",
+                    resource=resource,
+                    agent=agent,
+                    task=task_id,
+                    conflict=holder.get("resource"),
+                    conflict_agent=holder.get("agent"),
+                )
+                return False, (
+                    f"Task {task_id} is locked by {holder.get('agent')} "
+                    f"(pid {holder.get('pid')}, since {holder.get('started_at')})."
+                )
+        if store.find_task(task_id) != path:
+            release_lock(resource, agent=agent, force=True)
+            return False, f"Task {task_id} was removed while it was being claimed."
+        previous = meta.get("status")
+        meta["owner"] = agent
+        # A reviewer taking over a task in review keeps it in review.
+        meta["status"] = "review" if previous == "review" else "in_progress"
+        meta["updated"] = iso()
+        meta["lock"] = resource
     body = history.append(body, agent, previous, meta["status"], "claimed")
     store.write_task(path, meta, body)
     board.write_board(store.load_tasks())
     if new_claim:
         append_event("task_claimed", task=task_id, agent=agent)
     return True, task_id
+
+
+def rollback_claim(
+    path: str, agent: str, previous_status: str | None, reason: str
+) -> str | None:
+    """Undo `claim_task` when a later step (the task branch) failed.
+
+    Best effort by design: the task must not stay owned by an agent that never
+    got a working checkout. Returns the task id, or None when the caller no
+    longer owns the claim (another process already moved it).
+    """
+    task_id: str | None = None
+    with workspace_state_guard():
+        meta, body = store.parse_task(path)
+        task_id = str(meta.get("id"))
+        if meta.get("owner") != agent:
+            return None
+        current = str(meta.get("status") or "")
+        meta["owner"] = None
+        meta["lock"] = None
+        meta["status"] = previous_status or "todo"
+        meta["updated"] = iso()
+        body = history.append(body, agent, current, meta["status"], "claim rolled back", reason)
+        store.write_task(path, meta, body)
+        board.write_board(store.load_tasks())
+    release_task_locks(meta, agent)
+    release_lock(f"task-{task_id}", agent=agent, force=True)
+    append_event("claim_rolled_back", task=task_id, agent=agent, reason=reason)
+    return task_id
 
 
 def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:

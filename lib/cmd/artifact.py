@@ -7,6 +7,13 @@ import os
 import shutil
 import sys
 
+from lib.config.settings import lock_settings
+from lib.core.fsio import (
+    CorruptStateError,
+    read_json,
+    safe_name,
+    write_json_atomic,
+)
 from lib.core.paths import (
     ARTIFACTS_DIR,
     LOCKS_DIR,
@@ -14,12 +21,6 @@ from lib.core.paths import (
     MANIFEST_PATH,
     PROJECT,
     WORKSPACE,
-)
-from lib.config.settings import lock_settings
-from lib.core.fsio import (
-    read_json,
-    safe_name,
-    write_json_atomic,
 )
 from lib.core.timeutil import (
     iso,
@@ -46,7 +47,20 @@ def cmd_artifact(args) -> int:
 
 def cmd_artifact_inner(args) -> int:
     ensure_dirs()
-    manifest = read_json(MANIFEST_PATH) or []
+    try:
+        manifest = read_json(MANIFEST_PATH) or []
+    except CorruptStateError as exc:
+        # Appending to a corrupt manifest would silently drop every earlier
+        # entry, so only the read-only listing degrades; the rest refuses.
+        if args.action != "list":
+            print(
+                f"Cannot use the artifact manifest: {exc}. "
+                "Run `ai doctor` for the repair, then retry.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"WARN  artifact manifest is unreadable: {exc}", file=sys.stderr)
+        manifest = []
     if args.action == "put":
         source = os.path.abspath(args.path)
         if not os.path.exists(source):

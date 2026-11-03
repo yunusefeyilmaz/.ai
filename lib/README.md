@@ -12,10 +12,10 @@ lib/                                   scripts            data they manage (outs
 ├── config/     settings · adopt · roles                          config/workspace.json
 ├── runtime/    leases · mutex · events · checkpoints     runtime/{artifacts,locks,logs,state}
 │               · evidence · health · reset · overview
-├── tasks/      store · lifecycle · board · gates         tasks/{active,done}, tasks/BOARD.md
-│               · workflow · history · scope · discard · links
+├── tasks/      store · lifecycle · transition · board    tasks/{active,done}, tasks/BOARD.md
+│               · gates · workflow · history · scope · discard · links
 ├── specs/      spec                                      specs/{active,done}
-├── git/        repo · flow · worktrees                   templates/git/, worktrees/ (per task)
+├── git/        repo · setup · flow · worktrees                   templates/git/, worktrees/ (per task)
 ├── decisions/  adr                                       docs/decisions/
 ├── cmd/        one file per command group                -
 └── tests/      stdlib unittest, black-box via ai.py      -

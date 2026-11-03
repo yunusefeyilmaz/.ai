@@ -14,10 +14,13 @@ tasks/
 ## Create
 
 ```sh
-ai task new "Add invoice export" --priority high
+ai task new "Add invoice export" --priority high --role chief --agent <name>
 ```
 
-Ids are allocated atomically. Never reuse or renumber an id.
+Only the chief creates tasks (`--role chief`, after `ai setup`); `ai plan apply`
+is the bulk form. Ids are allocated atomically. Never reuse or renumber an id.
+By default the task's `--allow` globs become its file leases. For a task without
+`--allow`, lease the files you will edit in the Claim step below.
 
 ## Claim
 
@@ -26,7 +29,12 @@ ai task claim 0001 --agent implementer
 ```
 
 This acquires `task-0001`, sets the owner and `status: in_progress`, and writes
-to the log. A task owned by another agent is off limits.
+to the log. A task owned by another agent is off limits. If the task declares no
+`--allow` paths, lease what you edit before touching it:
+
+```sh
+ai lock acquire src/auth/login.py --agent implementer --task 0001
+```
 
 ## Finish
 
@@ -44,6 +52,9 @@ done task; create a new one and link it.
 ## Manual operation
 
 If the CLI is unavailable, copy `TEMPLATE.md`, allocate the next free id by
-inspecting both folders, and create `runtime/locks/task-<id>.lock` with the JSON
-shape documented in `../docs/multi-agent.md` before editing. The state machine is
-the contract; the CLI only makes it atomic.
+inspecting both folders, and create the task's lock file under `runtime/locks/`
+before editing. The CLI names lock files `<safe-name>-<sha1[:8]>.lock` (for a task:
+`safe_name("task-0001") + "-" + sha1("task-0001")[:8]`), so a hand-made
+`task-0001.lock` is invisible to `ai lock status`; prefer
+`python -c` one-liners from `docs/recovery.md` or rerun `ai` as soon as it is
+available. The state machine is the contract; the CLI only makes it atomic.

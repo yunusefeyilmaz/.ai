@@ -31,7 +31,8 @@ Then:
    --type <type>` before editing any file. Stop and report if setup or branch
    creation fails. Read-only tasks do not need a branch. If Git reports dubious
    ownership, ask approval to trust only this checkout.
-5. Before editing shared paths, take leases:
+5. The task's declared `locks` (its `--allow` globs) are already held by the
+   claim. Lease anything else before editing:
    `.ai/ai lock acquire <path> --agent <AGENT_NAME> --task <id>`
 6. Implement only the acceptance criteria. Add or update tests. Keep every
    AI-generated note inside .ai/.
@@ -40,8 +41,9 @@ Then:
 8. Run `.ai/ai check --fast` while iterating.
 9. Save context at milestones:
    `.ai/ai checkpoint <id> --agent <AGENT_NAME> --next "<next step>"`
-10. Before finishing, run `.ai/ai check --strict` and paste the result
-   into the task log.
+10. Before finishing, run `.ai/ai check --task <id> --agent <AGENT_NAME>`. That
+    writes the evidence the review gate reads; paste its summary into the task
+    log. `ai check --strict` is CI's global flag, not this task's proof.
 11. For review, run `.ai/ai task review <id> --agent <AGENT_NAME>`: it runs the
     checks, delivers, frees your file locks and hands the task over. A different
     session reviews and merges. Only mark the task done after verification and

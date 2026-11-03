@@ -37,7 +37,7 @@ class ChiefOnlyTest(WorkspaceCase):
         refused = run(workspace, "task", "new", "Too early", "--role", "chief")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("ai setup", refused.stderr)
-        self.assertEqual(run(workspace, "setup", "--defaults").returncode, 0)
+        self.assertEqual(run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1").returncode, 0)
         self.assertEqual(run(workspace, "task", "new", "Planned", "--role", "chief").returncode, 0)
 
     def test_role_can_come_from_the_environment(self) -> None:
@@ -45,7 +45,7 @@ class ChiefOnlyTest(WorkspaceCase):
 
         workspace = self.make_workspace(git_repo=False)
         self.strict_gate(workspace)
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         env = dict(os.environ, AI_ROLE="chief", PYTHONUTF8="1")
         result = subprocess.run(
             [os.sys.executable, str(workspace / "ai.py"), "task", "new", "Via env"],
@@ -93,20 +93,27 @@ class GitWithoutTerminalTest(WorkspaceCase):
 
 
 class DirtyTreeTest(WorkspaceCase):
-    def test_carry_moves_uncommitted_files_onto_the_task_branch(self) -> None:
+    def test_dirty_product_tree_rolls_back_and_recovery_reclaims(self) -> None:
         workspace = self.make_workspace()
         run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no")
         run(workspace, "task", "new", "Carry")
         run(workspace, "git", "setup", stdin="y\n")
         (workspace / "errors.txt").write_text("notes\n", encoding="utf-8")  # product file, untracked
+        refused = run(workspace, "task", "claim", "0001", "--agent", "w1")
+        self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
+        self.assertIn("rolled back", refused.stderr)
+        self.assertIn("ai task claim 0001 --agent w1", refused.stderr)
+        # the claim did not leave the task owned by an agent without a checkout
+        self.assertIn("status: todo", run(workspace, "task", "show", "0001").stdout)
+        # the fix is to commit/stash the product file, then reclaim
+        git(workspace, "add", "errors.txt")
+        git(workspace, "commit", "-qm", "feat: carry the file")
         claimed = run(workspace, "task", "claim", "0001", "--agent", "w1")
         self.assertEqual(claimed.returncode, 0, claimed.stderr)
-        self.assertIn("--carry", claimed.stdout + claimed.stderr)  # the refusal says how to proceed
-        started = run(workspace, "git", "start", "--task", "0001", "--agent", "w1", "--carry")
-        self.assertEqual(started.returncode, 0, started.stderr)
-        self.assertTrue((workspace / "errors.txt").exists())
-        branch = subprocess.run(["git", "branch", "--show-current"], cwd=str(workspace), capture_output=True, text=True).stdout.strip()
-        self.assertTrue(branch.startswith("feature/0001"))
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=str(workspace), capture_output=True, text=True
+        ).stdout.strip()
+        self.assertTrue(branch.startswith("feature/0001"), branch)
 
 
 class LocksAndSpecsTest(WorkspaceCase):
@@ -175,7 +182,7 @@ class WordingTest(WorkspaceCase):
 
     def test_now_after_claim_points_at_the_work_not_at_check(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "task", "new", "Early")
         run(workspace, "git", "setup", stdin="y\n")
         run(workspace, "task", "claim", "0001", "--agent", "w1")
@@ -207,7 +214,7 @@ class JsonModeTest(WorkspaceCase):
         config = json.loads(cfg.read_text(encoding="utf-8"))
         config["checks"] = [{"name": "noisy", "command": 'python -c "print(\'LOUD OUTPUT\')"'}]
         cfg.write_text(json.dumps(config), encoding="utf-8")
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "task", "new", "Json")
         # `check --json`: the check's own output must not precede the JSON
         checked = run(workspace, "check", "--json")
@@ -323,6 +330,7 @@ class ReworkTest(WorkspaceCase):
         run(workspace, "task", "new", "Rework")
         run(workspace, "task", "claim", "0001", "--agent", "alice")
         self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        self.assertEqual(run(workspace, "task", "next", "--review", "--agent", "bob").returncode, 0)
         self.assertEqual(run(workspace, "task", "request-changes", "0001", "--agent", "bob", "--reason", "fix").returncode, 0)
         self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "alice").returncode, 0)
         again = run(workspace, "task", "review", "0001", "--agent", "alice")

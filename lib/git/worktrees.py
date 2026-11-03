@@ -78,7 +78,7 @@ workspace. Run its CLI by absolute path from this directory:
     {cli} git commit --task {meta.get('id')} --agent <name> --type feat --message "<subject>"
     {cli} task review {meta.get('id')} --agent <name>
 
-Read the workspace rules in `{os.path.join(WORKSPACE, 'AGENTS.md')}`.
+Read the workspace rules in `{os.path.join(WORKSPACE, 'AGENTS.md').replace(os.sep, '/')}`.
 """
 
 
@@ -86,7 +86,17 @@ def create(meta: dict, branch: str, base: str) -> tuple[bool, str, str]:
     """Create (or reuse) the task's worktree. Returns (ok, path, message)."""
     path = os.path.join(WORKTREES_DIR, worktree_name(branch))
     if os.path.isdir(path):
-        return True, path, "reused"
+        # Reuse only a real worktree of the expected branch. A leftover folder
+        # from another task (or a name collision) must never be adopted, or two
+        # workers would quietly edit the same checkout.
+        code, current, _ = repo.run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=path)
+        if code == 0 and current == branch:
+            return True, path, "reused"
+        found = current if code == 0 and current else "not a git worktree"
+        return False, path, (
+            f"{path} already exists but is on '{found}', not '{branch}'. "
+            "Remove it (or pick a different branch) before claiming this task."
+        )
     os.makedirs(WORKTREES_DIR, exist_ok=True)
     main = PROJECT
     ensure_excluded(main)
@@ -115,7 +125,7 @@ def remove(path: str, force: bool = False) -> tuple[bool, str]:
 
 def listing(tasks: list[dict]) -> list[dict]:
     """Every folder under worktrees/, with the task that owns it (if any)."""
-    rows = []
+    rows: list[dict] = []
     if not os.path.isdir(WORKTREES_DIR):
         return rows
     by_path = {str(t.get("worktree")): t for t in tasks if t.get("worktree")}

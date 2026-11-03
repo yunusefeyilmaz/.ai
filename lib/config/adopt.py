@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 
-from lib.core.paths import (
-    PROJECT,
-)
 from lib.core.fsio import (
     read_text,
     write_text_atomic,
 )
-
+from lib.core.paths import (
+    PROJECT,
+)
 
 ROOT_BLOCK = """<!-- ai-workspace:start -->
 ## AI workspace
@@ -118,8 +117,11 @@ def adopt_root(force: bool = False, check: bool = False) -> list[tuple[str, str]
     return results
 
 
+# The ledger (tasks/, specs/, docs/decisions/, config/) is the project's memory
+# and must be committed; only ephemeral state and generated adapters stay local.
 ADOPT_IGNORE_ENTRIES = (
-    ".ai/",
+    ".ai/runtime/",
+    ".ai/worktrees/",
     "/AGENTS.md",
     "/CLAUDE.md",
     ".cursor/rules/ai-workspace.mdc",
@@ -146,26 +148,28 @@ def adopt_gitignore(check: bool = False) -> tuple[str, list[str]]:
     if os.path.exists(path):
         with open(path, encoding="utf-8", newline="") as handle:
             existing = handle.read()
-    present = {
-        normalized_ignore_entry(line)
-        for line in existing.splitlines()
-    }
+    lines = existing.splitlines()
+    present = {normalized_ignore_entry(line) for line in lines}
     missing = [
         entry for entry in ADOPT_IGNORE_ENTRIES
         if normalized_ignore_entry(entry) not in present
     ]
+    # An older adopt ignored `.ai/` wholesale, which also hid the ledger from the
+    # host repository. Migrate that line away instead of leaving it behind.
+    blanket = [line for line in lines if normalized_ignore_entry(line) == ".ai"]
     if check:
-        return ("ok" if not missing else "missing"), missing
-    if not missing:
+        return ("ok" if not missing and not blanket else "missing"), missing
+    if not missing and not blanket:
         return "unchanged", []
 
-    newline = "\r\n" if "\r\n" in existing else "\n"
-    separator = "" if not existing or existing.endswith(("\n", "\r")) else newline
+    crlf = chr(13) + chr(10)
+    newline = crlf if crlf in existing else chr(10)
+    kept = "".join(line + newline for line in lines if normalized_ignore_entry(line) != ".ai")
     addition = newline.join([
-        "# Added by ai adopt: keep the workspace and generated adapters local.",
+        "# Added by ai adopt: only ephemeral workspace state and generated adapters stay local.",
         *missing,
     ]) + newline
-    write_text_atomic(path, existing + separator + addition)
+    write_text_atomic(path, kept + addition)
     return ("created" if not existing else "updated"), missing
 
 

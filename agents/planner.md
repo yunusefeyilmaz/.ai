@@ -7,7 +7,7 @@ that an implementer can follow without guessing.
 
 ## Inputs
 
-- The claimed task and its intent.
+- The task file the orchestrator created (read it; a planner does not claim it).
 - Relevant source, tests and docs.
 - `../docs/task-flow.md`, `../docs/conventions.md`.
 
@@ -38,5 +38,5 @@ that an implementer can follow without guessing.
 
 ## Handoff
 
-Task status remains `in_progress` (or `review` if the plan needs approval). The
-implementer must be able to answer "what is step 1?" from the plan alone.
+Leave the task in `todo` with a filled spec and plan; the implementer claims it.
+The implementer must be able to answer "what is step 1?" from the plan alone.

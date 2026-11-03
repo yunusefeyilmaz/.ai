@@ -1,8 +1,10 @@
 """tasks.gates: the required transitions of the task state machine.
 
     todo --claim--> in_progress --review--> review --done--> done
-                         ^  |                 |
+                         ^  |                 |  ^
                          |  +---block-------> blocked --unblock--> todo
+                         |                    |
+                         +----claim-------- changes_requested <--request-changes
 
 Rules enforced here (not left to prose):
   * `review` needs the owner, a live claim and, when configured, green evidence
@@ -22,8 +24,9 @@ from __future__ import annotations
 import os
 
 from lib.config import preferences
-from lib.config.settings import configured_checks, load_config
+from lib.config.settings import configured_checks, git_enabled, load_config
 from lib.core.fsio import (
+    CorruptStateError,
     lock_path,
     read_json,
 )
@@ -96,7 +99,12 @@ def check_required() -> bool:
 
 
 def claim_started(task_id: str) -> str | None:
-    holder = read_json(lock_path(f"task-{task_id}")) or {}
+    try:
+        holder = read_json(lock_path(f"task-{task_id}")) or {}
+    except CorruptStateError:
+        # A damaged lease is reported by the caller's own checks; it is not a
+        # start time, and it must not crash `review`/`done`.
+        return None
     return holder.get("started_at")
 
 
@@ -125,12 +133,86 @@ def review_gate(meta: dict, agent: str) -> tuple[str | None, str]:
     return None, text if ok else ""
 
 
+def review_git_gate(meta: dict, agent: str, include_evidence: bool = True) -> str | None:
+    """Refuse review while the task checkout is not the one that will be merged.
+
+    `ai git finish` fails *after* handover when the branch is wrong, the tree is
+    dirty or HEAD moved past the evidence. Catching those here keeps the
+    reviewer's approval meaningful and puts the fix in the producer's hands.
+    """
+    if not git_enabled():
+        return None
+    task_id = str(meta.get("id"))
+    branch = str(meta.get("branch") or "")
+    with repo.in_task(meta):
+        state = repo.git_state()
+    if not state.get("repo"):
+        return None  # Git is enabled in config, but this workspace has no repository yet
+    if not branch:
+        return (
+            f"Task {task_id} has no branch. Start one with "
+            f"`ai git start --task {task_id} --agent {agent}` before review."
+        )
+    current = state.get("branch")
+    if current != branch:
+        return (
+            f"Task {task_id} belongs to branch {branch}, but the checkout is on {current}. "
+            f"Switch back with `git checkout {branch}`, then retry "
+            f"`ai task review {task_id} --agent {agent}`."
+        )
+    head = state.get("head")
+    if not head:
+        return (
+            f"Task {task_id} has no commit on {branch}. Commit the work with "
+            f"`ai git commit --task {task_id} --agent {agent} ...` before review."
+        )
+    dirty = [
+        path for path in (state.get("dirty") or [])
+        if not repo.is_workspace_ledger_path(path)
+    ]
+    if dirty:
+        listed = ", ".join(dirty[:5]) + (" ..." if len(dirty) > 5 else "")
+        return (
+            f"Task {task_id} has uncommitted product changes ({listed}). Commit them with "
+            f"`ai git commit --task {task_id} --agent {agent} ...` before review."
+        )
+    if include_evidence:
+        records = evidence.task_records(task_id)
+        if records:
+            latest = records[-1]
+            if (
+                not latest.get("invalidated")
+                and latest.get("head")
+                and latest.get("head") != head
+            ):
+                return (
+                    f"Task {task_id}: verification evidence belongs to "
+                    f"{(latest.get('head') or '')[:8]} but HEAD is {head[:8]}. Re-run "
+                    f"`ai check --task {task_id} --agent {agent}` on the current commit "
+                    "before review."
+                )
+    return None
+
+
 def request_changes_gate(meta: dict, agent: str) -> str | None:
     task_id = str(meta.get("id"))
     if meta.get("status") != "review":
         return f"Task {task_id} is '{meta.get('status')}'; changes can only be requested while it is in review."
     if meta.get("submitted_by") and meta.get("submitted_by") == agent:
         return f"Task {task_id} was submitted by {agent}; an independent agent must request changes."
+    owner = str(meta.get("owner") or "")
+    if owner != agent:
+        if owner:
+            return (
+                f"Task {task_id} is claimed for review by {owner}; only the reviewer holding the "
+                f"claim may request changes. {owner} can send it back, or release it first with "
+                f"`ai task release {task_id} --agent {owner}`."
+            )
+        return (
+            f"Task {task_id} is in review without a reviewer claim. Claim it first with "
+            f"`ai task next --review --agent {agent}` (or `ai task claim {task_id} --agent {agent}`), "
+            "then request changes."
+        )
     return None
 
 

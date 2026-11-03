@@ -48,25 +48,39 @@ title: Add invoice export
 status: todo
 owner: null
 priority: medium          # low | medium | high
-spec: null               # path or id, when a spec exists
+spec: specs/active/0001-add-invoice-export.md
 depends_on: null         # comma-separated task ids that must be done first
+scope_allowed: src/export/**   # optional globs the task may touch
+scope_forbidden: src/payment/**  # optional globs it must not touch
+locks: src/export/**     # file leases taken at claim (default: scope_allowed)
+branch: null             # feature/0001-add-invoice-export while Git is on
+worktree: null           # worktrees/... when isolation=worktree
+submitted_by: null       # set by `ai task review`
+reviewed_by: null        # set by `ai task done`
+merged_into: null        # set by `ai git finish`
+blocked_from: null       # previous status, while blocked
 created: 2026-10-27T18:30:00Z
 updated: 2026-10-27T18:30:00Z
 lock: null               # task-0001 while claimed
 ---
 ```
 
-The CLI rewrites this block; do not hand-edit fields that the CLI maintains.
+The CLI rewrites this block; `docs/conventions.md` is the canonical field table.
+Hand-edit it only when the CLI is unavailable or during recovery
+(`docs/recovery.md`), and preserve the field names above.
 
 ## Lifecycle
 
 ### 1. Create
 
 ```sh
-ai task new "Add invoice export" --priority high
-ai task new "Add invoice import" --depends-on 0001 --no-spec
-ai task new "Add refunds" --spec specs/active/refunds.md
+ai task new "Add invoice export" --priority high --role chief --agent planner
+ai task new "Add invoice import" --depends-on 0001 --no-spec --role chief --agent planner
+ai task new "Add refunds" --spec specs/active/refunds.md --role chief --agent planner
 ```
+
+Only the chief creates tasks (`--role chief`), and only after `ai setup` stored the
+user's answers. `ai plan apply plan.json --role chief` creates a batch.
 
 The id is allocated under the `tasks.index` lock, so two agents cannot receive
 the same id. The file is created in `tasks/active/` and `tasks/BOARD.md` is
@@ -76,6 +90,10 @@ An explicit `--spec` only links an existing file; it is never rewritten.
 
 `depends_on` prevents parallel agents from starting work that needs unmerged
 predecessors.
+
+The chief fills the generated spec **before** anyone claims the task: the claim
+gate refuses while the spec is still the template. The spec is the contract; the
+task body is the story.
 
 ### 2. Claim
 
@@ -111,7 +129,10 @@ nothing is ready it exits nonzero and prints why each candidate is waiting.
   reports dubious ownership, ask the user to approve trusting only this exact
   checkout. See `docs/git-workflow.md`.
 - Read the spec, if one exists.
-- Acquire locks for any shared subsystem before editing it.
+- Acquire a lease for every file you will change. Claim already takes the task's
+  declared `locks` (its `--allow` globs by default); for anything else:
+  `ai lock acquire <path> --agent <name> --task <id>`. A live lock is a refusal.
+  `ai git verify --strict` checks that every staged path is covered.
 - Keep notes in the task body, never in the project tree.
 - Run `ai check --fast` while iterating.
 - Checkpoint at milestones and before the context window fills
@@ -136,8 +157,14 @@ ai git finish --task 0001 --agent qa          # a DIFFERENT agent merges
 ai task done 0001 --agent qa                  # ...and marks it done
 ```
 
-A reviewer who finds problems runs
-`ai task request-changes 0001 --agent qa --reason "..."`. The task becomes
+A reviewer starts with `ai review 0001`: one read-only command that prints the
+task, the spec with its acceptance criteria, the branch diff against the
+integration branch, the recorded check evidence and the transition history
+together with a checklist. It claims nothing, so it is safe to run before
+deciding. The reviewer then claims the task with `ai task next --review --agent qa`
+(or `ai task claim 0001 --agent qa`) and, if it is not good enough, runs
+`ai task request-changes 0001 --agent qa --reason "..."`. Only the reviewer
+holding that claim may send it back; anyone else is refused. The task becomes
 `changes_requested` and ready again; the producer reclaims it, fixes it and
 re-submits. Nothing is lost: every transition stays in the task file.
 
@@ -152,7 +179,8 @@ configured under `workflow` in `config/workspace.json`
 In a Git repository, stage only owned files, run `ai git verify --strict`, and
 commit with `ai git commit`. The implementer submits and releases the task for
 independent review; a separate reviewer runs `ai git finish` before the task is
-marked done. Attach the check command and its result to the task.
+marked done. The evidence record is the one `ai check --task <id> --agent <n>`
+writes; `--strict` is a CI-only flag and its output is not a per-task proof.
 
 ## History, evidence, scope and roles
 

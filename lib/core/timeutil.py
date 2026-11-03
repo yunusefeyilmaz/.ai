@@ -14,7 +14,16 @@ def iso(value: dt.datetime | None = None) -> str:
 
 
 def parse_iso(value: str) -> dt.datetime:
-    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    """Parse an ISO timestamp and always return an offset-aware datetime.
+
+    Hand-edited state (or another tool's output) may omit the timezone. A naive
+    value used to crash arithmetic against `now()` with a TypeError, so it is
+    interpreted as UTC here instead.
+    """
+    parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
 
 
 def age_minutes(value) -> float | None:
