@@ -159,28 +159,53 @@ def _claim(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     """Claim a task and do the standard set-up so the worker does not have to.
 
     One command: task lock + in_progress, every file lock the task declared
-    (all or nothing), and the task branch when Git is enabled.
+    (all or nothing), and the task branch when Git is enabled. The claim is
+    atomic: if the branch cannot start, the task and its locks are released
+    again so the next agent is not stuck behind a half-claim.
     """
     meta, _ = store.parse_task(path)
-    held_ok, held = lifecycle.acquire_task_locks(meta, agent) if meta.get("status") != "review" else (True, "")
+    previous_status = meta.get("status")
+    held_ok, held = lifecycle.acquire_task_locks(meta, agent) if previous_status != "review" else (True, "")
     if not held_ok:
         return False, held
     ok, message = lifecycle.claim_task(path, agent, force)
     if not ok:
-        if meta.get("status") != "review":
+        if previous_status != "review":
             lifecycle.release_task_locks(meta, agent)
         return False, message
+    if previous_status != "review" and settings.git_enabled():
+        state = repo.git_state()
+        integration = repo.git_config()["integration"]
+        if not state.get("repo") or not state.get("head"):
+            print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
+        elif not repo.branch_exists(integration):
+            print(
+                f"  git: integration branch '{integration}' is missing; run `ai git setup` once, "
+                "then `ai git start` for this task."
+            )
+        else:
+            try:
+                started = flow.start_branch(message, agent)
+            except Exception as exc:  # noqa: BLE001 - a failed branch must roll the claim back
+                print(f"  git: starting the task branch raised: {exc}", file=sys.stderr)
+                started = 1
+            if started != 0:
+                rolled_back = lifecycle.rollback_claim(
+                    path, agent, previous_status, "the task branch could not start"
+                )
+                if rolled_back is None:
+                    return False, (
+                        f"Task {message} changed while its branch was starting; "
+                        "inspect it with `ai task show " + str(message) + "`."
+                    )
+                return False, (
+                    f"Claim of {message} was rolled back: the task branch could not start. "
+                    "The task is unowned again and its file locks were released; fix the Git "
+                    f"problem, then reclaim with `ai task claim {message} --agent {agent}`."
+                )
     print(f"Claimed {message} for {agent}.")
     if held:
         print(f"  file locks: {held}")
-    if meta.get("status") != "review" and settings.git_enabled():
-        state = repo.git_state()
-        if not state.get("repo") or not state.get("head"):
-            print("  git: not initialized; run `ai git setup` once (or `ai setup --set git=no`).")
-        else:
-            started = flow.start_branch(message, agent)
-            if started != 0:
-                print(f"  git: could not start the task branch; fix the message above, then `ai git start --task {message} --agent {agent}`.")
     return True, message
 
 

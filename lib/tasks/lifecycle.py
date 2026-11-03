@@ -224,6 +224,35 @@ def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
     return True, task_id
 
 
+def rollback_claim(
+    path: str, agent: str, previous_status: str | None, reason: str
+) -> str | None:
+    """Undo `claim_task` when a later step (the task branch) failed.
+
+    Best effort by design: the task must not stay owned by an agent that never
+    got a working checkout. Returns the task id, or None when the caller no
+    longer owns the claim (another process already moved it).
+    """
+    task_id: str | None = None
+    with workspace_state_guard():
+        meta, body = store.parse_task(path)
+        task_id = str(meta.get("id"))
+        if meta.get("owner") != agent:
+            return None
+        current = str(meta.get("status") or "")
+        meta["owner"] = None
+        meta["lock"] = None
+        meta["status"] = previous_status or "todo"
+        meta["updated"] = iso()
+        body = history.append(body, agent, current, meta["status"], "claim rolled back", reason)
+        store.write_task(path, meta, body)
+        board.write_board(store.load_tasks())
+    release_task_locks(meta, agent)
+    release_lock(f"task-{task_id}", agent=agent, force=True)
+    append_event("claim_rolled_back", task=task_id, agent=agent, reason=reason)
+    return task_id
+
+
 def ready_and_waiting() -> tuple[list[dict], list[tuple[dict, list[str]]]]:
     active = [task for task in store.load_tasks() if task["_folder"] == "active"]
     locks = {str(lock.get("resource")): lock for lock in list_locks()}
