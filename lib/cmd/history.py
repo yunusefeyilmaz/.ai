@@ -45,8 +45,11 @@ def cmd_history(args) -> int:
         for record in records:
             print(f"  {str(record.get('at'))[:19]}  {evidence.summary(record)}")
     elif records:
-        state = evidence.task_status(task_id, repo.git_state().get("head"))["state"]
-        print(f"Evidence: {len(records)} record(s), latest {state} (use --evidence for details)")
+        verdict = evidence.task_status(task_id, repo.git_state().get("head"))
+        detail = verdict["state"]
+        if verdict["state"] != "green":
+            detail += f" - {verdict.get('reason')}"
+        print(f"Evidence: {len(records)} record(s), latest {detail} (use --evidence for details)")
     return 0
 
 

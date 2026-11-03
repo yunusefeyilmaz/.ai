@@ -180,12 +180,21 @@ def cmd_resume(args) -> int:
             print(f"  commits since checkpoint: {drift['commits_since']}")
         print(f"  files needing attention: {', '.join(changed) if changed else 'none'}")
         proof = drift.get("evidence") or {}
-        if proof.get("state") in (None, "none"):
+        state = proof.get("state") or "none"
+        if state == "none":
             print("  verification: none recorded; run `ai check --task <id> --agent <n>` before review")
-        elif proof["state"] == "valid":
+        elif state == "green":
             print(f"  verification: still valid for this HEAD ({proof['summary']})")
+        elif state == "partial":
+            print(
+                "  verification: PARTIAL, not enough for review "
+                f"({proof.get('reason') or proof.get('summary')})"
+            )
         else:
-            print(f"  verification: {proof['state'].upper()}, do not trust it ({proof['summary']})")
+            print(
+                f"  verification: {state.upper()}, do not trust it "
+                f"({proof.get('reason') or proof.get('summary')})"
+            )
         print()
     print("Resume prompt:")
     print("-" * 60)
