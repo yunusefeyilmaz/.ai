@@ -172,7 +172,10 @@ Without `--fix`, `doctor` and `check` only read: a missing runtime tree stays
 missing until you repair it on purpose.
 
 `--strict` promotes warnings to failures; it is meant for CI (`doctor --strict`,
-`check --strict`), not for agents' normal loop. `ai check` runs only the
+`check --strict`). `ai check --task <id> --agent <name>` records the per-task
+evidence the review gate reads, and `--strict --task` records that same
+evidence with warnings promoted, so CI and the reviewer read one record.
+`ai check` runs only the
 *project's* commands from `checks` in `config/workspace.json` (empty by default:
 add your test/lint commands). It never runs the workspace's own tests in
 `lib/tests/`. `--fast` runs only checks marked fast in
