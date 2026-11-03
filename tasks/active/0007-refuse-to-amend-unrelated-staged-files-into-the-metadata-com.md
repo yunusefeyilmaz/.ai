@@ -1,8 +1,8 @@
 ---
 id: 0007
 title: "Refuse to amend unrelated staged files into the metadata commit"
-status: in_progress
-owner: cline-impl
+status: review
+owner: reviewer-1
 priority: high
 spec: specs/active/0007-refuse-to-amend-unrelated-staged-files-into-the-metadata-com.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/git/repo.py, lib/tests/test_metadata_commit.py"
 branch: feature/0007-refuse-to-amend-unrelated-staged-files-i
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T07:58:58Z
+updated: 2026-11-03T08:03:44Z
 lock: task-0007
+submitted_by: cline-impl
 ---
 
 # 0007 - Refuse to amend unrelated staged files into the metadata commit
@@ -43,3 +44,6 @@ Spec: `specs/active/0007-refuse-to-amend-unrelated-staged-files-into-the-metadat
 - 2026-11-03T07:54:21Z | cline-impl | todo -> in_progress | claimed
 - 2026-11-03T07:54:22Z created branch feature/0007-refuse-to-amend-unrelated-staged-files-i from develop by cline-impl
 - 2026-11-03T07:58:58Z committed: fix: stop folding unrelated staged files into the metadata amend
+- 2026-11-03T07:59:10Z | cline-impl | in_progress -> review | submitted for independent review | check passed @7a12b785 by cline-impl (no commands)
+- 2026-11-03T08:01:58Z | reviewer-1 | review -> review | claimed
+- 2026-11-03T08:03:44Z committed: chore: record the review claim for task 0007
