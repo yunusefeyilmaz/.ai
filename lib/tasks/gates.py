@@ -200,6 +200,19 @@ def request_changes_gate(meta: dict, agent: str) -> str | None:
         return f"Task {task_id} is '{meta.get('status')}'; changes can only be requested while it is in review."
     if meta.get("submitted_by") and meta.get("submitted_by") == agent:
         return f"Task {task_id} was submitted by {agent}; an independent agent must request changes."
+    owner = str(meta.get("owner") or "")
+    if owner != agent:
+        if owner:
+            return (
+                f"Task {task_id} is claimed for review by {owner}; only the reviewer holding the "
+                f"claim may request changes. {owner} can send it back, or release it first with "
+                f"`ai task release {task_id} --agent {owner}`."
+            )
+        return (
+            f"Task {task_id} is in review without a reviewer claim. Claim it first with "
+            f"`ai task next --review --agent {agent}` (or `ai task claim {task_id} --agent {agent}`), "
+            "then request changes."
+        )
     return None
 
 

@@ -330,6 +330,7 @@ class ReworkTest(WorkspaceCase):
         run(workspace, "task", "new", "Rework")
         run(workspace, "task", "claim", "0001", "--agent", "alice")
         self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        self.assertEqual(run(workspace, "task", "next", "--review", "--agent", "bob").returncode, 0)
         self.assertEqual(run(workspace, "task", "request-changes", "0001", "--agent", "bob", "--reason", "fix").returncode, 0)
         self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "alice").returncode, 0)
         again = run(workspace, "task", "review", "0001", "--agent", "alice")

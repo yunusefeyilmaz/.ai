@@ -157,8 +157,10 @@ ai git finish --task 0001 --agent qa          # a DIFFERENT agent merges
 ai task done 0001 --agent qa                  # ...and marks it done
 ```
 
-A reviewer who finds problems runs
-`ai task request-changes 0001 --agent qa --reason "..."`. The task becomes
+A reviewer claims the task first with `ai task next --review --agent qa` (or
+`ai task claim 0001 --agent qa`) and, if it is not good enough, runs
+`ai task request-changes 0001 --agent qa --reason "..."`. Only the reviewer
+holding that claim may send it back; anyone else is refused. The task becomes
 `changes_requested` and ready again; the producer reclaims it, fixes it and
 re-submits. Nothing is lost: every transition stays in the task file.
 

@@ -110,6 +110,7 @@ class ChangesRequestedTest(WorkspaceCase):
         workspace = self.make_workspace(git_repo=False)
         run(workspace, "task", "new", "Rework")
         submit(self, workspace)
+        self.assertEqual(run(workspace, "task", "next", "--review", "--agent", "bob").returncode, 0)
         sent = run(workspace, "task", "request-changes", "0001", "--agent", "bob", "--reason", "missing error handling")
         self.assertEqual(sent.returncode, 0, sent.stderr)
         listing = run(workspace, "task", "list", "--json").stdout
