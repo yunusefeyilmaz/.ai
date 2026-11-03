@@ -1,18 +1,21 @@
 ---
 id: 0001
 title: "Fix the audit-event fallback path and prove it with a test"
-status: in_progress
-owner: implementer
+status: done
+owner: reviewer
 priority: high
-spec: specs/active/0001-fix-the-audit-event-fallback-path-and-prove-it-with-a-test.md
+spec: specs/done/0001-fix-the-audit-event-fallback-path-and-prove-it-with-a-test.md
 depends_on: null
 scope_allowed: "lib/runtime/events.py, lib/tests/test_events_fallback.py"
 scope_forbidden: null
 locks: "lib/runtime/events.py, lib/tests/test_events_fallback.py"
 branch: feature/0001-fix-the-audit-event-fallback-path-and-pr
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:18:22Z
-lock: task-0001
+updated: 2026-11-03T07:19:07Z
+lock: null
+submitted_by: implementer
+reviewed_by: reviewer
+reviewed_at: 2026-11-03T07:19:07Z
 ---
 
 # 0001 - Fix the audit-event fallback path and prove it with a test
@@ -43,3 +46,6 @@ Spec: `specs/active/0001-fix-the-audit-event-fallback-path-and-prove-it-with-a-t
 - 2026-11-03T07:17:43Z | implementer | todo -> in_progress | claimed
 - 2026-11-03T07:17:44Z created branch feature/0001-fix-the-audit-event-fallback-path-and-pr from develop by implementer
 - 2026-11-03T07:18:22Z committed: fix: make the audit-event fallback path safe
+- 2026-11-03T07:18:54Z | implementer | in_progress -> review | submitted for independent review | check passed @265edb6e by implementer (no commands)
+- 2026-11-03T07:19:05Z | reviewer | review -> review | claimed
+- 2026-11-03T07:19:07Z | reviewer | review -> done | approved | check passed @265edb6e by reviewer (no commands)
