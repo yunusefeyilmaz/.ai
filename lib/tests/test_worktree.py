@@ -129,9 +129,10 @@ class DeliveryTest(WorktreeCase):
         workspace = self.parallel_workspace("Alpha")
         run(workspace, "task", "claim", "0001", "--agent", "w1")
         root = self.worktree_of(workspace)
+        reviewed = run(workspace, "task", "review", "0001", "--agent", "w1")
+        self.assertEqual(reviewed.returncode, 0, reviewed.stdout + reviewed.stderr)
+        # review is a Git gate now, so the dirty file has to appear after handover
         (root / "unfinished.txt").write_text("wip\n", encoding="utf-8")
-        run(workspace, "task", "review", "0001", "--agent", "w1")
-        run(workspace, "task", "release", "0001", "--agent", "w1")
         refused = run(workspace, "git", "finish", "--task", "0001", "--agent", "r1")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("uncommitted changes", refused.stderr)
@@ -158,6 +159,11 @@ class HostLayoutTest(WorktreeCase):
         git_do(host, "commit", "-qm", "init")
         workspace = host / ".ai"
         shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
+            folder = workspace / relative
+            shutil.rmtree(folder, ignore_errors=True)
+            folder.mkdir(parents=True)
+        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
         for sub in ("locks", "state", "artifacts", "logs"):
             shutil.rmtree(workspace / "runtime" / sub, ignore_errors=True)
         self.assertEqual(run(workspace, "adopt").returncode, 0)
