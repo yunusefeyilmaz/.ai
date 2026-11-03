@@ -47,7 +47,7 @@ Read task and spec files only when `NEXT` or the task asks you to.
 | 7 | Check | `ai check --task <id> --agent <n>` (runs the *project's* `checks` from `config/workspace.json`) | red. Strict mode needs green evidence for this task on the current HEAD before review |
 | 8 | **Review** | `ai task review <id> --agent <n>`: runs the project checks itself when required, then hands the task over (no separate release) | not `in_progress`, not yours, or no green check when checks are required |
 | 9 | **Merge + done** (a *different* agent) | `ai git finish --task <id> --agent <r>`, then `ai task done <id> --agent <r>` | task not in `review`, or `<r>` is the producer |
-| 9b | Not good enough? | `ai task request-changes <id> --agent <r> --reason "..."` | not in `review`, or `<r>` is the producer. The producer reclaims it |
+| 9b | Not good enough? | `ai task request-changes <id> --agent <r> --reason "..."` | not in `review`, `<r>` is the producer, or `<r>` does not hold the review claim (`ai task next --review`). The producer reclaims it |
 
 `ai task done` never works straight from `in_progress`. The producer never
 approves its own work. `--force` is an operator escape hatch reserved for the human: it applies to
