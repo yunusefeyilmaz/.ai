@@ -1,8 +1,8 @@
 ---
 id: 0015
 title: "Store setup answers explicitly in the tests that used --defaults"
-status: in_progress
-owner: buffy-s3
+status: review
+owner: null
 priority: high
 spec: specs/active/0015-store-setup-answers-explicitly-in-the-tests-that-used-defaul.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/tests/test_start.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py, lib/tests/test_chief.py"
 branch: feature/0015-store-setup-answers-explicitly-in-the-te
 created: 2026-11-03T09:02:13Z
-updated: 2026-11-03T09:05:25Z
-lock: task-0015
+updated: 2026-11-03T09:05:27Z
+lock: null
+submitted_by: buffy-s3
 ---
 
 # 0015 - Store setup answers explicitly in the tests that used --defaults
@@ -41,3 +42,4 @@ Spec: `specs/active/0015-store-setup-answers-explicitly-in-the-tests-that-used-d
 - 2026-11-03T09:02:14Z | buffy-s3 | todo -> in_progress | claimed
 - 2026-11-03T09:02:15Z created branch feature/0015-store-setup-answers-explicitly-in-the-te from develop by buffy-s3
 - 2026-11-03T09:05:25Z committed: fix: state the setup answers the tests rely on and keep worktrees ignored
+- 2026-11-03T09:05:27Z | buffy-s3 | in_progress -> review | submitted for independent review | check passed @ff8df36e by buffy-s3 (no commands)
