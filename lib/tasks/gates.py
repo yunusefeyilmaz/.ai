@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 
 from lib.config import preferences
-from lib.config.settings import configured_checks, load_config
+from lib.config.settings import configured_checks, git_enabled, load_config
 from lib.core.fsio import (
     CorruptStateError,
     lock_path,
@@ -131,6 +131,67 @@ def review_gate(meta: dict, agent: str) -> tuple[str | None, str]:
             f"Run `ai check --task {task_id} --agent {agent}` and fix what it reports first."
         ), ""
     return None, text if ok else ""
+
+
+def review_git_gate(meta: dict, agent: str, include_evidence: bool = True) -> str | None:
+    """Refuse review while the task checkout is not the one that will be merged.
+
+    `ai git finish` fails *after* handover when the branch is wrong, the tree is
+    dirty or HEAD moved past the evidence. Catching those here keeps the
+    reviewer's approval meaningful and puts the fix in the producer's hands.
+    """
+    if not git_enabled():
+        return None
+    task_id = str(meta.get("id"))
+    branch = str(meta.get("branch") or "")
+    with repo.in_task(meta):
+        state = repo.git_state()
+    if not state.get("repo"):
+        return None  # Git is enabled in config, but this workspace has no repository yet
+    if not branch:
+        return (
+            f"Task {task_id} has no branch. Start one with "
+            f"`ai git start --task {task_id} --agent {agent}` before review."
+        )
+    current = state.get("branch")
+    if current != branch:
+        return (
+            f"Task {task_id} belongs to branch {branch}, but the checkout is on {current}. "
+            f"Switch back with `git checkout {branch}`, then retry "
+            f"`ai task review {task_id} --agent {agent}`."
+        )
+    head = state.get("head")
+    if not head:
+        return (
+            f"Task {task_id} has no commit on {branch}. Commit the work with "
+            f"`ai git commit --task {task_id} --agent {agent} ...` before review."
+        )
+    dirty = [
+        path for path in (state.get("dirty") or [])
+        if not repo.is_workspace_ledger_path(path)
+    ]
+    if dirty:
+        listed = ", ".join(dirty[:5]) + (" ..." if len(dirty) > 5 else "")
+        return (
+            f"Task {task_id} has uncommitted product changes ({listed}). Commit them with "
+            f"`ai git commit --task {task_id} --agent {agent} ...` before review."
+        )
+    if include_evidence:
+        records = evidence.task_records(task_id)
+        if records:
+            latest = records[-1]
+            if (
+                not latest.get("invalidated")
+                and latest.get("head")
+                and latest.get("head") != head
+            ):
+                return (
+                    f"Task {task_id}: verification evidence belongs to "
+                    f"{(latest.get('head') or '')[:8]} but HEAD is {head[:8]}. Re-run "
+                    f"`ai check --task {task_id} --agent {agent}` on the current commit "
+                    "before review."
+                )
+    return None
 
 
 def request_changes_gate(meta: dict, agent: str) -> str | None:

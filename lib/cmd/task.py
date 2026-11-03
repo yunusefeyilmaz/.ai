@@ -390,6 +390,11 @@ def cmd_task_review(args) -> int:
     if not path or os.path.dirname(path) != ACTIVE_DIR:
         print(f"No active task with id {args.task_id}.", file=sys.stderr)
         return 1
+    current_meta, _ = store.parse_task(path)
+    git_error = gates.review_git_gate(current_meta, args.agent, include_evidence=False)
+    if git_error:
+        print(git_error, file=sys.stderr)
+        return 1
     auto_error = _auto_verify(path, args.agent)
     if auto_error:
         print(auto_error, file=sys.stderr)
@@ -412,6 +417,9 @@ def cmd_task_review(args) -> int:
         gate_error, proof = gates.review_gate(meta, args.agent)
         if gate_error:
             raise transition.Refused(gate_error)
+        git_gate_error = gates.review_git_gate(meta, args.agent)
+        if git_gate_error:
+            raise transition.Refused(git_gate_error)
         meta["status"] = "review"
         meta["submitted_by"] = args.agent
         meta["owner"] = None   # delivery hands the task over: no separate release step

@@ -93,20 +93,27 @@ class GitWithoutTerminalTest(WorkspaceCase):
 
 
 class DirtyTreeTest(WorkspaceCase):
-    def test_carry_moves_uncommitted_files_onto_the_task_branch(self) -> None:
+    def test_dirty_product_tree_rolls_back_and_recovery_reclaims(self) -> None:
         workspace = self.make_workspace()
         run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no")
         run(workspace, "task", "new", "Carry")
         run(workspace, "git", "setup", stdin="y\n")
         (workspace / "errors.txt").write_text("notes\n", encoding="utf-8")  # product file, untracked
+        refused = run(workspace, "task", "claim", "0001", "--agent", "w1")
+        self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
+        self.assertIn("rolled back", refused.stderr)
+        self.assertIn("ai task claim 0001 --agent w1", refused.stderr)
+        # the claim did not leave the task owned by an agent without a checkout
+        self.assertIn("status: todo", run(workspace, "task", "show", "0001").stdout)
+        # the fix is to commit/stash the product file, then reclaim
+        git(workspace, "add", "errors.txt")
+        git(workspace, "commit", "-qm", "feat: carry the file")
         claimed = run(workspace, "task", "claim", "0001", "--agent", "w1")
         self.assertEqual(claimed.returncode, 0, claimed.stderr)
-        self.assertIn("--carry", claimed.stdout + claimed.stderr)  # the refusal says how to proceed
-        started = run(workspace, "git", "start", "--task", "0001", "--agent", "w1", "--carry")
-        self.assertEqual(started.returncode, 0, started.stderr)
-        self.assertTrue((workspace / "errors.txt").exists())
-        branch = subprocess.run(["git", "branch", "--show-current"], cwd=str(workspace), capture_output=True, text=True).stdout.strip()
-        self.assertTrue(branch.startswith("feature/0001"))
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=str(workspace), capture_output=True, text=True
+        ).stdout.strip()
+        self.assertTrue(branch.startswith("feature/0001"), branch)
 
 
 class LocksAndSpecsTest(WorkspaceCase):

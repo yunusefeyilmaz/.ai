@@ -1,17 +1,19 @@
 ---
 id: 0004
 title: "Make review a real git gate (branch, clean tree, HEAD) and fix rename parsing"
-status: todo
-owner: null
+status: review
+owner: reviewer
 priority: high
 spec: specs/active/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-fix-r.md
 depends_on: 0003
-scope_allowed: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py"
+scope_allowed: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
 scope_forbidden: null
-locks: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py"
+locks: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
+branch: feature/0004-make-review-a-real-git-gate-branch-clean
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:17:31Z
-lock: null
+updated: 2026-11-03T07:35:22Z
+lock: task-0004
+submitted_by: implementer
 ---
 
 # 0004 - Make review a real git gate (branch, clean tree, HEAD) and fix rename parsing
@@ -41,3 +43,9 @@ Spec: `specs/active/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-
 ## Log
 
 - 2026-11-03T07:17:31Z | orchestrator | - -> todo | created
+- 2026-11-03T07:23:38Z | implementer | todo -> in_progress | claimed
+- 2026-11-03T07:23:39Z created branch feature/0004-make-review-a-real-git-gate-branch-clean from develop by implementer
+- 2026-11-03T07:32:52Z checkpoint by implementer (checkpoint, ?%)
+- 2026-11-03T07:35:13Z committed: fix: make review a real git gate and fix porcelain rename parsing
+- 2026-11-03T07:35:18Z | implementer | in_progress -> review | submitted for independent review | check passed @741327e6 by implementer (no commands)
+- 2026-11-03T07:35:22Z | reviewer | review -> review | claimed

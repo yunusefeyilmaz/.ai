@@ -122,6 +122,31 @@ def run_git_stdout(args: list[str]) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
+def parse_porcelain_z(output: str) -> list[tuple[str, str]]:
+    """Parse `git status --porcelain -z` into (status, path) records.
+
+    In -z form a rename/copy record is two NUL-separated tokens: the new path
+    followed by the old path. Consuming both keeps the old path from being
+    read as its own entry (which used to slice three characters off it and
+    report a phantom dirty file, making clean-tree checks unreliable).
+    """
+    tokens = output.split("\0")
+    entries: list[tuple[str, str]] = []
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        index += 1
+        if len(entry) < 3:
+            continue
+        status, path = entry[:2], entry[3:]
+        if not path:
+            continue
+        if "R" in status or "C" in status:
+            index += 1  # the old path belongs to this record
+        entries.append((status, path))
+    return entries
+
+
 def git_state() -> dict:
     state = {"repo": False, "branch": None, "head": None, "dirty": [], "staged": [], "error": None}
     code, top, err = run_git(["rev-parse", "--show-toplevel"])
@@ -137,13 +162,7 @@ def git_state() -> dict:
         "rev-parse", "--verify", "--quiet", "HEAD^{commit}",
     ])
     state["head"] = head if head_code == 0 and re.fullmatch(r"[0-9a-fA-F]{40,64}", head) else None
-    for entry in run_git_stdout(["status", "--porcelain", "-z"]).split("\0"):
-        if len(entry) < 3:
-            continue
-        code_part = entry[:2]
-        path = entry[3:]
-        if not path:
-            continue
+    for code_part, path in parse_porcelain_z(run_git_stdout(["status", "--porcelain", "-z"])):
         state["dirty"].append(path)
         if code_part[0] not in (" ", "?"):
             state["staged"].append(path)
