@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/runtime/evidence.py, lib/runtime/checkpoints.py, lib/cmd/history.py, lib/tests/test_evidence_state.py, lib/cmd/checkpoint.py"
 scope_forbidden: null
 locks: "lib/runtime/evidence.py, lib/runtime/checkpoints.py, lib/cmd/history.py, lib/tests/test_evidence_state.py, lib/cmd/checkpoint.py"
-branch: feature/0008-share-one-evidence-state-machine-between
+branch: null
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T08:14:53Z
+updated: 2026-11-03T08:15:10Z
 lock: task-0008
 submitted_by: cline-impl
+merged_into: develop
+merged_at: 2026-11-03T08:15:10Z
 ---
 
 # 0008 - Share one evidence state machine between resume, review and status
@@ -54,3 +56,4 @@ Spec: `specs/active/0008-share-one-evidence-state-machine-between-resume-review-
 - 2026-11-03T08:11:22Z | cline-impl | in_progress -> review | submitted for independent review | check passed @80ec2599 by cline-impl (no commands)
 - 2026-11-03T08:14:46Z | reviewer-1 | review -> review | claimed
 - 2026-11-03T08:14:53Z committed: chore: record the review claim for task 0008
+- 2026-11-03T08:15:10Z merged feature/0008-share-one-evidence-state-machine-between into develop by reviewer-1
