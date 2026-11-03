@@ -24,6 +24,7 @@ from lib.core.timeutil import iso
 from lib.runtime.events import append_event
 from lib.runtime.leases import (
     acquire_lock,
+    effective_holder,
     list_locks,
     lock_is_stale,
     release_lock,
@@ -582,20 +583,24 @@ def cmd_task_done(args) -> int:
         print(gate_error, file=sys.stderr)
         return 1
     resource = f"task-{task_id}"
-    try:
-        holder = read_json(lock_path(resource))
-    except CorruptStateError:
-        holder = {"corrupt": True, "agent": "unknown", "error": "corrupt lock file"}
-    if not holder:
+    holder = effective_holder(resource)
+    if holder.get("corrupt") and not args.force:
+        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
+        print(
+            f"Task {task_id} has a corrupt task lock ({resource}), which cannot prove the task "
+            f"is free. Inspect it, then repair it with `ai lock release {resource} --force`.",
+            file=sys.stderr,
+        )
+        return 1
+    if not holder or holder.get("agent") != args.agent:
+        # Free, stale (a crashed reviewer) or held by someone else: `acquire_lock`
+        # takes over a stale lease - recording `lock_replaced_stale` - and refuses
+        # a live one, so a finished task can never stay stuck in review.
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:
             append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
             print(f"Task {task_id} is locked by {result['holder'].get('agent')}.", file=sys.stderr)
             return 1
-    elif holder.get("agent") != args.agent and not args.force:
-        append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
-        print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
-        return 1
     target = os.path.join(DONE_DIR, os.path.basename(path))
     if os.path.exists(target):
         print(
