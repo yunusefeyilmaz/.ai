@@ -48,9 +48,12 @@ class SetupTest(WorkspaceCase):
         self.assertEqual(run(workspace, "setup", "--set", "review=maybe").returncode, 1)
         self.assertEqual(run(workspace, "setup", "--set", "colour=red").returncode, 1)
 
-    def test_defaults_and_check_commands(self) -> None:
+    def test_explicit_answers_and_check_commands(self) -> None:
         workspace = self.make_workspace(git_repo=False)
-        done = run(workspace, "setup", "--defaults", "--check", "unit=python -c \"print(1)\"")
+        done = run(
+            workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes",
+            "--check", 'unit=python -c "print(1)"',
+        )
         self.assertEqual(done.returncode, 0, done.stderr)
         config = json.loads((workspace / "config" / "workspace.json").read_text(encoding="utf-8"))
         self.assertEqual(len(config["checks"]), 1)
