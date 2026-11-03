@@ -128,6 +128,7 @@ Only the chief creates tasks, and only after the user's answers are stored.
 ai now [--agent <name>] [--role chief|implementer|reviewer] [--json]
 ai context [--limit N] [--json]
 ai history <task> [--evidence] [--json]
+ai review <task> [--stat] [--max-lines N] [--json]   # the whole review package, read-only
 ai decision new "<title>" | list [--json]
 ai worktree list [--json] | path <task> | prune [--force]
 ai version
@@ -514,10 +515,12 @@ from the first unchecked next step. Do not repeat finished work.
 ### Independent review
 
 ```text
-You are the reviewer, not the producer. Read the spec, the task and the diff
-against the base branch. Check each acceptance criterion with file:line evidence,
-then look for missing tests, security problems and scope creep. Do not edit the
-implementation. Report PASS or FAIL and run `ai check`.
+You are the reviewer, not the producer. Run `ai review <id>`: it prints the task,
+the spec with its acceptance criteria, the diff against the integration branch,
+the recorded check evidence and the history, and it writes nothing. Check each
+acceptance criterion with file:line evidence, then look for missing tests,
+security problems and scope creep. Do not edit the implementation. Report PASS or
+FAIL and run `ai check`.
 ```
 
 ### Repairing a session

@@ -90,6 +90,27 @@ def spec_from_template(
     return text
 
 
+def acceptance_criteria(text: str) -> list[str]:
+    """The `- [ ]` bullets under "## Acceptance criteria", in order.
+
+    One parser for the claim gate, `ai doctor` and `ai review`, so a reviewer is
+    never shown a different list than the one the gate judged.
+    """
+    match = re.search(r"## Acceptance criteria\n(.*?)(?:\n## |\Z)", text, flags=re.S)
+    if not match:
+        return []
+    return [
+        line.lstrip()[5:].strip()
+        for line in match.group(1).splitlines()
+        if line.lstrip().startswith("- [")
+    ]
+
+
+def real_criteria(criteria: list[str]) -> list[str]:
+    """Criteria that are not the template's placeholders."""
+    return [c for c in criteria if c and not c.lower().startswith(PLACEHOLDER_CRITERIA)]
+
+
 def spec_problem(meta: dict) -> str | None:
     """Why this task's spec is not ready for work ("no spec, no code"), or None.
 
@@ -107,14 +128,7 @@ def spec_problem(meta: dict) -> str | None:
         text = read_text(absolute)
     except OSError:
         return f"spec {ref} cannot be read"
-    match = re.search(r"## Acceptance criteria\n(.*?)(?:\n## |\Z)", text, flags=re.S)
-    criteria = [
-        line[5:].strip() if line.lstrip().startswith("- [") else line.strip()
-        for line in (match.group(1).splitlines() if match else [])
-        if line.lstrip().startswith("- [")
-    ]
-    real = [c for c in criteria if c and not c.lower().startswith(PLACEHOLDER_CRITERIA)]
-    if not real:
+    if not real_criteria(acceptance_criteria(text)):
         return f"spec {ref} has no acceptance criteria yet (it is still the template)"
     return None
 

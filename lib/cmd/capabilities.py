@@ -66,6 +66,7 @@ DESCRIPTIONS = {
     "decision": "new | list architecture decision records",
     "worktree": "list | path <task> | prune [--force]: per-task Git worktrees (git.isolation=worktree)",
     "history": "<id> [--evidence] [--json]: transition log (who, when, from -> to, why, proof) and verification evidence",
+    "review": "<id> [--stat] [--max-lines N] [--json]: read-only review package: task, spec + criteria, branch diff, check evidence, history, checklist",
     "start": "one-command first run: prepare, detect Git, create or claim a task; --agent, --json, --no-demo",
     "adopt": "wire root adapters for every AI tool; --check also reports the .gitignore ledger policy",
     "doctor": "workspace health with a repair hint per finding; --fix, --strict, --json",
