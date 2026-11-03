@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
 scope_forbidden: null
 locks: "lib/runtime/overview.py, lib/cmd/now.py, lib/tests/test_now_json.py, lib/tests/test_commands_smoke.py"
-branch: feature/0016-add-needs-human-and-next-args-to-ai-now
+branch: null
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T09:28:34Z
+updated: 2026-11-03T09:28:36Z
 lock: task-0016
 submitted_by: buffy-s4
+merged_into: develop
+merged_at: 2026-11-03T09:28:36Z
 ---
 
 # 0016 - Add needs_human and next_args to ai now --json
@@ -47,3 +49,4 @@ Spec: `specs/active/0016-add-needs-human-and-next-args-to-ai-now-json.md`
 - 2026-11-03T09:28:17Z | buffy-s4 | in_progress -> review | submitted for independent review | check passed @b766c14e by buffy-s4 (no commands)
 - 2026-11-03T09:28:24Z | buffy-reviewer | review -> review | claimed
 - 2026-11-03T09:28:34Z committed: chore: chore(0016): record the review handover
+- 2026-11-03T09:28:36Z merged feature/0016-add-needs-human-and-next-args-to-ai-now into develop by buffy-reviewer
