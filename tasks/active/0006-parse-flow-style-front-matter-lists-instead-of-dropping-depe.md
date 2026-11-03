@@ -1,8 +1,8 @@
 ---
 id: 0006
 title: "Parse flow-style front matter lists instead of dropping dependencies"
-status: in_progress
-owner: implementer
+status: review
+owner: reviewer
 priority: high
 spec: specs/active/0006-parse-flow-style-front-matter-lists-instead-of-dropping-depe.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/tasks/store.py, lib/tests/test_frontmatter_lists.py"
 branch: feature/0006-parse-flow-style-front-matter-lists-inst
 created: 2026-11-03T07:45:14Z
-updated: 2026-11-03T07:47:46Z
+updated: 2026-11-03T07:48:09Z
 lock: task-0006
+submitted_by: implementer
 ---
 
 # 0006 - Parse flow-style front matter lists instead of dropping dependencies
@@ -45,3 +46,5 @@ Spec: `specs/active/0006-parse-flow-style-front-matter-lists-instead-of-dropping
 - 2026-11-03T07:45:41Z created branch feature/0006-parse-flow-style-front-matter-lists-inst from develop by implementer
 - 2026-11-03T07:47:42Z checkpoint by implementer (flow-list parser and tests are green, 80%)
 - 2026-11-03T07:47:46Z committed: fix: fix: parse flow-style front matter lists instead of dropping them
+- 2026-11-03T07:47:58Z | implementer | in_progress -> review | submitted for independent review | check passed @b1e57411 by implementer (no commands)
+- 2026-11-03T07:48:09Z | reviewer | review -> review | claimed
