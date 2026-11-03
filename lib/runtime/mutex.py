@@ -34,10 +34,16 @@ _holding_mutex = False
 if os.name == "nt":  # pragma: no cover - exercised on Windows CI
     import msvcrt
 
+    # Mirror the POSIX branch: typeshed can present platform modules without
+    # their members unless guarded through dynamic lookup.
+    _locking = getattr(msvcrt, "locking")
+    _LK_NBLCK = getattr(msvcrt, "LK_NBLCK")
+    _LK_UNLCK = getattr(msvcrt, "LK_UNLCK")
+
     def _try_lock(descriptor: int) -> bool:
         os.lseek(descriptor, 0, os.SEEK_SET)
         try:
-            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            _locking(descriptor, _LK_NBLCK, 1)
             return True
         except OSError:
             return False
@@ -45,7 +51,7 @@ if os.name == "nt":  # pragma: no cover - exercised on Windows CI
     def _unlock(descriptor: int) -> None:
         os.lseek(descriptor, 0, os.SEEK_SET)
         try:
-            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            _locking(descriptor, _LK_UNLCK, 1)
         except OSError:
             pass
 
