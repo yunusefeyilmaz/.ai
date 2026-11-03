@@ -9,11 +9,13 @@ depends_on: "0016, 0017, 0018"
 scope_allowed: ".github/workflows/ci.yml, pyproject.toml, lib/**, ai.py, requirements-dev.txt"
 scope_forbidden: null
 locks: ".github/workflows/ci.yml, pyproject.toml, lib/**, ai.py, requirements-dev.txt"
-branch: feature/0019-gate-ci-on-ruff-mypy-and-the-capabilitie
+branch: null
 created: 2026-11-03T09:12:54Z
-updated: 2026-11-03T10:11:40Z
+updated: 2026-11-03T10:11:43Z
 lock: task-0019
 submitted_by: buffy-s4
+merged_into: develop
+merged_at: 2026-11-03T10:11:43Z
 ---
 
 # 0019 - Gate CI on ruff, mypy and the capabilities contract
@@ -47,3 +49,4 @@ Spec: `specs/active/0019-gate-ci-on-ruff-mypy-and-the-capabilities-contract.md`
 - 2026-11-03T10:11:35Z | buffy-s4 | in_progress -> review | submitted for independent review | check passed @215a808a by buffy-s4 (no commands)
 - 2026-11-03T10:11:39Z | buffy-reviewer | review -> review | claimed
 - 2026-11-03T10:11:40Z committed: chore: chore(0019): record the review handover
+- 2026-11-03T10:11:43Z merged feature/0019-gate-ci-on-ruff-mypy-and-the-capabilitie into develop by buffy-reviewer
