@@ -9,11 +9,13 @@ depends_on: 0003
 scope_allowed: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
 scope_forbidden: null
 locks: "lib/git/repo.py, lib/tasks/gates.py, lib/cmd/task.py, lib/tests/test_review_gate.py, lib/tests/test_field_report.py, lib/tests/test_worktree.py"
-branch: feature/0004-make-review-a-real-git-gate-branch-clean
+branch: null
 created: 2026-11-03T07:17:31Z
-updated: 2026-11-03T07:35:22Z
+updated: 2026-11-03T07:35:37Z
 lock: task-0004
 submitted_by: implementer
+merged_into: develop
+merged_at: 2026-11-03T07:35:37Z
 ---
 
 # 0004 - Make review a real git gate (branch, clean tree, HEAD) and fix rename parsing
@@ -49,3 +51,4 @@ Spec: `specs/active/0004-make-review-a-real-git-gate-branch-clean-tree-head-and-
 - 2026-11-03T07:35:13Z committed: fix: make review a real git gate and fix porcelain rename parsing
 - 2026-11-03T07:35:18Z | implementer | in_progress -> review | submitted for independent review | check passed @741327e6 by implementer (no commands)
 - 2026-11-03T07:35:22Z | reviewer | review -> review | claimed
+- 2026-11-03T07:35:37Z merged feature/0004-make-review-a-real-git-gate-branch-clean into develop by reviewer
