@@ -89,7 +89,7 @@ class WorkspaceCase(unittest.TestCase):
 class StartTest(WorkspaceCase):
     def test_start_creates_one_task_and_a_linked_spec(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")  # `ai start` never sets Git up before the user chose
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")  # `ai start` never sets Git up before the user chose
         payload = self.start(workspace)
 
         self.assertEqual(payload["shape"], "root")
@@ -109,7 +109,7 @@ class StartTest(WorkspaceCase):
 
     def test_agent_claims_the_starter_task(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         payload = self.start(workspace, "--agent", "newcomer")
 
         self.assertTrue(payload["claimed"])
@@ -144,7 +144,7 @@ class StartTest(WorkspaceCase):
         # never "create a task" for a worker
         self.assertTrue(any(step.startswith("ai setup") for step in payload["next"]), payload["next"])
         self.assertFalse(any("task new" in step for step in payload["next"]))
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         again = self.start(workspace, "--no-demo")
         self.assertTrue(any(step.startswith("ai plan apply") for step in again["next"]), again["next"])
 
@@ -184,7 +184,7 @@ class TaskSpecTest(WorkspaceCase):
 class FirstRunLoopTest(WorkspaceCase):
     def test_started_task_can_open_its_branch(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         payload = self.start(workspace, "--agent", "newcomer")
 
         result = run(
@@ -200,7 +200,7 @@ class FirstRunLoopTest(WorkspaceCase):
 
     def test_product_changes_still_block_the_branch(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         payload = self.start(workspace, "--agent", "newcomer")
         (workspace / "src").mkdir(exist_ok=True)
         (workspace / "src" / "app.py").write_text("pass\n", encoding="utf-8")
@@ -219,7 +219,7 @@ class FirstRunLoopTest(WorkspaceCase):
         archived = run(workspace, "task", "done", "0001", "--agent", "seed", "--force")
         self.assertEqual(archived.returncode, 0, archived.stderr)
 
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         payload = self.start(workspace, "--agent", "newcomer")
 
         self.assertTrue(payload["created"])
@@ -228,7 +228,7 @@ class FirstRunLoopTest(WorkspaceCase):
 
     def test_first_porcelain_entry_keeps_tasks_board_path(self) -> None:
         workspace = self.make_workspace()
-        self.assertEqual(run(workspace, "setup", "--defaults").returncode, 0)  # the user chose Git
+        self.assertEqual(run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1").returncode, 0)  # the user chose Git
         started = run(workspace, "start", "--agent", "me")
         self.assertEqual(started.returncode, 0, started.stderr + started.stdout)
 

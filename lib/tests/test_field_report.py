@@ -37,7 +37,7 @@ class ChiefOnlyTest(WorkspaceCase):
         refused = run(workspace, "task", "new", "Too early", "--role", "chief")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("ai setup", refused.stderr)
-        self.assertEqual(run(workspace, "setup", "--defaults").returncode, 0)
+        self.assertEqual(run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1").returncode, 0)
         self.assertEqual(run(workspace, "task", "new", "Planned", "--role", "chief").returncode, 0)
 
     def test_role_can_come_from_the_environment(self) -> None:
@@ -45,7 +45,7 @@ class ChiefOnlyTest(WorkspaceCase):
 
         workspace = self.make_workspace(git_repo=False)
         self.strict_gate(workspace)
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         env = dict(os.environ, AI_ROLE="chief", PYTHONUTF8="1")
         result = subprocess.run(
             [os.sys.executable, str(workspace / "ai.py"), "task", "new", "Via env"],
@@ -182,7 +182,7 @@ class WordingTest(WorkspaceCase):
 
     def test_now_after_claim_points_at_the_work_not_at_check(self) -> None:
         workspace = self.make_workspace()
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "task", "new", "Early")
         run(workspace, "git", "setup", stdin="y\n")
         run(workspace, "task", "claim", "0001", "--agent", "w1")
@@ -214,7 +214,7 @@ class JsonModeTest(WorkspaceCase):
         config = json.loads(cfg.read_text(encoding="utf-8"))
         config["checks"] = [{"name": "noisy", "command": 'python -c "print(\'LOUD OUTPUT\')"'}]
         cfg.write_text(json.dumps(config), encoding="utf-8")
-        run(workspace, "setup", "--defaults")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=yes", "continue=no", "workers=1")
         run(workspace, "task", "new", "Json")
         # `check --json`: the check's own output must not precede the JSON
         checked = run(workspace, "check", "--json")
