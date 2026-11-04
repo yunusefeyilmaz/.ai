@@ -142,7 +142,7 @@ def main() -> int:
             if probe.returncode != 0:
                 rows.append((f"ai.py {label}", f"FAILED rc={probe.returncode}: {(probe.stderr or probe.stdout).strip()[:100]}"))
             else:
-                rows.append((f"ai.py {label}, no .pyc", f"{median_ms(lambda: run(cmd, cwd=cold, env=env)):.0f} ms"))
+                rows.append((f"ai.py {label}, no .pyc", f"{median_ms(lambda cmd=cmd: run(cmd, cwd=cold, env=env)):.0f} ms"))
         if args.profile:
             extra_blocks.append(("slowest imports of one `now --json` call", import_report(sys.executable, cold / "ai.py", cold, env)))
             extra_blocks.append(("cProfile of one `now --json` call", call_profile(sys.executable, cold / "ai.py", cold, env)))
@@ -157,7 +157,7 @@ def main() -> int:
         for label, cmd in (("now --json", typical_cached), ("capabilities", everything_cached)):
             probe = run(cmd, cwd=cold, env=env)
             if probe.returncode == 0:
-                rows.append((f"ai.py {label}, WITH .pyc", f"{median_ms(lambda: run(cmd, cwd=cold, env=env)):.0f} ms"))
+                rows.append((f"ai.py {label}, WITH .pyc", f"{median_ms(lambda cmd=cmd: run(cmd, cwd=cold, env=env)):.0f} ms"))
 
         # 4. what the new helper costs
         start = time.perf_counter()
