@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import fnmatch
 import json
 import os
@@ -32,10 +33,8 @@ from lib.runtime.dirs import ensure_dirs
 from lib.runtime.events import append_event, read_events
 from lib.runtime.mutex import registry_mutex
 
-# A lock must be at least this old before the PID liveness probe is applied.
-# This avoids false positives for recently claimed tasks whose owner has simply
-# exited between CLI invocations (e.g. `ai start` claims and exits).
-_PID_LIVENESS_MIN_AGE_SECONDS = 30
+# A task lock is diagnostic only about its owner process. Staleness itself is
+# TTL-based (see lock_is_stale), so no PID window is needed here.
 
 
 def path_covers(pattern: str, resource: str) -> bool:
@@ -56,51 +55,21 @@ def lock_is_stale(payload: dict | None, stale_after: int) -> bool:
         # parse_iso already normalizes naive datetimes to UTC, but keep this
         # guard in case a future change removes that normalization.
         if updated.tzinfo is None:
-            import datetime as dt
-
             updated = updated.replace(tzinfo=dt.timezone.utc)
         age = (now() - updated).total_seconds()
     except (TypeError, ValueError):
         # If we cannot parse the timestamp, treat the lock as stale so that
         # recover/clean can remove it.
         return True
-    if age > stale_after:
-        return True
-    # Secondary liveness signal: task locks only. A crashed worker holding
-    # task-XXXX should not block for the full TTL. Infrastructure locks
-    # (git.index, project, tasks.index) use TTL only to preserve cross-process
-    # mutual exclusion for short-lived guards such as `git begin`/`git end`.
-    # Only apply when the lock is old enough that a recently-exited owner
-    # (e.g. `ai start` claiming and exiting) is not a false positive.
-    resource = payload.get("resource", "")
-    if (
-        isinstance(resource, str)
-        and resource.startswith("task-")
-        and age > _PID_LIVENESS_MIN_AGE_SECONDS
-    ):
-        host = payload.get("host")
-        pid = payload.get("pid")
-        if host == HOST and isinstance(pid, int) and pid > 0 and not _pid_alive(pid):
-            return True
-    return False
+    return age > stale_after
 
 
-def _pid_alive(pid: int) -> bool:
-    """Return True if `pid` is still running on this machine.
-
-    Used only as a secondary liveness signal when host == HOST. PID reuse is
-    handled by keeping TTL as the primary cross-host staleness signal.
-    """
+def _expiry(updated_at: str, ttl: int) -> str:
+    """The lease's expiry timestamp, kept as a diagnostic next to updated_at."""
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Process exists but we lack permission to signal it.
-        return True
-    except OSError:
-        return False
-    return True
+        return iso(parse_iso(updated_at) + dt.timedelta(seconds=ttl))
+    except (TypeError, ValueError):
+        return iso()
 
 
 def normalize_resource(resource: str) -> str:
@@ -211,14 +180,16 @@ def acquire_lock(
     if ttl > max_lock_ttl():
         return {"ok": False, "holder": None, "error": f"ttl must be <= {max_lock_ttl()} seconds"}
     path = lock_path(resource)
+    stamp = iso()
     payload = {
         "resource": resource,
         "agent": agent or "unknown",
         "task": task,
         "host": HOST,
         "pid": os.getpid(),
-        "started_at": iso(),
-        "updated_at": iso(),
+        "started_at": stamp,
+        "updated_at": stamp,
+        "expires_at": _expiry(stamp, ttl),
         "ttl_seconds": ttl,
     }
     forced: list[dict] = []  # emitted after the registry mutex is released
@@ -255,6 +226,29 @@ def acquire_lock(
                             previous_agent=holder.get("agent"), previous_task=holder.get("task"),
                             previous_resource=holder.get("resource") or resource,
                         ))
+                    elif (
+                        agent
+                        and holder.get("agent") == agent
+                        and str(holder.get("task") or "") == str(task or "")
+                    ):
+                        # Re-acquiring a lease you already own is a renewal, not
+                        # a conflict: refresh the TTL in place and keep the
+                        # original started_at so history stays truthful.
+                        refreshed = dict(holder)
+                        refreshed["updated_at"] = iso()
+                        refreshed["expires_at"] = _expiry(refreshed["updated_at"], ttl)
+                        refreshed["ttl_seconds"] = ttl
+                        refreshed["pid"] = os.getpid()
+                        refreshed["host"] = HOST
+                        if task is not None:
+                            refreshed["task"] = task
+                        write_json_atomic(path, refreshed)
+                        return {
+                            "ok": True,
+                            "lock": refreshed,
+                            "path": path,
+                            "refreshed": True,
+                        }
                     elif lock_is_stale(holder, stale_after):
                         # A stale lock on this exact resource is replaceable; TTL
                         # staleness exists so a crashed worker does not need
@@ -376,13 +370,23 @@ def release_lock(
                 if not force:
                     print(f"Refusing to release '{resource}': {holder.get('error')}. Use --force to remove it.", file=sys.stderr)
                     return 1
-            elif agent and holder.get("agent") != agent and not force:
-                print(
-                    f"Refusing to release '{resource}': held by {holder.get('agent')} "
-                    f"(task {holder.get('task')}). Use --force to override.",
-                    file=sys.stderr,
-                )
-                return 1
+            elif not force:
+                owner = holder.get("agent")
+                task = holder.get("task") or "-"
+                if not agent:
+                    print(
+                        f"Refusing to release '{resource}': held by {owner} (task {task}). "
+                        f"Pass --agent {owner} or use --force to override.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                if owner != agent:
+                    print(
+                        f"Refusing to release '{resource}': held by {owner} "
+                        f"(task {task}). Use --force to override.",
+                        file=sys.stderr,
+                    )
+                    return 1
             try:
                 os.remove(path)
             except FileNotFoundError:
@@ -421,6 +425,9 @@ def heartbeat_lock(resource: str, agent: str | None = None, quiet: bool = False)
                 warn(f"Lock '{resource}' is held by {holder.get('agent')}.")
                 return 1
             holder["updated_at"] = iso()
+            ttl = holder.get("ttl_seconds")
+            if isinstance(ttl, int):
+                holder["expires_at"] = _expiry(holder["updated_at"], ttl)
             write_json_atomic(path, holder)
             if not quiet:
                 print(f"Heartbeat '{resource}' at {holder['updated_at']}.")

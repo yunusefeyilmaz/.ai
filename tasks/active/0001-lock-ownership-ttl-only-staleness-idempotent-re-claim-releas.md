@@ -1,8 +1,8 @@
 ---
 id: 0001
 title: "Lock ownership: TTL-only staleness, idempotent re-claim, release guard"
-status: todo
-owner: null
+status: in_progress
+owner: deepseek
 priority: high
 spec: specs/active/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-releas.md
 depends_on: null
@@ -11,8 +11,8 @@ scope_forbidden: null
 locks: "lib/runtime/**, lib/cmd/lock.py, lib/cmd/recover.py, lib/cmd/doctor.py, lib/tests/test_lock_ownership.py"
 branch: feature/0001-lock-ownership-ttl-only-staleness-idempo
 created: 2026-11-04T08:14:03Z
-updated: 2026-11-04T08:19:47Z
-lock: null
+updated: 2026-11-04T15:54:54Z
+lock: task-0001
 ---
 
 # 0001 - Lock ownership: TTL-only staleness, idempotent re-claim, release guard
@@ -45,3 +45,7 @@ Spec: `specs/active/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-r
 - 2026-11-04T08:15:15Z | impl-1 | todo -> in_progress | claimed
 - 2026-11-04T08:15:16Z created branch feature/0001-lock-ownership-ttl-only-staleness-idempo from develop by impl-1
 - 2026-11-04T08:19:47Z | impl-1 | in_progress -> todo | released
+- 2026-11-04T15:29:00Z | deepseek | todo -> in_progress | claimed
+- 2026-11-04T15:29:01Z created branch feature/0001-lock-ownership-ttl-only-staleness-idempo from develop by deepseek
+- 2026-11-04T15:53:10Z checkpoint by deepseek (checkpoint, ?%)
+- 2026-11-04T15:54:54Z committed: fix: make lock staleness ownership-based and guard release
