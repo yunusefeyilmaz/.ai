@@ -16,6 +16,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
+
 ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(
     ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
@@ -44,39 +47,19 @@ def git(workspace: Path, *args: str) -> None:
     )
 
 
+def _configure_now_json(config: dict) -> None:
+    config["preferences"] = {"confirmed": False, "answered": []}
+    workflow = config.setdefault("workflow", {})
+    workflow["chiefOnlyTasks"] = False
+    workflow["requireSpec"] = False
+    workflow["requireCheck"] = False
+    workflow["autoContinue"] = False
+
+
 class NowJsonCase(unittest.TestCase):
     def make_workspace(self) -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-now-json-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["checks"] = []
-        config["preferences"] = {"confirmed": False, "answered": []}
-        workflow = config.setdefault("workflow", {})
-        workflow["chiefOnlyTasks"] = False
-        workflow["requireSpec"] = False
-        workflow["requireCheck"] = False
-        workflow["autoContinue"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-
-        git(workspace, "init", "-q", "--initial-branch=master")
-        git(workspace, "config", "user.name", "Now JSON Test")
-        git(workspace, "config", "user.email", "now@example.test")
-        git(workspace, "add", "-A")
-        git(workspace, "commit", "-qm", "test baseline")
-        git(workspace, "branch", "develop")
-        return workspace
+        spec = GitSpec("master", "Now JSON Test", "now@example.test", ("develop",))
+        return build_workspace(self, "ai-now-json-", git=spec, configure=_configure_now_json)
 
     def payload(self, workspace: Path, *args: str) -> dict:
         result = run(workspace, "now", "--json", *args)

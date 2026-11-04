@@ -13,6 +13,9 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
+
 ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(
     ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
@@ -43,34 +46,8 @@ def git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 class ReliabilityCase(unittest.TestCase):
     def make_workspace(self, *, with_git: bool = False) -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-reliability-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["checks"] = []
-        config.setdefault("workflow", {})["chiefOnlyTasks"] = False
-        config["workflow"]["requireSpec"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-
-        if with_git:
-            git(workspace, "init", "-q", "--initial-branch=develop")
-            git(workspace, "config", "user.name", "Reliability Test")
-            git(workspace, "config", "user.email", "reliability@example.test")
-            git(workspace, "add", "-A")
-            git(workspace, "commit", "-qm", "test baseline")
-            git(workspace, "branch", "master")
-        return workspace
+        spec = GitSpec("develop", "Reliability Test", "reliability@example.test", ("master",)) if with_git else None
+        return build_workspace(self, "ai-reliability-", git=spec)
 
     def create_claimed_task(self, workspace: Path, agent: str = "worker") -> None:
         created = run(workspace, "task", "new", "Reliability scenario", "--no-spec")

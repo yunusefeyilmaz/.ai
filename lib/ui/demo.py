@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from typing import Any
 
 from lib.core.paths import VERSION
 from lib.ui.data import LIST_ORDER, STATUS_ORDER, STATUS_WEIGHT
@@ -199,7 +200,7 @@ class DemoWorld:
             if e.get("agent"):
                 per_agent[e["agent"]] = per_agent.get(e["agent"], 0) + 1
             kinds[e["event"]] = kinds.get(e["event"], 0) + 1
-        agents = []
+        agents: list[dict[str, Any]] = []
         for name, roles in AGENTS.items():
             owned = [t["id"] for t in self.tasks if t["owner"] == name]
             reviews = [t["id"] for t in self.tasks if t["submitted_by"] == name and t["status"] in ("review", "changes_requested")]
@@ -211,6 +212,7 @@ class DemoWorld:
         agents.sort(key=lambda a: (-len(a["tasks"]), -a["events"], a["name"]))
         ready = [t for t in tasks if t["status"] in ("todo", "changes_requested") and t["waiting_on"] == "-"]
         reviews_q = [t for t in tasks if t["status"] == "review"]
+        rec: dict[str, Any]
         if role == "reviewer" and reviews_q:
             rec = {"cmd": "ai task next --review --agent <n>", "why": f"{len(reviews_q)} task(s) wait for independent review; this claims the oldest"}
         elif role == "chief":

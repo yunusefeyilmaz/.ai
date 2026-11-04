@@ -132,7 +132,7 @@ def render_locks(app, w: int, h: int) -> list[str]:
     # declared locks per active task (spot overlaps before they bite)
     declared = []
     active = [t for t in snap.get("tasks", []) if t["folder"] == "active" and t["locks"]]
-    clashes = set()
+    clashes: set[str] = set()
     for i, a in enumerate(active):
         for b in active[i + 1:]:
             if any(resources_overlap(x, y) for x in a["locks"] for y in b["locks"]):
@@ -287,8 +287,8 @@ def render_metrics(app, w: int, h: int) -> list[str]:
     counts = snap.get("counts", {})
     total = max(1, snap.get("total_tasks", 0))
     dist = []
-    from lib.ui.style import STATUS_LABEL, STATUS_TOKEN
     from lib.ui.data import STATUS_ORDER
+    from lib.ui.style import STATUS_LABEL, STATUS_TOKEN
 
     for s in STATUS_ORDER:
         dist.append(labelled_bar(st, STATUS_LABEL[s].lower(), counts.get(s, 0) / total, half[0] - 4, STATUS_TOKEN[s], str(counts.get(s, 0)), 12))
