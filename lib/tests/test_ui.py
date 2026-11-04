@@ -94,7 +94,13 @@ class UiTest(unittest.TestCase):
     def test_cli_once_reads_a_real_workspace_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / ".ai"
-            shutil.copytree(ROOT, workspace, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
+            shutil.copytree(
+                ROOT,
+                workspace,
+                ignore=shutil.ignore_patterns(
+                    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc",
+                ),
+            )
             before = sorted(str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file())
             result = run(workspace, "ui", "--once", "--no-color", "--width", "110", "--height", "30")
             self.assertEqual(result.returncode, 0, result.stderr)
