@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/runtime/**, lib/cmd/lock.py, lib/cmd/recover.py, lib/cmd/doctor.py, lib/tests/test_lock_ownership.py"
 scope_forbidden: null
 locks: "lib/runtime/**, lib/cmd/lock.py, lib/cmd/recover.py, lib/cmd/doctor.py, lib/tests/test_lock_ownership.py"
-branch: feature/0001-lock-ownership-ttl-only-staleness-idempo
+branch: null
 created: 2026-11-04T08:14:03Z
-updated: 2026-11-04T16:43:31Z
+updated: 2026-11-04T16:45:44Z
 lock: task-0001
 submitted_by: deepseek
+merged_into: develop
+merged_at: 2026-11-04T16:45:44Z
 ---
 
 # 0001 - Lock ownership: TTL-only staleness, idempotent re-claim, release guard
@@ -54,3 +56,4 @@ Spec: `specs/active/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-r
 - 2026-11-04T15:56:55Z | deepseek | in_progress -> review | submitted for independent review | check passed @79a69703 by deepseek (tests passed, ruff passed, mypy passed)
 - 2026-11-04T16:16:32Z | reviewer-1 | review -> review | claimed
 - 2026-11-04T16:43:31Z committed: chore: record 0001 review handover metadata
+- 2026-11-04T16:45:44Z merged feature/0001-lock-ownership-ttl-only-staleness-idempo into develop by reviewer-1
