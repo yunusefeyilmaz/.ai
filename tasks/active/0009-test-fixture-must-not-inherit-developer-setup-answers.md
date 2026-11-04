@@ -45,3 +45,4 @@ Spec: `specs/active/0009-test-fixture-must-not-inherit-developer-setup-answers.m
 - 2026-11-04T08:20:43Z created branch feature/0009-test-fixture-must-not-inherit-developer from develop by impl-1
 - 2026-11-04T09:13:51Z checkpoint by impl-1 (checkpoint, ?%)
 - 2026-11-04T09:14:23Z committed: test: test: isolate fixtures from developer setup answers
+- 2026-11-04T09:22:56Z | impl-1 | in_progress -> todo | released
