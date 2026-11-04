@@ -22,6 +22,8 @@ onboarding.
 
 - `make_workspace` pins `workflow.requireCheck` back to its mode-driven default
   (`"strict"`), so lite workspaces do not require checks and strict workspaces do.
+- The same pin lands in every fixture that copies the repository config, so no
+  test module inherits the developer's `ai setup` answer.
 - A regression test proves the fixture ignores a `checks=yes` config copied from
   the developer's checkout.
 
@@ -33,7 +35,7 @@ onboarding.
 
 ## Acceptance criteria
 
-- [ ] `make_workspace` sets `workflow.requireCheck` to "strict" regardless of the copied config
+- [ ] Every test fixture pins `workflow.requireCheck` to "strict" instead of inheriting the developer's `ai setup` answer
 - [ ] A regression test copies a config with `requireCheck: true` and asserts the fixture workspace does not require checks in lite mode
 - [ ] The existing suite passes after `ai setup --set checks=yes` in the developer checkout
 - [ ] Tests cover the new behavior and pass

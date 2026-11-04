@@ -182,6 +182,10 @@ class ResetMutexTest(unittest.TestCase):
         config_path = workspace / "config" / "workspace.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["checks"] = []
+        # The developer's `ai setup` answers must not change what the suite gates on.
+        config.setdefault("workflow", {})["requireCheck"] = "strict"
+        config.setdefault("preferences", {})["confirmed"] = False
+        config["preferences"]["answered"] = []
         config.setdefault("workflow", {})["chiefOnlyTasks"] = False
         config["workflow"]["requireSpec"] = False
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

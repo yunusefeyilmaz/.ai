@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 import unittest
 
 from test_start import ROOT, WorkspaceCase, git, run
+
+sys.path.insert(0, str(ROOT))
+
+from lib.config import settings  # noqa: E402
 
 
 class GateTest(WorkspaceCase):
@@ -144,9 +149,12 @@ if __name__ == "__main__":
 
 
 class CheckScopeTest(WorkspaceCase):
-    def test_shipped_config_does_not_run_the_workspace_own_tests(self) -> None:
-        shipped = json.loads((ROOT / "config" / "workspace.json").read_text(encoding="utf-8"))
-        self.assertEqual(shipped.get("checks"), [])
+    def test_a_fresh_workspace_ships_without_checks(self) -> None:
+        # The template (not this self-hosted checkout) starts with no checks: a
+        # new user decides what "green" means, and the tool never silently runs
+        # its own suite as someone else's gate. This repository configures its
+        # own checks on purpose, through `ai setup --check ...`.
+        self.assertEqual(settings.default_config()["checks"], [])
 
     def test_check_without_project_checks_says_so_and_passes(self) -> None:
         workspace = self.make_workspace(git_repo=False)

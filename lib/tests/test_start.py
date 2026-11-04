@@ -65,6 +65,12 @@ class WorkspaceCase(unittest.TestCase):
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["mode"] = mode
         config["checks"] = []
+        # The developer's `ai setup` answers must not change what the suite gates on:
+        # pin the mode-driven default so a local `checks=yes` cannot make every
+        # throwaway workspace demand checks it does not have.
+        config.setdefault("workflow", {})["requireCheck"] = "strict"
+        config.setdefault("preferences", {})["confirmed"] = False
+        config["preferences"]["answered"] = []
         config.setdefault("workflow", {})["chiefOnlyTasks"] = False  # the gate has its own tests
         config["workflow"]["requireSpec"] = False
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
@@ -240,6 +246,24 @@ class FirstRunLoopTest(WorkspaceCase):
             workspace, "git", "start", "--task", "0001", "--agent", "me", "--type", "feature",
         )
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+
+class FixtureIsolationTest(WorkspaceCase):
+    def test_fixture_ignores_a_developer_checks_choice(self) -> None:
+        # ROOT's config may carry `requireCheck: true` because the developer ran
+        # `ai setup --set checks=yes`. The fixture must reset it to the
+        # mode-driven default, or every review test starts demanding checks.
+        workspace = self.make_workspace(git_repo=False, mode="lite")
+        config = json.loads((workspace / "config" / "workspace.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(config["workflow"]["requireCheck"], "strict")
+        self.assertEqual(config["checks"], [])
+
+        run(workspace, "task", "new", "No checks here")
+        self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "alice").returncode, 0)
+        review = run(workspace, "task", "review", "0001", "--agent", "alice")
+
+        self.assertEqual(review.returncode, 0, review.stderr)
 
 
 class LiteCheckpointTest(WorkspaceCase):

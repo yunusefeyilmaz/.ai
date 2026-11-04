@@ -60,6 +60,10 @@ class NowJsonCase(unittest.TestCase):
         config_path = workspace / "config" / "workspace.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["checks"] = []
+        # The developer's `ai setup` answers must not change what the suite gates on.
+        config.setdefault("workflow", {})["requireCheck"] = "strict"
+        config.setdefault("preferences", {})["confirmed"] = False
+        config["preferences"]["answered"] = []
         config["preferences"] = {"confirmed": False, "answered": []}
         workflow = config.setdefault("workflow", {})
         workflow["chiefOnlyTasks"] = False
