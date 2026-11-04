@@ -15,7 +15,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from _workspace import GitSpec, make_workspace as build_workspace
+
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
 
 ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(

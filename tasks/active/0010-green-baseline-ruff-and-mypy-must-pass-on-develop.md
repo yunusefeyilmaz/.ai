@@ -10,7 +10,7 @@ scope_allowed: "lib/ui/**, pyproject.toml"
 scope_forbidden: null
 locks: "lib/ui/**, pyproject.toml"
 created: 2026-11-04T09:22:56Z
-updated: 2026-11-04T09:23:12Z
+updated: 2026-11-04T13:45:57Z
 lock: null
 ---
 
@@ -37,3 +37,5 @@ Spec: `specs/active/0010-green-baseline-ruff-and-mypy-must-pass-on-develop.md`
 - 2026-11-04T09:22:56Z | chief-1 | - -> todo | created
 - 2026-11-04T09:23:10Z | impl-1 | todo -> in_progress | claimed
 - 2026-11-04T09:23:12Z | impl-1 | in_progress -> todo | claim rolled back | the task branch could not start
+- 2026-11-04T13:45:55Z | impl-1 | todo -> in_progress | claimed
+- 2026-11-04T13:45:57Z | impl-1 | in_progress -> todo | claim rolled back | the task branch could not start

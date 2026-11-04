@@ -21,8 +21,8 @@ from lib.ui.widgets import (
     scroll_view,
     scrollbar,
     status_chip,
-    window,
     when,
+    window,
 )
 
 PIPELINE = ["todo", "in_progress", "review", "done"]

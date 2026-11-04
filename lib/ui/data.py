@@ -16,7 +16,8 @@ import os
 import re
 import time
 
-from lib.config import preferences, roles as roles_cfg
+from lib.config import preferences
+from lib.config import roles as roles_cfg
 from lib.config.settings import load_config, lock_settings
 from lib.core.fsio import read_text
 from lib.core.paths import (
@@ -32,8 +33,7 @@ from lib.core.timeutil import now, parse_iso
 from lib.decisions import adr
 from lib.git import repo
 from lib.runtime import checkpoints as ckpt
-from lib.runtime import evidence, health, overview
-from lib.runtime import leases
+from lib.runtime import evidence, health, leases, overview
 from lib.runtime.events import read_events
 from lib.runtime.metrics import collect_metrics
 from lib.tasks import board, history, scope, store

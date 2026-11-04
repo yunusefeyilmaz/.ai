@@ -18,8 +18,10 @@ COPY_IGNORE = shutil.ignore_patterns(
 
 sys.path.insert(0, str(ROOT))
 
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
+
 from lib.git import repo
-from _workspace import GitSpec, make_workspace as build_workspace
 
 
 def run(workspace: Path, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:

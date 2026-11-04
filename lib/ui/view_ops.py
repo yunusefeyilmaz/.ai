@@ -287,8 +287,8 @@ def render_metrics(app, w: int, h: int) -> list[str]:
     counts = snap.get("counts", {})
     total = max(1, snap.get("total_tasks", 0))
     dist = []
-    from lib.ui.style import STATUS_LABEL, STATUS_TOKEN
     from lib.ui.data import STATUS_ORDER
+    from lib.ui.style import STATUS_LABEL, STATUS_TOKEN
 
     for s in STATUS_ORDER:
         dist.append(labelled_bar(st, STATUS_LABEL[s].lower(), counts.get(s, 0) / total, half[0] - 4, STATUS_TOKEN[s], str(counts.get(s, 0)), 12))
