@@ -15,7 +15,7 @@ import os
 import socket
 import sys
 
-VERSION = "0.9.8"
+VERSION = "0.9.9"
 def _host_name() -> str:
     """One stable spelling per machine: lower-case short name, overridable."""
     override = os.environ.get("AI_HOST")

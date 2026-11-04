@@ -2,6 +2,31 @@
 
 All notable changes to this workspace are documented here.
 
+## [0.9.9] - 2026-11-04
+
+### Added
+- `ai ui`: a read-only terminal dashboard (stdlib only, no new dependency, Python 3.8+).
+  - Ten screens (keys 1-9 and 0): Dashboard, Tasks, Board, Specs, Agents, Locks, Activity,
+    Health, Metrics, Project. Together they show tasks and their pipeline, spec acceptance
+    criteria progress, agents and roles, file leases with remaining TTL, the event stream,
+    `ai doctor` findings, evidence and checkpoints, metrics, Git history and ADRs.
+  - The dashboard always shows the single next command (`ai now`), and `n` previews it for
+    the chief, implementer or reviewer role.
+  - Live refresh from a background thread, so animation never stutters; toasts for new events.
+  - Animated ASCII art inspired by ASCII Magic, re-implemented in pure Python: startup digital
+    rain with the `.ai` logo decoding out of noise, spinning torus, starfield, plasma, pulse
+    rule, status donut, activity heatmap, mascot for empty states, confetti when a task is done.
+  - Four themes (aurora, ember, matrix, paper); truecolor, 256, 16 colors or plain text
+    (`NO_COLOR`); `--ascii` fallback; layouts adapt from 80x24 upward.
+  - `--demo` plays a self-running fake workspace; `--once` prints one frame (pipes, CI).
+  - `/` search, `f` filter, `s` jump from a task to its spec, `?` help.
+- `lib/ui/` package (`term`, `style`, `art`, `data`, `demo`, `widgets`, `view_main`, `view_ops`,
+  `app`), `lib/cmd/ui.py` and `lib/tests/test_ui.py`.
+
+### Changed
+- The `.ai` logo uses the pyfiglet "slant" style.
+- `capabilities` lists `ui`; `lib/README.md` documents the `ui/` package.
+
 ## [0.9.8] - 2026-11-03
 
 ### Added
