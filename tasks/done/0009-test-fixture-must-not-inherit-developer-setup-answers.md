@@ -9,12 +9,14 @@ depends_on: null
 scope_allowed: "lib/tests/**"
 scope_forbidden: null
 locks: "lib/tests/**"
-branch: feature/0009-test-fixture-must-not-inherit-developer
+branch: null
 created: 2026-11-04T08:19:47Z
-updated: 2026-11-04T14:01:01Z
+updated: 2026-11-04T14:34:12Z
 lock: null
 reviewed_by: impl-1
 reviewed_at: 2026-11-04T13:51:21Z
+merged_into: develop
+merged_at: 2026-11-04T14:34:12Z
 ---
 
 # 0009 - Test fixture must not inherit developer setup answers
@@ -66,3 +68,4 @@ Spec: `specs/active/0009-test-fixture-must-not-inherit-developer-setup-answers.m
 - 2026-11-04T13:51:21Z | impl-1 | in_progress -> done | forced: review gate bypassed | check failed @a7598e75 by impl-1 (tests FAILED (exit 1), ruff FAILED (exit 1), mypy FAILED (exit 1))
 - 2026-11-04T13:58:45Z | impl-1 | done -> done | released
 - 2026-11-04T14:01:01Z | impl-1 | done -> done | released
+- 2026-11-04T14:34:12Z merged feature/0009-test-fixture-must-not-inherit-developer into develop by impl-1
