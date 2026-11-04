@@ -1,17 +1,18 @@
 ---
 id: 0010
 title: "Green baseline: ruff and mypy must pass on develop"
-status: todo
-owner: null
+status: in_progress
+owner: impl-1
 priority: high
 spec: specs/active/0010-green-baseline-ruff-and-mypy-must-pass-on-develop.md
 depends_on: null
 scope_allowed: "lib/ui/**, pyproject.toml"
 scope_forbidden: null
 locks: "lib/ui/**, pyproject.toml"
+branch: feature/0010-green-baseline-ruff-and-mypy-must-pass-o
 created: 2026-11-04T09:22:56Z
-updated: 2026-11-04T13:45:57Z
-lock: null
+updated: 2026-11-04T14:35:07Z
+lock: task-0010
 ---
 
 # 0010 - Green baseline: ruff and mypy must pass on develop
@@ -39,3 +40,7 @@ Spec: `specs/active/0010-green-baseline-ruff-and-mypy-must-pass-on-develop.md`
 - 2026-11-04T09:23:12Z | impl-1 | in_progress -> todo | claim rolled back | the task branch could not start
 - 2026-11-04T13:45:55Z | impl-1 | todo -> in_progress | claimed
 - 2026-11-04T13:45:57Z | impl-1 | in_progress -> todo | claim rolled back | the task branch could not start
+- 2026-11-04T14:34:37Z | impl-1 | todo -> in_progress | claimed
+- 2026-11-04T14:34:39Z created branch feature/0010-green-baseline-ruff-and-mypy-must-pass-o from develop by impl-1
+- 2026-11-04T14:34:46Z checkpoint by impl-1 (checkpoint, ?%)
+- 2026-11-04T14:35:07Z checkpoint by impl-1 (checkpoint, ?%)
