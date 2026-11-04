@@ -17,7 +17,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
+COPY_IGNORE = shutil.ignore_patterns(
+    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
+)
 
 
 def run(host: Path, *args: str) -> subprocess.CompletedProcess:
