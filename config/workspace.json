@@ -14,11 +14,11 @@
     "qa"
   ],
   "orchestration": {
-    "maxParallel": 3
+    "maxParallel": 1
   },
   "workflow": {
     "requireReview": true,
-    "requireCheck": "strict",
+    "requireCheck": true,
     "autoContinue": false,
     "chiefOnlyTasks": true,
     "requireSpec": true
@@ -76,8 +76,35 @@
     "writeTests": true
   },
   "preferences": {
-    "confirmed": false,
-    "answered": []
+    "confirmed": true,
+    "answered": [
+      "checks",
+      "continue",
+      "git",
+      "review",
+      "tests",
+      "workers"
+    ],
+    "at": "2026-11-04T08:13:03Z"
   },
-  "checks": []
+  "checks": [
+    {
+      "name": "tests",
+      "command": "python lib/tests/run.py -j 8",
+      "addedBy": "chief-1",
+      "addedAt": "2026-11-04T08:13:03Z"
+    },
+    {
+      "name": "ruff",
+      "command": "python -m ruff check .",
+      "addedBy": "chief-1",
+      "addedAt": "2026-11-04T08:13:03Z"
+    },
+    {
+      "name": "mypy",
+      "command": "python -m mypy",
+      "addedBy": "chief-1",
+      "addedAt": "2026-11-04T08:13:03Z"
+    }
+  ]
 }
