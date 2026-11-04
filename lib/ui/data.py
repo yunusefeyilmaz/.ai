@@ -149,7 +149,7 @@ def _task_view(task: dict, specs_by_ref: dict, specs_by_task: dict, head: str | 
 
 
 def _load_checkpoints() -> list[dict]:
-    items = []
+    items: list[dict] = []
     if not os.path.isdir(CHECKPOINT_DIR):
         return items
     for name in sorted(os.listdir(CHECKPOINT_DIR)):
@@ -215,7 +215,7 @@ def _events_section(limit: int = 300) -> dict:
 
 
 def _adapters() -> list[dict]:
-    items = []
+    items: list[dict] = []
     base = os.path.join(WORKSPACE, "adapters")
     if not os.path.isdir(base):
         return items
@@ -364,6 +364,57 @@ def _read_json_list(path: str) -> list:
     except ValueError:
         return []
     return data if isinstance(data, list) else []
+
+
+class SnapshotProvider:
+    """Read-only data provider used by the Textual screens.
+
+    The snapshot is loaded once per provider instance, so every section a screen
+    asks for comes from the same consistent read.
+    """
+
+    def __init__(self) -> None:
+        self._snapshot: dict | None = None
+
+    def _snap(self) -> dict:
+        if self._snapshot is None:
+            self._snapshot = load_snapshot(deep=False)
+        return self._snapshot
+
+    def get_now(self) -> dict:
+        return self._snap().get("now") or {}
+
+    def get_status(self) -> dict:
+        snap = self._snap()
+        return {key: snap.get(key) for key in (
+            "project", "counts", "total_tasks", "progress", "progress_weighted", "criteria")}
+
+    def get_events(self, limit: int = 100) -> list:
+        events = self._snap().get("events") or {}
+        return list(events.get("recent") or [])[-limit:]
+
+    def get_config(self) -> dict:
+        return self._snap().get("config") or {}
+
+    def get_tasks(self) -> list:
+        return self._snap().get("tasks") or []
+
+    def get_locks(self) -> list:
+        return self._snap().get("locks") or []
+
+    def get_metrics(self) -> dict:
+        return self._snap().get("metrics") or {}
+
+    def get_specs(self) -> dict:
+        specs = self._snap().get("specs") or []
+        return {
+            "active": [spec for spec in specs if spec.get("folder") == "active"],
+            "done": [spec for spec in specs if spec.get("folder") == "done"],
+        }
+
+
+def get_provider() -> SnapshotProvider:
+    return SnapshotProvider()
 
 
 def event_time(event: dict) -> dt.datetime | None:

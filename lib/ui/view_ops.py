@@ -132,7 +132,7 @@ def render_locks(app, w: int, h: int) -> list[str]:
     # declared locks per active task (spot overlaps before they bite)
     declared = []
     active = [t for t in snap.get("tasks", []) if t["folder"] == "active" and t["locks"]]
-    clashes = set()
+    clashes: set[str] = set()
     for i, a in enumerate(active):
         for b in active[i + 1:]:
             if any(resources_overlap(x, y) for x in a["locks"] for y in b["locks"]):

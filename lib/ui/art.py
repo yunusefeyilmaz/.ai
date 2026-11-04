@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import random
+from typing import Any
 
 from lib.ui.style import Style, lerp
 from lib.ui.term import visible_len
@@ -147,7 +148,7 @@ def torus(style: Style, w: int, h: int, t: int) -> list[str]:
     """Spinning donut, shaded with a luminance ramp (the classic)."""
     a, b = t * 0.07, t * 0.035
     ramp = ".,-~:;=!*#$@" if style.g.unicode else ".:-=+*#%@"
-    out = [[" "] * w for _ in range(h)]
+    out: list[list[tuple[int, str] | None]] = [[None] * w for _ in range(h)]
     zbuf = [[0.0] * w for _ in range(h)]
     sa, ca, sb, cb = math.sin(a), math.cos(a), math.sin(b), math.cos(b)
     theta = 0.0
@@ -174,7 +175,7 @@ def torus(style: Style, w: int, h: int, t: int) -> list[str]:
     for row in out:
         cells = []
         for cell in row:
-            if cell == " ":
+            if cell is None:
                 cells.append(" ")
             else:
                 idx, ch = cell
@@ -367,7 +368,7 @@ class Confetti:
     def __init__(self, width: int, height: int, seed: int | None = None) -> None:
         rng = random.Random(seed)
         self.width, self.height = width, height
-        self.parts = [
+        self.parts: list[dict[str, Any]] = [
             {"x": rng.uniform(0, width), "y": rng.uniform(-height / 2, 0), "vy": rng.uniform(0.3, 0.9),
              "vx": rng.uniform(-0.3, 0.3), "ch": rng.choice("*+x~o"), "c": rng.choice(self.COLORS)}
             for _ in range(max(12, width // 2))

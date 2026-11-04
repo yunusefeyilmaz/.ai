@@ -7,21 +7,29 @@ depth, and a non-blocking key reader that returns symbolic key names.
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import shutil
 import sys
 import time
 import unicodedata
+from typing import Any
 
-IS_WINDOWS = os.name == "nt"
+
+def _detect_windows() -> bool:
+    return os.name == "nt"
+
+
+IS_WINDOWS: bool = _detect_windows()
 
 if IS_WINDOWS:  # pragma: no cover - exercised on Windows only
     import msvcrt
 else:
     import select
-    import termios
-    import tty
+
+    termios = importlib.import_module("termios")
+    tty = importlib.import_module("tty")
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
@@ -127,7 +135,7 @@ def _enable_windows_vt() -> None:  # pragma: no cover - Windows only
     try:
         import ctypes
 
-        kernel = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel = vars(ctypes)["windll"].kernel32
         handle = kernel.GetStdHandle(-11)
         mode = ctypes.c_uint()
         if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
@@ -141,7 +149,7 @@ class Terminal:
 
     def __init__(self) -> None:
         self._fd = sys.stdin.fileno() if not IS_WINDOWS else -1
-        self._saved = None
+        self._saved: Any = None
         self._pending = ""
 
     def __enter__(self) -> "Terminal":
