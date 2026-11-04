@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from _workspace import GitSpec, make_workspace as build_workspace
 
 ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(
@@ -37,29 +38,7 @@ def run(workspace: Path, *args: str, timeout: int = 20) -> subprocess.CompletedP
 
 class BoardCase(unittest.TestCase):
     def make_workspace(self) -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-board-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["checks"] = []
-        # The developer's `ai setup` answers must not change what the suite gates on.
-        config.setdefault("workflow", {})["requireCheck"] = "strict"
-        config.setdefault("preferences", {})["confirmed"] = False
-        config["preferences"]["answered"] = []
-        config.setdefault("workflow", {})["chiefOnlyTasks"] = False
-        config["workflow"]["requireSpec"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-        return workspace
+        return build_workspace(self, "ai-board-")
 
     def check_ok(self, workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
         result = run(workspace, *args)

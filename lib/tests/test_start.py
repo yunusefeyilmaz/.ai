@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from _workspace import GitSpec, make_workspace as build_workspace
 
 ROOT = Path(__file__).resolve().parents[2]
 COPY_IGNORE = shutil.ignore_patterns(
@@ -25,9 +26,10 @@ def run(workspace: Path, *args: str, stdin: str = "") -> subprocess.CompletedPro
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Each test owns a disposable workspace; allow .pyc reuse between CLI calls.
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
     return subprocess.run(
-        [sys.executable, "-B", str(workspace / "ai.py"), *args],
+        [sys.executable, str(workspace / "ai.py"), *args],
         cwd=str(workspace),
         input=stdin,
         capture_output=True,
@@ -51,40 +53,8 @@ def git(workspace: Path, *args: str) -> None:
 
 class WorkspaceCase(unittest.TestCase):
     def make_workspace(self, git_repo: bool = True, mode: str = "lite") -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-first-run-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["mode"] = mode
-        config["checks"] = []
-        # The developer's `ai setup` answers must not change what the suite gates on:
-        # pin the mode-driven default so a local `checks=yes` cannot make every
-        # throwaway workspace demand checks it does not have.
-        config.setdefault("workflow", {})["requireCheck"] = "strict"
-        config.setdefault("preferences", {})["confirmed"] = False
-        config["preferences"]["answered"] = []
-        config.setdefault("workflow", {})["chiefOnlyTasks"] = False  # the gate has its own tests
-        config["workflow"]["requireSpec"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-
-        if git_repo:
-            git(workspace, "init", "-q", "--initial-branch=main")
-            git(workspace, "config", "user.name", "Test Runner")
-            git(workspace, "config", "user.email", "test@example.com")
-            git(workspace, "add", "-A")
-            git(workspace, "commit", "-qm", "test baseline")
-        return workspace
+        spec = GitSpec("main", "Test Runner", "test@example.com") if git_repo else None
+        return build_workspace(self, "ai-first-run-", mode=mode, git=spec)
 
     def start(self, workspace: Path, *extra: str) -> dict:
         result = run(workspace, "start", "--json", *extra)
