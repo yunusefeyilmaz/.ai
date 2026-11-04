@@ -1,17 +1,17 @@
 ---
 id: 0009
-title: "Test fixture must not inherit developer setup answers"
-status: done
+title: 'Test fixture must not inherit developer setup answers'
+status: todo
 owner: null
 priority: high
-spec: specs/done/0009-test-fixture-must-not-inherit-developer-setup-answers.md
+spec: specs/active/0009-test-fixture-must-not-inherit-developer-setup-answers.md
 depends_on: null
-scope_allowed: "lib/tests/**"
+scope_allowed: 'lib/tests/**'
 scope_forbidden: null
-locks: "lib/tests/**"
+locks: 'lib/tests/**'
 branch: null
 created: 2026-11-04T08:19:47Z
-updated: 2026-11-04T14:34:12Z
+updated: 2026-11-04T15:22:26Z
 lock: null
 reviewed_by: impl-1
 reviewed_at: 2026-11-04T13:51:21Z
@@ -69,3 +69,4 @@ Spec: `specs/active/0009-test-fixture-must-not-inherit-developer-setup-answers.m
 - 2026-11-04T13:58:45Z | impl-1 | done -> done | released
 - 2026-11-04T14:01:01Z | impl-1 | done -> done | released
 - 2026-11-04T14:34:12Z merged feature/0009-test-fixture-must-not-inherit-developer into develop by impl-1
+- 2026-11-04T15:22:26Z | user | done -> done | released
