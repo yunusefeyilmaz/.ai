@@ -16,8 +16,7 @@ Active: 9 | Done: 1 | Updated: 2026-11-04T14:34:57Z
 | 0006 | todo | - | high | End-to-end test: existing repo through the full v1.0.0 flow |
 | 0007 | todo | - | medium | Docs truth pass and token diet |
 | 0008 | todo | - | high | Release v1.0.0: version bump, changelog, release checklist |
-| 0010 | in_progress | impl-1 | high | Green baseline: ruff and mypy must pass on develop |
 
 ## Recently done
 
-- 0009 - Test fixture must not inherit developer setup answers (2026-11-04T14:34:12Z)
+- 0010 - Green baseline: ruff and mypy must pass on develop (2026-11-04T14:35:07Z)

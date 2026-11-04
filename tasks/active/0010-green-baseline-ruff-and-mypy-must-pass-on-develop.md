@@ -1,7 +1,7 @@
 ---
 id: 0010
 title: "Green baseline: ruff and mypy must pass on develop"
-status: in_progress
+status: done
 owner: impl-1
 priority: high
 spec: specs/active/0010-green-baseline-ruff-and-mypy-must-pass-on-develop.md
@@ -23,7 +23,7 @@ lock: task-0010
 
 ## Acceptance criteria
 
-- [ ] 
+- [x] 
 
 ## Plan
 
