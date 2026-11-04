@@ -9,13 +9,15 @@ depends_on: null
 scope_allowed: "'lib/ui/**, pyproject.toml'"
 scope_forbidden: null
 locks: "'lib/ui/**, pyproject.toml'"
-branch: feature/0010-green-baseline-ruff-and-mypy-must-pass-o
+branch: null
 created: 2026-11-04T09:22:56Z
-updated: 2026-11-04T15:10:06Z
+updated: 2026-11-04T15:21:18Z
 lock: null
 changes_requested_by: reviewer
 reviewed_by: reviewer
 reviewed_at: 2026-11-04T15:10:06Z
+merged_into: develop
+merged_at: 2026-11-04T15:21:18Z
 ---
 
 # 0010 - Green baseline: ruff and mypy must pass on develop
@@ -53,3 +55,4 @@ Spec: `specs/active/0010-green-baseline-ruff-and-mypy-must-pass-on-develop.md`
 - 2026-11-04T15:03:02Z | implementer | changes_requested -> in_progress | claimed
 - 2026-11-04T15:03:04Z switched to branch feature/0010-green-baseline-ruff-and-mypy-must-pass-o from develop by implementer
 - 2026-11-04T15:10:06Z | reviewer | review -> done | approved | evidence invalidated: changes requested by reviewer
+- 2026-11-04T15:21:18Z merged feature/0010-green-baseline-ruff-and-mypy-must-pass-o into develop by impl-1
