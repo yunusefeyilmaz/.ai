@@ -268,7 +268,7 @@ class LiteCheckpointTest(WorkspaceCase):
     def test_lite_does_not_warn_on_a_fresh_claim(self) -> None:
         workspace = self.make_workspace(mode="lite")
         self.start(workspace, "--agent", "me")
-        result = run(workspace, "check", "--strict")
+        result = run(workspace, "check", "--strict", "--allow-empty")
 
         self.assertNotIn("no checkpoint", result.stdout)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -134,7 +134,7 @@ class ReviewGateTest(ReviewGateCase):
         workspace = self.make_workspace()
         self.claimed(workspace)
         self.commit_all(workspace, "feat: work")
-        checked = run(workspace, "check", "--task", "0001", "--agent", "alice")
+        checked = run(workspace, "check", "--task", "0001", "--agent", "alice", "--allow-empty")
         self.assertEqual(checked.returncode, 0, checked.stderr + checked.stdout)
 
         (workspace / "README.md").write_text("moved on\n", encoding="utf-8")
@@ -145,7 +145,7 @@ class ReviewGateTest(ReviewGateCase):
         self.assertIn("evidence belongs to", refused.stderr)
         self.assertIn("ai check --task 0001", refused.stderr)
 
-        rechecked = run(workspace, "check", "--task", "0001", "--agent", "alice")
+        rechecked = run(workspace, "check", "--task", "0001", "--agent", "alice", "--allow-empty")
         self.assertEqual(rechecked.returncode, 0, rechecked.stderr + rechecked.stdout)
         reviewed = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(reviewed.returncode, 0, reviewed.stderr + reviewed.stdout)
