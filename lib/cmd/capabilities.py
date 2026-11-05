@@ -75,6 +75,7 @@ DESCRIPTIONS = {
     "metrics": "summarize local workflow events; --since, --json",
     "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
     "task": "new | list | show | link | ready | next [--review] | claim | release | review | request-changes | done | discard | block | unblock",
+    "spec": "show | check <task-id> <n>: each criterion with its box and done/total, or tick criterion n",
     "lock": "acquire | release | heartbeat | status",
     "checkpoint": "save resumable context",
     "resume": "print a compact resume brief with drift",
