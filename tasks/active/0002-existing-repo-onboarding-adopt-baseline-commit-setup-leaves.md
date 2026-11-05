@@ -1,8 +1,8 @@
 ---
 id: 0002
 title: "Existing-repo onboarding: adopt baseline commit, setup leaves HEAD on develop"
-status: in_progress
-owner: opencode-1
+status: review
+owner: reviewer-opencode
 priority: high
 spec: specs/active/0002-existing-repo-onboarding-adopt-baseline-commit-setup-leaves.md
 depends_on: null
@@ -11,8 +11,9 @@ scope_forbidden: null
 locks: "lib/config/adopt.py, lib/cmd/adopt.py, lib/cmd/git.py, lib/git/setup.py, lib/git/flow.py, lib/tests/test_onboarding.py, lib/tests/test_worktree.py"
 branch: feature/0002-existing-repo-onboarding-adopt-baseline
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T10:35:48Z
+updated: 2026-11-05T11:23:34Z
 lock: task-0002
+submitted_by: opencode-1
 ---
 
 # 0002 - Existing-repo onboarding: adopt baseline commit, setup leaves HEAD on develop
@@ -48,3 +49,7 @@ Spec: `specs/active/0002-existing-repo-onboarding-adopt-baseline-commit-setup-le
 - 2026-11-05T09:53:27Z created branch feature/0002-existing-repo-onboarding-adopt-baseline from develop by opencode-1
 - 2026-11-05T10:13:58Z committed: feat: commit the workspace baseline and land setup on the integration branch
 - 2026-11-05T10:35:48Z committed: test: adapt the host-worktree test to the committed workspace baseline
+- 2026-11-05T10:55:37Z checkpoint by opencode-1 (checkpoint, ?%)
+- 2026-11-05T11:08:56Z | opencode-1 | in_progress -> review | submitted for independent review | check passed @47344545 by opencode-1 (tests passed, ruff passed, mypy passed)
+- 2026-11-05T11:17:41Z | reviewer-opencode | review -> review | claimed
+- 2026-11-05T11:23:34Z committed: chore: record the review claim for task 0002
