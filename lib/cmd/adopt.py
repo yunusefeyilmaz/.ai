@@ -15,6 +15,7 @@ from lib.core.paths import (
     PROJECT,
     WORKSPACE,
 )
+from lib.git.setup import commit_workspace_baseline
 from lib.runtime.dirs import ensure_dirs
 
 
@@ -48,9 +49,10 @@ def cmd_adopt(args) -> int:
         return 1 if missing or missing_ignore else 0
     if args.ci:
         config_adopt.write_ci()
+    baseline_code = commit_workspace_baseline()
     print("\nLocal adapters are in place. Each clone runs `ai adopt` to create its own copies.")
     print("Next: ai doctor")
-    return 0
+    return baseline_code
 
 
 ORDER = 10

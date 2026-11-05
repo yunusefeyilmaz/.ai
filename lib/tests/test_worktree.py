@@ -167,8 +167,10 @@ class HostLayoutTest(WorktreeCase):
         for sub in ("locks", "state", "artifacts", "logs"):
             shutil.rmtree(workspace / "runtime" / sub, ignore_errors=True)
         self.assertEqual(run(workspace, "adopt").returncode, 0)
-        git_do(host, "add", ".gitignore")
-        git_do(host, "commit", "-qm", "ignore the workspace")
+        # `ai adopt` commits the .ai/ and .gitignore baseline itself and leaves
+        # HEAD on the integration branch, so the host is already clean here.
+        self.assertEqual(git_out(host, "status", "--porcelain"), "")
+        self.assertEqual(git_out(host, "rev-parse", "--abbrev-ref", "HEAD"), "develop")
         self.assertEqual(run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no", "workers=2").returncode, 0)
         self.assertEqual(run(workspace, "task", "new", "Hosted", "--allow", "src/**", "--role", "chief", "--no-spec").returncode, 0)
         self.assertEqual(run(workspace, "git", "setup", stdin="y\n").returncode, 0)
@@ -177,15 +179,24 @@ class HostLayoutTest(WorktreeCase):
         root = Path(run(workspace, "worktree", "path", "0001").stdout.strip())
         self.assertEqual(root.parent, workspace / "worktrees")
         self.assertTrue((root / "src" / "app.py").exists())          # a real checkout of the host
-        self.assertFalse((root / ".ai").exists())                      # the workspace is not duplicated
+        # The ledger is committed state (that is the point of `ai adopt`), so a
+        # real checkout carries the tracked `.ai/` files. What must never happen
+        # is a second, writable copy of the runtime state.
+        self.assertFalse((root / ".ai" / "runtime" / "state" / "events.jsonl").exists())
         # The ledger is committed state, so a clean host means no *product*
         # changes: workspace edits are expected, worktrees must stay ignored.
+        # `.strip()` on the whole stdout would eat the leading status space of
+        # the first line, so parse the raw output here.
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=str(host),
+            capture_output=True, text=True, encoding="utf-8",
+        ).stdout
         dirty = [
             line[3:].strip().strip('"')
-            for line in git_out(host, "status", "--porcelain").splitlines()
+            for line in status.splitlines()
             if line.strip()
         ]
-        self.assertEqual([path for path in dirty if not path.startswith(".ai/")], [])
+        self.assertEqual([path for path in dirty if not path.startswith(".ai/")], [], repr(dirty))
         self.assertEqual([path for path in dirty if path.startswith(".ai/worktrees")], [])
         self.assertEqual(git_out(root, "status", "--porcelain"), "")   # so does the worktree
         # a worker inside the worktree reaches the shared workspace by absolute path
