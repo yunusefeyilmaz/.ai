@@ -9,8 +9,114 @@ import json
 import os
 import sys
 
-from lib.core.paths import PROJECT
+from lib.core.paths import PROJECT, WORKSPACE
 from lib.git import repo
+
+BASELINE_COMMIT_MESSAGE = "chore: add ai workspace baseline"
+_WORKSPACE_PREFIX = os.path.relpath(WORKSPACE, PROJECT).replace(os.sep, "/") + "/"
+
+
+def baseline_paths() -> list[str]:
+    """The only paths `ai adopt` may commit: the workspace ledger and .gitignore.
+
+    Root adapters (AGENTS.md, CLAUDE.md, ...) are listed in .gitignore by adopt
+    itself, so they are never part of a product commit.
+    """
+    candidates = [WORKSPACE, os.path.join(PROJECT, ".gitignore")]
+    return [
+        os.path.relpath(path, PROJECT).replace(os.sep, "/")
+        for path in candidates
+        if os.path.exists(path)
+    ]
+
+
+def _print_baseline_commands(integration: str, paths: list[str]) -> None:
+    print("Run exactly these commands, then retry `ai adopt`:")
+    print(f"  git checkout {integration}")
+    print("  git add -A -- " + " ".join(paths))
+    print(f'  git commit -m "{BASELINE_COMMIT_MESSAGE}"')
+
+
+def commit_workspace_baseline() -> int:
+    """Commit the .ai/ and .gitignore baseline on the integration branch.
+
+    `ai adopt` on an existing Git repository used to leave both untracked, so
+    the first `ai start` refused with a dirty tree. Only the workspace baseline
+    is committed here; product files are never touched.
+    """
+    state = repo.git_state()
+    if not state.get("repo"):
+        print(
+            "Git: no repository yet. `ai git setup` initializes it and commits the "
+            "baseline (including .ai/ and .gitignore)."
+        )
+        return 0
+    if not state.get("head"):
+        print(
+            "Git: the repository has no commit yet. Run `ai git setup`; its initial "
+            "baseline commit includes .ai/ and .gitignore."
+        )
+        return 0
+    config = repo.git_config()
+    integration = config["integration"]
+    paths = baseline_paths()
+    if not paths:
+        return 0
+    if not repo.branch_exists(integration):
+        base = (
+            repo.git_commit_id(f"refs/heads/{config['production']}")
+            or str(state.get("head") or "")
+        )
+        code, _, err = repo.run_git(["branch", integration, base])
+        if code != 0:
+            print(
+                f"Could not create the integration branch '{integration}': {err}",
+                file=sys.stderr,
+            )
+            _print_baseline_commands(integration, paths)
+            return 1
+    if repo.git_state().get("branch") != integration:
+        code, _, err = repo.run_git(["checkout", integration])
+        if code != 0:
+            print(
+                f"Could not switch to the integration branch '{integration}': {err}",
+                file=sys.stderr,
+            )
+            _print_baseline_commands(integration, paths)
+            return 1
+    code, _, err = repo.run_git(["add", "-A", "--", *paths])
+    if code != 0:
+        print(f"Could not stage the workspace baseline: {err}", file=sys.stderr)
+        _print_baseline_commands(integration, paths)
+        return 1
+    staged_code, _, _ = repo.run_git(["diff", "--cached", "--quiet", "--", *paths])
+    if staged_code == 0:
+        print(f"Workspace baseline already committed on {integration}; nothing to commit.")
+    else:
+        code, _, err = repo.run_git(
+            ["commit", "-m", BASELINE_COMMIT_MESSAGE, "--", *paths]
+        )
+        if code != 0:
+            # Leave the tree exactly as it was before the attempt.
+            repo.run_git(["reset", "-q", "--", *paths])
+            print(
+                f"Could not commit the workspace baseline: {err}", file=sys.stderr
+            )
+            _print_baseline_commands(integration, paths)
+            return 1
+        print(f"Workspace baseline committed on {integration}: {BASELINE_COMMIT_MESSAGE}")
+    leftover = [
+        path for path in repo.git_state().get("dirty", [])
+        if path != ".gitignore" and not path.startswith(_WORKSPACE_PREFIX)
+    ]
+    if leftover:
+        print(
+            "Working tree still has changes outside the workspace baseline: "
+            + ", ".join(leftover[:5])
+            + (" ..." if len(leftover) > 5 else "")
+        )
+    print(f"HEAD: {integration}")
+    return 0
 
 
 def setup_git(yes: bool = False, json_out: bool = False) -> int:
@@ -162,6 +268,65 @@ def setup_git(yes: bool = False, json_out: bool = False) -> int:
             print(f"Could not create integration branch '{config['integration']}': {err}", file=sys.stderr)
             return 1
         created_integration = True
+    # Feature branches start from the integration branch. If it lags behind
+    # production, every commit made on production (config, checks, docs) is
+    # invisible to the work and the review gate can pass without running
+    # anything. So: leave HEAD on the integration branch and make sure it
+    # contains production's current commit.
+    integration = config["integration"]
+    production = config["production"]
+    current_branch = repo.git_state().get("branch")
+    checked_out_integration = False
+    if current_branch != integration and (
+        created_integration or current_branch in (production, "detached")
+    ):
+        code, _, err = repo.run_git(["checkout", integration])
+        if code != 0:
+            print(f"Could not switch to the integration branch '{integration}': {err}", file=sys.stderr)
+            print(f"Run this yourself, then rerun setup: git checkout {integration}", file=sys.stderr)
+            return 1
+        checked_out_integration = True
+    fast_forwarded_integration = False
+    production_commit = repo.git_commit_id(f"refs/heads/{production}")
+    integration_commit = repo.git_commit_id(f"refs/heads/{integration}")
+    if production_commit and integration_commit:
+        contains, _, _ = repo.run_git([
+            "merge-base", "--is-ancestor", production_commit, integration_commit,
+        ])
+        if contains != 0:
+            behind, _, _ = repo.run_git([
+                "merge-base", "--is-ancestor", integration_commit, production_commit,
+            ])
+            if behind != 0:
+                print(
+                    f"Integration branch '{integration}' and production branch "
+                    f"'{production}' have diverged; refusing to rewrite either. "
+                    "Merge them deliberately, then rerun setup:",
+                    file=sys.stderr,
+                )
+                print(f"  git checkout {integration}", file=sys.stderr)
+                print(f"  git merge {production}", file=sys.stderr)
+                return 1
+            if repo.git_state().get("branch") != integration:
+                print(
+                    f"Integration branch '{integration}' does not contain production's "
+                    f"latest commit. Run this yourself, then rerun setup:",
+                    file=sys.stderr,
+                )
+                print(f"  git checkout {integration}", file=sys.stderr)
+                print(f"  git merge --ff-only {production}", file=sys.stderr)
+                return 1
+            code, _, err = repo.run_git(["merge", "--ff-only", production])
+            if code != 0:
+                print(
+                    f"Could not fast-forward '{integration}' to '{production}': {err}. "
+                    "Commit or stash the listed files, then rerun setup.",
+                    file=sys.stderr,
+                )
+                print(f"  git checkout {integration}", file=sys.stderr)
+                print(f"  git merge --ff-only {production}", file=sys.stderr)
+                return 1
+            fast_forwarded_integration = True
     if json_out:
         print(json.dumps({
             "repo": True,
@@ -172,6 +337,9 @@ def setup_git(yes: bool = False, json_out: bool = False) -> int:
             "createdBaseline": created_baseline,
             "createdProduction": created_production,
             "createdIntegration": created_integration,
+            "checkedOutIntegration": checked_out_integration,
+            "fastForwardedIntegration": fast_forwarded_integration,
+            "head": repo.git_state().get("branch"),
         }, indent=2))
         return 0
     print(f"commit.template = {os.path.relpath(template, PROJECT)}")
@@ -182,5 +350,8 @@ def setup_git(yes: bool = False, json_out: bool = False) -> int:
     else:
         print(f"production branch: {config['production']}" + (" (created)" if created_production else " (exists)"))
     print(f"integration branch: {config['integration']}" + (" (created)" if created_integration else " (exists)"))
+    if fast_forwarded_integration:
+        print(f"integration branch: fast-forwarded to {config['production']}")
+    print(f"HEAD: {repo.git_state().get('branch')}" + (" (checked out)" if checked_out_integration else ""))
     print("Next: ai task claim <id> --agent <name>, then ai git start ...")
     return 0

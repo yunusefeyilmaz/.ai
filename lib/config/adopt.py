@@ -34,7 +34,8 @@ to use Git:
    `.ai/docs/git-workflow.md`.
 2. Run `.ai/ai git setup`. It initializes Git if needed and, when the
    repo has no commits, previews non-ignored files and asks before the initial
-   commit. If Git reports dubious ownership, ask the user
+   commit. It ends with HEAD on the integration branch, which contains every
+   production commit. If Git reports dubious ownership, ask the user
    to approve trusting only this exact checkout; never use a wildcard entry.
 3. Create or claim one task, then successfully run
    `.ai/ai git start --task <id> --agent <name> --type <type>`. If it
@@ -60,11 +61,15 @@ BOOTSTRAP_PROMPT = """This project uses the .ai engineering workspace.
    then read .ai/AGENTS.md, .ai/GUIDE.md, .ai/docs/task-flow.md,
    .ai/docs/multi-agent.md and .ai/docs/git-workflow.md.
 2. Run `.ai/ai adopt` once so every AI tool in this project finds the workspace.
+   On an existing Git repository it also commits the `.ai/` and `.gitignore`
+   baseline on the integration branch, leaving a clean tree. If that commit
+   cannot be made (identity, permissions), it prints the exact commands to run.
 3. Run `.ai/ai doctor`. Before file-changing work, run
    `.ai/ai git setup` once in this clone; it initializes Git when
-   needed. Then claim a task and successfully run `.ai/ai git start`
-   before editing; follow the commit and independent review flow in
-   `.ai/docs/git-workflow.md`.
+   needed and leaves HEAD on the integration branch (`develop`), which contains
+   everything that exists on the production branch. Then claim a task and
+   successfully run `.ai/ai git start` before editing; follow the commit and
+   independent review flow in `.ai/docs/git-workflow.md`.
 
 Read-only tasks need no branch. Skip Gitflow only when the user explicitly asks
 not to use Git. If Git reports dubious ownership, ask approval to trust only
