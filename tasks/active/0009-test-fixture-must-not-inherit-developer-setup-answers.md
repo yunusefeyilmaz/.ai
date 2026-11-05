@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "lib/tests/**"
 scope_forbidden: null
 locks: "lib/tests/**"
-branch: feature/0009-test-fixture-must-not-inherit-developer
+branch: null
 created: 2026-11-04T08:19:47Z
-updated: 2026-11-05T17:56:22Z
+updated: 2026-11-05T17:59:19Z
 lock: task-0009
 submitted_by: evren-deep-seek
+merged_into: develop
+merged_at: 2026-11-05T17:59:19Z
 ---
 
 # 0009 - Test fixture must not inherit developer setup answers
@@ -49,3 +51,4 @@ Spec: `specs/active/0009-test-fixture-must-not-inherit-developer-setup-answers.m
 - 2026-11-05T17:33:00Z | evren-deep-seek | in_progress -> review | submitted for independent review | check passed @f0f5ad33 by evren-deep-seek (tests passed, ruff passed, mypy passed)
 - 2026-11-05T17:37:14Z | evren-deep-seek-reviewer | review -> review | claimed
 - 2026-11-05T17:56:22Z committed: chore: chore(task): record 0009 review claim and evidence
+- 2026-11-05T17:59:19Z merged feature/0009-test-fixture-must-not-inherit-developer into develop by evren-deep-seek-reviewer
