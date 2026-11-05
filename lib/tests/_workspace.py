@@ -112,6 +112,17 @@ def _git(workspace: Path, *args: str) -> None:
     )
 
 
+def _pin_require_check(config: dict) -> None:
+    """Pin the mode-driven check gate so a developer's `ai setup` answer cannot leak.
+
+    `ai setup --set checks=yes` writes `workflow.requireCheck = true` into the
+    checkout. A fixture that copied that value would demand project checks it
+    does not have, so every fixture resets it to `"strict"`: lite mode never
+    requires checks, strict mode decides for itself.
+    """
+    config.setdefault("workflow", {})["requireCheck"] = "strict"
+
+
 def _normalise(workspace: Path, mode: Optional[str], configure: Optional[Callable[[dict], None]]) -> None:
     """The reset every old `make_workspace` did, kept byte-for-byte equivalent."""
     for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
@@ -130,7 +141,7 @@ def _normalise(workspace: Path, mode: Optional[str], configure: Optional[Callabl
     # The developer's `ai setup` answers must not change what the suite gates on:
     # pin the mode-driven default so a local `checks=yes` cannot make every
     # throwaway workspace demand checks it does not have.
-    config.setdefault("workflow", {})["requireCheck"] = "strict"
+    _pin_require_check(config)
     config.setdefault("preferences", {})["confirmed"] = False
     config["preferences"]["answered"] = []
     config["workflow"]["chiefOnlyTasks"] = False  # the gate has its own tests
@@ -177,11 +188,20 @@ def _plain_template() -> Path:
     return project
 
 
-def copy_project(destination: Path) -> None:
+def copy_project(destination: Path, *, pin_checks: bool = True) -> None:
     """Drop-in for `shutil.copytree(ROOT, destination, ignore=COPY_IGNORE)`:
     the source tree is read once per process, EXTRA_IGNORE applies, and the
-    copy already carries .pyc files."""
+    copy already carries .pyc files.
+
+    With `pin_checks` (the default), `workflow.requireCheck` is reset to
+    `"strict"` so a host-project fixture never inherits the developer's
+    `ai setup --set checks=yes` answer."""
     shutil.copytree(_plain_template(), destination)
+    if pin_checks:
+        config_path = destination / "config" / "workspace.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        _pin_require_check(config)
+        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 def make_workspace(

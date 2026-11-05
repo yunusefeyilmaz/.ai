@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _workspace import GitSpec
+from _workspace import GitSpec, _normalise, copy_project
 from _workspace import make_workspace as build_workspace
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -239,6 +239,29 @@ class FixtureIsolationTest(WorkspaceCase):
         review = run(workspace, "task", "review", "0001", "--agent", "alice")
 
         self.assertEqual(review.returncode, 0, review.stderr)
+
+    def test_copied_config_with_checks_yes_is_neutralised(self) -> None:
+        # Simulate the developer checkout instead of trusting this one: seed a
+        # copied config with `checks=yes`, then let the fixture reset it.
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "project"
+            copy_project(workspace)
+            config_path = workspace / "config" / "workspace.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["mode"] = "lite"
+            config.setdefault("workflow", {})["requireCheck"] = True
+            config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+            _normalise(workspace, "lite", None)
+
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["workflow"]["requireCheck"], "strict")
+            self.assertEqual(config["checks"], [])
+
+            self.assertEqual(run(workspace, "task", "new", "No checks here").returncode, 0)
+            self.assertEqual(run(workspace, "task", "claim", "0001", "--agent", "alice").returncode, 0)
+            review = run(workspace, "task", "review", "0001", "--agent", "alice")
+            self.assertEqual(review.returncode, 0, review.stderr)
 
 
 class LiteCheckpointTest(WorkspaceCase):
