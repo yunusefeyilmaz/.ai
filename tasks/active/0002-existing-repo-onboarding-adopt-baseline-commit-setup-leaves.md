@@ -6,12 +6,12 @@ owner: opencode-1
 priority: high
 spec: specs/active/0002-existing-repo-onboarding-adopt-baseline-commit-setup-leaves.md
 depends_on: null
-scope_allowed: "lib/config/adopt.py, lib/cmd/adopt.py, lib/cmd/git.py, lib/git/setup.py, lib/git/flow.py, lib/tests/test_onboarding.py"
+scope_allowed: "lib/config/adopt.py, lib/cmd/adopt.py, lib/cmd/git.py, lib/git/setup.py, lib/git/flow.py, lib/tests/test_onboarding.py, lib/tests/test_worktree.py"
 scope_forbidden: null
-locks: "lib/config/adopt.py, lib/cmd/adopt.py, lib/cmd/git.py, lib/git/setup.py, lib/git/flow.py, lib/tests/test_onboarding.py"
+locks: "lib/config/adopt.py, lib/cmd/adopt.py, lib/cmd/git.py, lib/git/setup.py, lib/git/flow.py, lib/tests/test_onboarding.py, lib/tests/test_worktree.py"
 branch: feature/0002-existing-repo-onboarding-adopt-baseline
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T10:13:58Z
+updated: 2026-11-05T10:35:48Z
 lock: task-0002
 ---
 
@@ -47,3 +47,4 @@ Spec: `specs/active/0002-existing-repo-onboarding-adopt-baseline-commit-setup-le
 - 2026-11-05T09:53:25Z | opencode-1 | todo -> in_progress | claimed
 - 2026-11-05T09:53:27Z created branch feature/0002-existing-repo-onboarding-adopt-baseline from develop by opencode-1
 - 2026-11-05T10:13:58Z committed: feat: commit the workspace baseline and land setup on the integration branch
+- 2026-11-05T10:35:48Z committed: test: adapt the host-worktree test to the committed workspace baseline
