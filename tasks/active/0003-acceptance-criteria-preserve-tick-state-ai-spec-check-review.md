@@ -6,12 +6,12 @@ owner: freebuff
 priority: high
 spec: specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-review.md
 depends_on: null
-scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py"
+scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 scope_forbidden: null
-locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py"
+locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 branch: feature/0003-acceptance-criteria-preserve-tick-state
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T12:30:33Z
+updated: 2026-11-05T12:51:44Z
 lock: task-0003
 ---
 
@@ -36,6 +36,10 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 - 2026-11-05 freebuff: took over from opencode (its session stopped with the work uncommitted).
   Added `lib/cmd/capabilities.py` to scope/locks: the new `spec` command needed its one-line
   description, otherwise `test_capabilities` fails on the published contract.
+- 2026-11-05 freebuff: added `lib/tests/run.py` to scope/locks with the user's approval and raised
+  the per-module harness timeout 600s -> 900s. `test_field_report` passes alone (216s) but needs
+  ~650s under `-j 8` on this machine; the suite wall time is 826s vs the 650s of the last green
+  check, so the old cap now reads as a hang that is not there. Still a real hang detector.
 
 ## Log
 
@@ -49,3 +53,4 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 - 2026-11-05T11:53:15Z | freebuff | in_progress -> in_progress | claimed
 - 2026-11-05T11:53:16Z switched to branch feature/0003-acceptance-criteria-preserve-tick-state from develop by freebuff
 - 2026-11-05T12:30:33Z committed: feat: make acceptance criteria tickable state, gated at review, shipped on done
+- 2026-11-05T12:51:44Z committed: chore: raise the per-module test timeout to 900s on this slower machine

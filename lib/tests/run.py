@@ -91,7 +91,7 @@ def main() -> int:
     )
     parser.add_argument("--durations", type=int, default=0, metavar="N", help="show each module's N slowest tests (Python 3.12+)")
     parser.add_argument("--tmp", metavar="DIR", help="folder for the throwaway workspaces (a RAM disk or an antivirus-excluded folder is much faster)")
-    parser.add_argument("--timeout", type=int, default=600, help="per-module timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=900, help="per-module timeout in seconds")
     parser.add_argument("--coverage", action="store_true", help="run each module under `coverage run`")
     args = parser.parse_args()
     if args.coverage:
