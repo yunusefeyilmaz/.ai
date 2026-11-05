@@ -3,11 +3,10 @@ artifact, clean, git begin/end, decision numbering."""
 
 from __future__ import annotations
 
-from _workspace import copy_project
-
 import json
 import unittest
 
+from _workspace import copy_project
 from test_start import WorkspaceCase, run
 
 

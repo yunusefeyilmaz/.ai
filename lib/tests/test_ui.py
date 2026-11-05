@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from _workspace import copy_project
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -94,13 +95,7 @@ class UiTest(unittest.TestCase):
     def test_cli_once_reads_a_real_workspace_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / ".ai"
-            shutil.copytree(
-                ROOT,
-                workspace,
-                ignore=shutil.ignore_patterns(
-                    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc",
-                ),
-            )
+            copy_project(workspace)
             before = sorted(str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file())
             result = run(workspace, "ui", "--once", "--no-color", "--width", "110", "--height", "30")
             self.assertEqual(result.returncode, 0, result.stderr)

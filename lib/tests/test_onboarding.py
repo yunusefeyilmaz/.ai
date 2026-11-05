@@ -9,8 +9,6 @@ inside it).
 
 from __future__ import annotations
 
-from _workspace import copy_project
-
 import json
 import os
 import shutil
@@ -19,6 +17,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from _workspace import copy_project
 
 ROOT = Path(__file__).resolve().parents[2]
 _COPY_IGNORE = shutil.ignore_patterns(

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from _workspace import copy_project
-
 import json
 import os
 import subprocess
 import unittest
 from pathlib import Path
 
+from _workspace import copy_project
 from test_start import WorkspaceCase, run
 
 

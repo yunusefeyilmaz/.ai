@@ -6,8 +6,6 @@ the real CLI, so the assertions cover the same path an operator uses.
 
 from __future__ import annotations
 
-from _workspace import copy_project
-
 import json
 import shutil
 import subprocess
@@ -16,6 +14,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _workspace import copy_project
 from test_start import COPY_IGNORE, ROOT, WorkspaceCase, run
 
 
