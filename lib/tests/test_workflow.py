@@ -102,7 +102,7 @@ class NowTest(WorkspaceCase):
         self.assertIn("ai task show 0001", out)
         self.assertNotIn("ai check", out.split("NEXT")[1].split("WHY")[0])
         git(workspace, "commit", "--allow-empty", "-m", "feat: the work")
-        self.assertEqual(run(workspace, "check", "--agent", "alice").returncode, 0)  # auto-attaches
+        self.assertEqual(run(workspace, "check", "--agent", "alice", "--allow-empty").returncode, 0)  # auto-attaches
         out = run(workspace, "now", "--agent", "alice").stdout
         self.assertIn("ai task review 0001 --agent alice", out)
         run(workspace, "task", "review", "0001", "--agent", "alice")
@@ -156,9 +156,14 @@ class CheckScopeTest(WorkspaceCase):
         # own checks on purpose, through `ai setup --check ...`.
         self.assertEqual(settings.default_config()["checks"], [])
 
-    def test_check_without_project_checks_says_so_and_passes(self) -> None:
+    def test_check_without_project_checks_is_refused_not_silently_green(self) -> None:
         workspace = self.make_workspace(git_repo=False)
         result = run(workspace, "check")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("no project checks configured", result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+        self.assertIn("no project checks are configured", result.stderr + result.stdout)
+        self.assertIn("--allow-empty", result.stderr + result.stdout)
         self.assertNotIn("lib/tests", result.stdout)
+
+        allowed = run(workspace, "check", "--allow-empty")
+        self.assertEqual(allowed.returncode, 0, allowed.stderr + allowed.stdout)
+        self.assertIn("ALLOW-EMPTY", allowed.stdout + allowed.stderr)

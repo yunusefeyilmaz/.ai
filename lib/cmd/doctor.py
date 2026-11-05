@@ -6,6 +6,7 @@ import json
 import os
 import sys
 
+from lib.config import settings
 from lib.core.findings import Finding
 from lib.core.paths import (
     PROJECT,
@@ -104,7 +105,45 @@ def cmd_check(args) -> int:
 def _check(args, task_id) -> int:
     problems = health.collect_checks()
     results: list[dict] = []
-    if not args.no_commands:
+    allow_empty = bool(getattr(args, "allow_empty", False))
+    try:
+        settings.load_config()
+    except (OSError, ValueError):
+        # `collect_checks` already reported the unreadable config; inventing a
+        # "no checks" error on top of it would point at the wrong repair.
+        checks: list[dict] = []
+        config_readable = False
+    else:
+        checks = settings.configured_checks()
+        config_readable = True
+    # `ai setup --set checks=no` writes requireCheck=false: that is the project's
+    # documented, persistent opt-out, and it must be honoured by the callers that
+    # invoke `ai check` themselves (notably `ai git finish`).
+    config_opt_out = settings.preference("workflow.requireCheck", "strict") is False
+    if config_readable and not args.no_commands and not checks:
+        # An empty gate must never look green: without this the command exits 0,
+        # records green evidence and a review can pass on nothing at all.
+        if allow_empty or config_opt_out:
+            reason = (
+                "--allow-empty was given"
+                if allow_empty
+                else "workflow.requireCheck is false in config/workspace.json"
+            )
+            print(
+                f"ALLOW-EMPTY  no project checks are configured; passing because {reason}.",
+                file=sys.stderr if args.json else sys.stdout,
+            )
+        else:
+            problems.append(
+                Finding(
+                    "error",
+                    "no project checks are configured; this gate would be empty",
+                    'add a command under "checks" in config/workspace.json '
+                    '(e.g. `ai setup --check "tests=<command>"`), or pass --allow-empty '
+                    "if this project intentionally runs no checks",
+                )
+            )
+    elif not args.no_commands:
         try:
             problems.extend(health.run_commands(args.fast, results, sys.stderr if args.json else None))
         except (OSError, ValueError) as exc:
@@ -119,7 +158,7 @@ def _check(args, task_id) -> int:
             record = evidence.record_task_check(
                 task_id, getattr(args, "agent", None), code == 0,
                 head=repo.git_state().get("head"), checks=results, strict=bool(args.strict),
-                ran_commands=not args.no_commands, fast=bool(args.fast),
+                ran_commands=bool(checks) and not args.no_commands, fast=bool(args.fast),
             )
             if not args.json:
                 print(f"Evidence recorded for task {task_id}: {evidence.summary(record)}", file=sys.stderr)
@@ -128,6 +167,7 @@ def _check(args, task_id) -> int:
     if args.json:
         payload = health.problems_to_dict(problems)
         payload["results"] = results
+        payload["allow_empty"] = allow_empty
         if task_id:
             payload["task"] = task_id
             payload["evidence"] = evidence.task_status(task_id, repo.git_state().get("head")).get("state")
@@ -154,6 +194,11 @@ def register(sub) -> None:
     check = sub.add_parser("check", help="run the single verification contract")
     check.add_argument("--fast", action="store_true", help="run only fast checks")
     check.add_argument("--no-commands", action="store_true", help="structure/state checks only")
+    check.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="exit 0 when no project checks are configured (the opt-out is printed)",
+    )
     check.add_argument("--strict", action="store_true", help="treat warnings as failures")
     check.add_argument("--task", default=None, help="attach the result to this task as verification evidence")
     check.add_argument("--agent", default=None, help="who runs the check (auto-attaches to your only in-progress task)")

@@ -20,7 +20,7 @@ from lib.git import repo, worktrees
 from lib.git.setup import setup_git  # re-exported for lib.cmd.git
 from lib.runtime.events import append_event
 from lib.runtime.mutex import workspace_state_guard
-from lib.tasks import board, store
+from lib.tasks import board, gates, store
 from lib.tasks import scope as task_scope
 
 
@@ -328,9 +328,21 @@ def cmd_git_finish(args) -> int:
         print(error, file=sys.stderr)
         return 1
     try:
+        check_args = [
+            sys.executable,
+            os.path.join(SCRIPT_DIR, "ai.py"),
+            "check",
+            "--strict",
+            "--task",
+            task_id,
+        ] + (["--agent", args.agent] if getattr(args, "agent", None) else [])
+        if not gates.check_required():
+            # Verification is optional in this workspace: `ai check` must still
+            # audit structure, but an empty project check list is not a blocker
+            # for a merge the workflow never gated on it.
+            check_args.append("--allow-empty")
         check = subprocess.run(
-            [sys.executable, os.path.join(SCRIPT_DIR, "ai.py"), "check", "--strict", "--task", task_id]
-            + (["--agent", args.agent] if getattr(args, "agent", None) else []),
+            check_args,
             cwd=worktree or PROJECT,
             stdout=sys.stderr if getattr(args, "json", False) else None,  # keep --json parseable
         )
