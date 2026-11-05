@@ -10,7 +10,7 @@ scope_allowed: "lib/cmd/check.py, lib/config/settings.py, lib/tests/test_check_g
 scope_forbidden: null
 locks: "lib/cmd/check.py, lib/config/settings.py, lib/tests/test_check_gate.py"
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
+updated: 2026-11-05T09:52:53Z
 lock: null
 ---
 
@@ -39,3 +39,5 @@ Spec: `specs/active/0004-no-silent-green-fail-loudly-when-the-project-has-no-che
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-05T09:52:52Z | opencode-1 | todo -> in_progress | claimed
+- 2026-11-05T09:52:53Z | opencode-1 | in_progress -> todo | claim rolled back | the task branch could not start

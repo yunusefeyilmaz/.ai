@@ -1,21 +1,23 @@
 ---
 id: 0003
 title: "Acceptance criteria: preserve tick state, ai spec check, review gate, shipped spec"
-status: review
+status: done
 owner: freebuff-reviewer
 priority: high
-spec: specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-review.md
+spec: specs/done/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-review.md
 depends_on: null
 scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 scope_forbidden: null
 locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T14:59:37Z
-lock: task-0003
+updated: 2026-11-05T15:00:47Z
+lock: null
 submitted_by: freebuff
 merged_into: develop
 merged_at: 2026-11-05T14:59:37Z
+reviewed_by: freebuff-reviewer
+reviewed_at: 2026-11-05T15:00:47Z
 ---
 
 # 0003 - Acceptance criteria: preserve tick state, ai spec check, review gate, shipped spec
@@ -64,3 +66,4 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 - 2026-11-05T14:25:03Z | freebuff-reviewer | review -> review | claimed
 - 2026-11-05T14:48:58Z committed: chore: record the review claim before the merge
 - 2026-11-05T14:59:37Z merged feature/0003-acceptance-criteria-preserve-tick-state into develop by freebuff-reviewer
+- 2026-11-05T15:00:47Z | freebuff-reviewer | review -> done | approved | check passed @3e58f987 by freebuff-reviewer (tests passed, ruff passed, mypy passed)
