@@ -35,10 +35,10 @@ onboarding.
 
 ## Acceptance criteria
 
-- [ ] Every test fixture pins `workflow.requireCheck` to "strict" instead of inheriting the developer's `ai setup` answer
-- [ ] A regression test copies a config with `requireCheck: true` and asserts the fixture workspace does not require checks in lite mode
-- [ ] The existing suite passes after `ai setup --set checks=yes` in the developer checkout
-- [ ] Tests cover the new behavior and pass
+- [x] Every test fixture pins `workflow.requireCheck` to "strict" instead of inheriting the developer's `ai setup` answer
+- [x] A regression test copies a config with `requireCheck: true` and asserts the fixture workspace does not require checks in lite mode
+- [x] The existing suite passes after `ai setup --set checks=yes` in the developer checkout
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 
