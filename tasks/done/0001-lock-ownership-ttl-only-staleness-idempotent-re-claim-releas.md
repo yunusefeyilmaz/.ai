@@ -1,21 +1,23 @@
 ---
 id: 0001
 title: "Lock ownership: TTL-only staleness, idempotent re-claim, release guard"
-status: review
+status: done
 owner: reviewer-1
 priority: high
-spec: specs/active/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-releas.md
+spec: specs/done/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-releas.md
 depends_on: null
 scope_allowed: "lib/runtime/**, lib/cmd/lock.py, lib/cmd/recover.py, lib/cmd/doctor.py, lib/tests/test_lock_ownership.py"
 scope_forbidden: null
 locks: "lib/runtime/**, lib/cmd/lock.py, lib/cmd/recover.py, lib/cmd/doctor.py, lib/tests/test_lock_ownership.py"
 branch: null
 created: 2026-11-04T08:14:03Z
-updated: 2026-11-04T16:45:44Z
-lock: task-0001
+updated: 2026-11-04T16:48:03Z
+lock: null
 submitted_by: deepseek
 merged_into: develop
 merged_at: 2026-11-04T16:45:44Z
+reviewed_by: reviewer-1
+reviewed_at: 2026-11-04T16:48:03Z
 ---
 
 # 0001 - Lock ownership: TTL-only staleness, idempotent re-claim, release guard
@@ -57,3 +59,4 @@ Spec: `specs/active/0001-lock-ownership-ttl-only-staleness-idempotent-re-claim-r
 - 2026-11-04T16:16:32Z | reviewer-1 | review -> review | claimed
 - 2026-11-04T16:43:31Z committed: chore: record 0001 review handover metadata
 - 2026-11-04T16:45:44Z merged feature/0001-lock-ownership-ttl-only-staleness-idempo into develop by reviewer-1
+- 2026-11-04T16:48:03Z | reviewer-1 | review -> done | approved | check passed @24821ab9 by reviewer-1 (tests passed, ruff passed, mypy passed)
