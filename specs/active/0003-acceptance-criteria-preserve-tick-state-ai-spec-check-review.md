@@ -30,14 +30,14 @@ Acceptance criteria are decorative: there is no command to tick them, the parser
 
 ## Acceptance criteria
 
-- [ ] The spec parser preserves per-criterion ticked state instead of stripping [ ]/[x]
-- [ ] `ai spec check <id> <n>` ticks a criterion and `ai spec show <id>` prints each criterion with its box and a done/total count
-- [ ] `ai task review` refuses while any real (non-generated) criterion is unticked and names the unticked ones
-- [ ] `ai review` prints criteria as [x]/[ ] with progress, and Evidence/Checklist state reflects the spec instead of a hardcoded empty box
-- [ ] `ai task done` sets the archived spec to status: shipped
-- [ ] The duplicate acceptance list in the task body no longer competes with the spec (single source of truth, task body points at the spec)
-- [ ] Regression tests cover ticking, the review refusal, and the archived status
-- [ ] Tests cover the new behavior and pass
+- [x] The spec parser preserves per-criterion ticked state instead of stripping [ ]/[x]
+- [x] `ai spec check <id> <n>` ticks a criterion and `ai spec show <id>` prints each criterion with its box and a done/total count
+- [x] `ai task review` refuses while any real (non-generated) criterion is unticked and names the unticked ones
+- [x] `ai review` prints criteria as [x]/[ ] with progress, and Evidence/Checklist state reflects the spec instead of a hardcoded empty box
+- [x] `ai task done` sets the archived spec to status: shipped
+- [x] The duplicate acceptance list in the task body no longer competes with the spec (single source of truth, task body points at the spec)
+- [x] Regression tests cover ticking, the review refusal, and the archived status
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 

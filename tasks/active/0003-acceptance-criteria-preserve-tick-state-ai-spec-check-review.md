@@ -11,7 +11,7 @@ scope_forbidden: null
 locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 branch: feature/0003-acceptance-criteria-preserve-tick-state
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T12:51:44Z
+updated: 2026-11-05T14:08:54Z
 lock: task-0003
 ---
 
@@ -54,3 +54,6 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 - 2026-11-05T11:53:16Z switched to branch feature/0003-acceptance-criteria-preserve-tick-state from develop by freebuff
 - 2026-11-05T12:30:33Z committed: feat: make acceptance criteria tickable state, gated at review, shipped on done
 - 2026-11-05T12:51:44Z committed: chore: raise the per-module test timeout to 900s on this slower machine
+- 2026-11-05T14:05:44Z checkpoint by freebuff (checkpoint, ?%)
+- 2026-11-05T14:05:46Z committed: chore: tick all eight criteria and record the takeover notes
+- 2026-11-05T14:08:54Z committed: chore: tick all eight criteria and record the takeover notes
