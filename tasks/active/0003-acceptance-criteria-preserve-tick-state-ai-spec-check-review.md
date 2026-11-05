@@ -9,11 +9,13 @@ depends_on: null
 scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
 scope_forbidden: null
 locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py, lib/tests/run.py"
-branch: feature/0003-acceptance-criteria-preserve-tick-state
+branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T14:48:58Z
+updated: 2026-11-05T14:59:37Z
 lock: task-0003
 submitted_by: freebuff
+merged_into: develop
+merged_at: 2026-11-05T14:59:37Z
 ---
 
 # 0003 - Acceptance criteria: preserve tick state, ai spec check, review gate, shipped spec
@@ -61,3 +63,4 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 - 2026-11-05T14:23:40Z | freebuff | in_progress -> review | submitted for independent review | check passed @41d1cae7 by freebuff (tests passed, ruff passed, mypy passed)
 - 2026-11-05T14:25:03Z | freebuff-reviewer | review -> review | claimed
 - 2026-11-05T14:48:58Z committed: chore: record the review claim before the merge
+- 2026-11-05T14:59:37Z merged feature/0003-acceptance-criteria-preserve-tick-state into develop by freebuff-reviewer
