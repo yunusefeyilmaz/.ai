@@ -36,6 +36,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_JOBS = max(2, min(6, (os.cpu_count() or 2) // 2))
 
 
+def _low_priority() -> dict:
+    """Run test processes at below-normal priority so the PC stays usable."""
+    if os.environ.get("AI_TEST_NORMAL_PRIORITY"):
+        return {}
+    if os.name == "nt":
+        return {"creationflags": subprocess.BELOW_NORMAL_PRIORITY_CLASS}
+    return {"preexec_fn": lambda: os.nice(10)}
+
+
 def run_module(
     name: str,
     coverage: bool = False,
@@ -72,6 +81,7 @@ def run_module(
             errors="replace",
             env=env,
             timeout=timeout,
+            **_low_priority(),
         )
     except subprocess.TimeoutExpired as exc:
         output = (exc.stdout or "") + (exc.stderr or "")

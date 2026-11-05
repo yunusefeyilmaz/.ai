@@ -3,6 +3,8 @@ artifact, clean, git begin/end, decision numbering."""
 
 from __future__ import annotations
 
+from _workspace import copy_project
+
 import json
 import unittest
 
@@ -72,7 +74,7 @@ class BriefAndArtifactsTest(WorkspaceCase):
         host = Path(tempfile.mkdtemp(prefix="ai-art-"))
         self.addCleanup(shutil.rmtree, host, True)
         workspace = host / ".ai"  # a host project: scratch files live outside `.ai`
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        copy_project(workspace)
         for sub in ("locks", "state", "artifacts", "logs"):
             shutil.rmtree(workspace / "runtime" / sub, ignore_errors=True)
         (host / "scratch.txt").write_text("notes\n", encoding="utf-8")

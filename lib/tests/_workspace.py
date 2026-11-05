@@ -44,7 +44,28 @@ COPY_IGNORE = shutil.ignore_patterns(
 # Folders the tests never need can be listed here to make every copy smaller,
 # e.g. EXTRA_IGNORE = ("worktrees", "node_modules"). Empty = copy what the old
 # tests copied.
-EXTRA_IGNORE: tuple[str, ...] = ()
+EXTRA_IGNORE: tuple[str, ...] = ("worktrees", "node_modules", ".venv", "dist")
+
+def _ignore():
+    """COPY_IGNORE plus EXTRA_IGNORE, as one callable for shutil.copytree."""
+    if not EXTRA_IGNORE:
+        return COPY_IGNORE
+    extra = shutil.ignore_patterns(*EXTRA_IGNORE)
+
+    def ignore(directory, names):
+        return set(COPY_IGNORE(directory, names)) | set(extra(directory, names))
+
+    return ignore
+
+
+def _precompile(workspace: Path) -> None:
+    """Ship .pyc files inside the template so the first `ai.py` call of every
+    test does not recompile lib/ from source. copytree keeps mtimes, so the
+    .pyc files stay valid in every copy."""
+    subprocess.run(
+        [sys.executable, "-m", "compileall", "-q", str(workspace / "lib")],
+        check=False, capture_output=True, timeout=120,
+    )
 
 
 class GitSpec(NamedTuple):
@@ -128,17 +149,11 @@ def _template(
     base = Path(tempfile.mkdtemp(prefix="ai-template-"))
     _TEMPLATE_DIRS.append(base)
     workspace = base / "project"
-    ignore = COPY_IGNORE
-    if EXTRA_IGNORE:
-        extra = shutil.ignore_patterns(*EXTRA_IGNORE)
-
-        def ignore(directory, names):  # noqa: F811 - intentional composition
-            return set(COPY_IGNORE(directory, names)) | set(extra(directory, names))
-
-    shutil.copytree(ROOT, workspace, ignore=ignore)
+    shutil.copytree(ROOT, workspace, ignore=_ignore())
     _normalise(workspace, mode, configure)
+    _precompile(workspace)
     if git is not None:
-        _git(workspace, "init", "-q", f"--initial-branch={git.branch}")
+        _git(workspace, "init", "-q", "--template=", f"--initial-branch={git.branch}")
         _git(workspace, "config", "user.name", git.name)
         _git(workspace, "config", "user.email", git.email)
         _git(workspace, "add", "-A")
@@ -149,6 +164,24 @@ def _template(
         for branch in git.extra_branches:
             _git(workspace, "branch", branch)
     return workspace
+
+
+@functools.lru_cache(maxsize=None)
+def _plain_template() -> Path:
+    base = Path(tempfile.mkdtemp(prefix="ai-plain-"))
+    _TEMPLATE_DIRS.append(base)
+    project = base / "project"
+    shutil.copytree(ROOT, project, ignore=_ignore())
+    shutil.rmtree(project / "runtime" / "temp", ignore_errors=True)
+    _precompile(project)
+    return project
+
+
+def copy_project(destination: Path) -> None:
+    """Drop-in for `shutil.copytree(ROOT, destination, ignore=COPY_IGNORE)`:
+    the source tree is read once per process, EXTRA_IGNORE applies, and the
+    copy already carries .pyc files."""
+    shutil.copytree(_plain_template(), destination)
 
 
 def make_workspace(

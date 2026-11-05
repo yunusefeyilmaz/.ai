@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from _workspace import copy_project
+
 import json
 import os
 import subprocess
@@ -158,7 +160,7 @@ class HostLayoutTest(WorktreeCase):
         git_do(host, "add", "-A")
         git_do(host, "commit", "-qm", "init")
         workspace = host / ".ai"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        copy_project(workspace)
         for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
             folder = workspace / relative
             shutil.rmtree(folder, ignore_errors=True)

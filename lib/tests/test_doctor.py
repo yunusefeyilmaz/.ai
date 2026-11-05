@@ -6,6 +6,8 @@ the real CLI, so the assertions cover the same path an operator uses.
 
 from __future__ import annotations
 
+from _workspace import copy_project
+
 import json
 import shutil
 import subprocess
@@ -171,7 +173,7 @@ class SubfolderDoctorTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, temp, True)
         project = temp / "project"
         workspace = project / ".ai"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        copy_project(workspace)
         clear_ledger(workspace)
         (project / "package.json").write_text("{}\n", encoding="utf-8")
         return project

@@ -9,6 +9,8 @@ inside it).
 
 from __future__ import annotations
 
+from _workspace import copy_project
+
 import json
 import os
 import shutil
@@ -91,7 +93,7 @@ class OnboardingTest(unittest.TestCase):
         return host
 
     def install_ai(self, host: Path) -> None:
-        shutil.copytree(ROOT, host / ".ai", ignore=COPY_IGNORE)
+        copy_project(host / ".ai")
         # Throwaway runs leave test workspaces under runtime/temp; never copy them.
         shutil.rmtree(host / ".ai" / "runtime" / "temp", ignore_errors=True)
         config = host / ".ai" / "config" / "workspace.json"

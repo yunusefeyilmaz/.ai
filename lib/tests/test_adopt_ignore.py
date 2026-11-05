@@ -7,6 +7,8 @@ claim was false there. Only ephemeral state may stay local.
 
 from __future__ import annotations
 
+from _workspace import copy_project
+
 import json
 import os
 import shutil
@@ -48,7 +50,7 @@ class AdoptLedgerTest(unittest.TestCase):
         temp = Path(tempfile.mkdtemp(prefix="ai-adopt-ledger-"))
         self.addCleanup(shutil.rmtree, temp, True)
         host = temp / "project"
-        shutil.copytree(ROOT, host / ".ai", ignore=COPY_IGNORE)
+        copy_project(host / ".ai")
         config = host / ".ai" / "config" / "workspace.json"
         data = json.loads(config.read_text(encoding="utf-8"))
         data["checks"] = []
