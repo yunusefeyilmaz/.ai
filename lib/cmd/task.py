@@ -14,6 +14,7 @@ from lib.core.fsio import (
     lock_path,
     normalize_id,
     read_json,
+    read_text,
 )
 from lib.core.paths import (
     ACTIVE_DIR,
@@ -123,7 +124,27 @@ def cmd_task_show(args) -> int:
             print(f"  {r}")
     print()
     print(body)
+    _print_spec_criteria(meta)
     return 0
+
+
+def _print_spec_criteria(meta: dict) -> None:
+    """Show the linked spec's criteria, so the task body need not duplicate them."""
+    path = spec_lib.resolve_spec_path(meta)
+    if not path:
+        return
+    try:
+        text = read_text(path)
+    except OSError:
+        return
+    criteria = spec_lib.acceptance_criteria(text)
+    if not criteria:
+        return
+    done, total = spec_lib.criteria_progress(criteria)
+    print()
+    print(f"Acceptance criteria (from {meta.get('spec')}; {done}/{total} done)")
+    for is_done, item in criteria:
+        print(f"  [{'x' if is_done else ' '}] {item}")
 
 
 def claim_task(path: str, agent: str, force: bool = False) -> tuple[bool, str]:
@@ -410,6 +431,15 @@ def cmd_task_review(args) -> int:
         denied = roles.authorize(args.agent, "task.review")
         if denied:
             raise transition.Refused(denied)
+        if gates.workflow_config()["requireSpec"]:
+            unticked = spec_lib.spec_unticked(meta)
+            if unticked:
+                listed = "; ".join(f"{number}. {text}" for number, text in unticked)
+                raise transition.Refused(
+                    f"Task {task_id} cannot enter review: {len(unticked)} acceptance "
+                    f"criteria are still unticked in {meta.get('spec')}: {listed}. Tick each one "
+                    f"with `ai spec check {task_id} <n>` once the work makes it true."
+                )
         gate_error, proof = gates.review_gate(meta, args.agent)
         if gate_error:
             raise transition.Refused(gate_error)

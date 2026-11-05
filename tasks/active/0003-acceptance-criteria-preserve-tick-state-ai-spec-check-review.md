@@ -1,17 +1,18 @@
 ---
 id: 0003
 title: "Acceptance criteria: preserve tick state, ai spec check, review gate, shipped spec"
-status: todo
-owner: null
+status: in_progress
+owner: freebuff
 priority: high
 spec: specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-review.md
 depends_on: null
-scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/tests/test_acceptance_criteria.py"
+scope_allowed: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py"
 scope_forbidden: null
-locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/tests/test_acceptance_criteria.py"
+locks: "ai.py, lib/specs/**, lib/tasks/lifecycle.py, lib/cmd/review.py, lib/cmd/spec.py, lib/cmd/task.py, lib/cmd/capabilities.py, lib/tests/test_acceptance_criteria.py"
+branch: feature/0003-acceptance-criteria-preserve-tick-state
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
-lock: null
+updated: 2026-11-05T12:30:33Z
+lock: task-0003
 ---
 
 # 0003 - Acceptance criteria: preserve tick state, ai spec check, review gate, shipped spec
@@ -22,14 +23,7 @@ Acceptance criteria are decorative: there is no command to tick them, the parser
 
 ## Acceptance criteria
 
-- [ ] The spec parser preserves per-criterion ticked state instead of stripping [ ]/[x]
-- [ ] `ai spec check <id> <n>` ticks a criterion and `ai spec show <id>` prints each criterion with its box and a done/total count
-- [ ] `ai task review` refuses while any real (non-generated) criterion is unticked and names the unticked ones
-- [ ] `ai review` prints criteria as [x]/[ ] with progress, and Evidence/Checklist state reflects the spec instead of a hardcoded empty box
-- [ ] `ai task done` sets the archived spec to status: shipped
-- [ ] The duplicate acceptance list in the task body no longer competes with the spec (single source of truth, task body points at the spec)
-- [ ] Regression tests cover ticking, the review refusal, and the archived status
-- [ ] Tests cover the new behavior and pass
+Criteria live in the spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-review.md`. Tick each one as it becomes true: `ai spec check 0003 <n>`.
 
 ## Plan
 
@@ -39,6 +33,19 @@ Spec: `specs/active/0003-acceptance-criteria-preserve-tick-state-ai-spec-check-r
 
 ## Notes
 
+- 2026-11-05 freebuff: took over from opencode (its session stopped with the work uncommitted).
+  Added `lib/cmd/capabilities.py` to scope/locks: the new `spec` command needed its one-line
+  description, otherwise `test_capabilities` fails on the published contract.
+
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-05T09:52:50Z | opencode-1 | todo -> in_progress | claimed
+- 2026-11-05T09:52:51Z | opencode-1 | in_progress -> todo | claim rolled back | the task branch could not start
+- 2026-11-05T11:36:19Z | opencode | todo -> in_progress | claimed
+- 2026-11-05T11:36:20Z created branch feature/0003-acceptance-criteria-preserve-tick-state from develop by opencode
+- 2026-11-05T11:52:21Z | freebuff | in_progress -> in_progress | claimed
+- 2026-11-05T11:52:21Z | freebuff | in_progress -> in_progress | claim rolled back | the task branch could not start
+- 2026-11-05T11:53:15Z | freebuff | in_progress -> in_progress | claimed
+- 2026-11-05T11:53:16Z switched to branch feature/0003-acceptance-criteria-preserve-tick-state from develop by freebuff
+- 2026-11-05T12:30:33Z committed: feat: make acceptance criteria tickable state, gated at review, shipped on done

@@ -129,7 +129,12 @@ def create_task(
         if demo:
             # Marks the throwaway task `ai start` creates on a fresh install.
             meta["demo"] = True
-        criteria = "\n".join(f"- [ ] {item}" for item in (acceptance or [])) or "- [ ] "
+        criteria = (
+            f"Criteria live in the spec: `{spec_ref}`. Tick each one as it becomes true: "
+            f"`ai spec check {task_id} <n>`."
+            if spec_ref
+            else "<!-- No spec: this task was created with --no-spec, so it has no criteria to tick. -->"
+        )
         plan = (
             f"Spec: `{spec_ref}`\n\n<!-- Filled by the planner. -->"
             if spec_ref
