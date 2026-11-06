@@ -345,3 +345,118 @@ class ReworkTest(WorkspaceCase):
         now = run(workspace, "now", "--agent", "bob", "--role", "reviewer").stdout
         self.assertIn("ai task next --review --agent bob", now)
         self.assertEqual(run(workspace, "task", "next", "--review", "--agent", "bob").returncode, 0)
+
+
+class FieldReportBlockerTest(WorkspaceCase):
+    """The three P0 blockers from the field report, each reproduced end to end."""
+
+    def test_finish_budgets_the_index_guard_within_max_ttl(self) -> None:
+        # Four checks with the old 1800s default asked for 600 + 7200 = 7800s,
+        # above locks.maxTtlSeconds, so `git finish` could never take the guard.
+        workspace = self.make_workspace()
+        cfg = workspace / "config" / "workspace.json"
+        config = json.loads(cfg.read_text(encoding="utf-8"))
+        config["checks"] = [
+            {"name": f"c{i}", "command": 'python -c "print(1)"'} for i in range(4)
+        ]
+        config["locks"]["maxTtlSeconds"] = 7200
+        cfg.write_text(json.dumps(config), encoding="utf-8")
+        run(workspace, "setup", "--set", "review=yes", "checks=yes", "git=yes", "tests=no")
+        run(workspace, "task", "new", "Budgeted", "--no-spec")
+        run(workspace, "git", "setup", stdin="y\n")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        git(workspace, "commit", "--allow-empty", "-m", "feat: work")
+        self.assertEqual(run(workspace, "task", "review", "0001", "--agent", "alice").returncode, 0)
+        merged = run(workspace, "git", "finish", "--task", "0001", "--agent", "bob")
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+        self.assertIn("Merged", merged.stdout)
+
+    def test_done_refuses_a_task_whose_branch_was_never_merged(self) -> None:
+        workspace = self.make_workspace()
+        run(workspace, "setup", "--set", "review=yes", "checks=no", "git=yes", "tests=no")
+        run(workspace, "task", "new", "Unmerged", "--no-spec")
+        run(workspace, "git", "setup", stdin="y\n")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        git(workspace, "commit", "--allow-empty", "-m", "feat: work")
+        run(workspace, "task", "review", "0001", "--agent", "alice")
+        refused = run(workspace, "task", "done", "0001", "--agent", "bob")
+        self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
+        self.assertIn("not merged", refused.stderr)
+        self.assertIn("ai git finish", refused.stderr)
+        # the ledger did not move
+        self.assertTrue(list((workspace / "tasks" / "active").glob("0001-*.md")))
+        # finish then done works
+        self.assertEqual(run(workspace, "git", "finish", "--task", "0001", "--agent", "bob").returncode, 0)
+        self.assertEqual(run(workspace, "task", "done", "0001", "--agent", "bob").returncode, 0)
+
+    def test_a_plan_directory_lock_also_allows_files_under_it(self) -> None:
+        workspace = self.make_workspace()
+        plan = workspace.parent / "dir-lock-plan.json"
+        plan.write_text(json.dumps({"tasks": [{
+            "key": "shared", "title": "Shared package", "locks": ["packages/shared"],
+            "acceptance": ["the package builds"],
+        }]}), encoding="utf-8")
+        self.assertEqual(run(workspace, "plan", "apply", str(plan)).returncode, 0)
+        spec = next((workspace / "specs" / "active").glob("0001-*.md"))
+        text = spec.read_text(encoding="utf-8").replace(
+            "- [ ] Criterion one, observable and independently testable",
+            "- [ ] the package builds",
+        )
+        spec.write_text(text, encoding="utf-8")
+        run(workspace, "git", "setup", stdin="y\n")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        target = workspace / "packages" / "shared" / "src" / "index.ts"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("export const x = 1;\n", encoding="utf-8")
+        git(workspace, "add", "packages/shared/src/index.ts")
+        committed = run(
+            workspace, "git", "commit", "--task", "0001", "--agent", "alice",
+            "--type", "feat", "--message", "feat: shared package",
+        )
+        self.assertEqual(committed.returncode, 0, committed.stdout + committed.stderr)
+
+    def test_reopen_restores_a_done_task_and_its_spec(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "task", "new", "Reopen me", "--no-spec")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        run(workspace, "task", "review", "0001", "--agent", "alice")
+        self.assertEqual(run(workspace, "task", "done", "0001", "--agent", "bob").returncode, 0)
+        reopened = run(workspace, "task", "reopen", "0001", "--agent", "bob", "--reason", "not merged")
+        self.assertEqual(reopened.returncode, 0, reopened.stdout + reopened.stderr)
+        task = next((workspace / "tasks" / "active").glob("0001-*.md"))
+        self.assertIn("status: review", task.read_text(encoding="utf-8"))
+
+    def test_setup_can_set_a_check_timeout(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        stored = run(
+            workspace, "setup", "--set", "review=yes", "checks=yes", "git=no", "tests=no",
+            "--check", "unit=python -c 1", "--check-timeout", "unit=120",
+        )
+        self.assertEqual(stored.returncode, 0, stored.stdout + stored.stderr)
+        config = json.loads((workspace / "config" / "workspace.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["checks"][0]["timeoutSeconds"], 120)
+
+    def test_setup_records_who_answered(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "setup", "--set", "review=yes", "checks=no", "git=no", "tests=no",
+            "--agent", "chief-1")
+        shown = run(workspace, "setup", "--json").stdout
+        payload = json.loads(shown)
+        review = next(row for row in payload["questions"] if row["key"] == "review")
+        self.assertEqual(review["answeredBy"], "chief-1")
+
+    def test_now_tells_the_chief_to_ask_the_questions(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        out = run(workspace, "now", "--role", "chief").stdout
+        self.assertIn("NEXT  ai setup", out)
+        self.assertIn("ASK   review:", out)
+
+    def test_a_manual_lock_also_widens_the_commit_scope(self) -> None:
+        workspace = self.make_workspace(git_repo=False)
+        run(workspace, "task", "new", "Manual lock", "--allow", "docs/**", "--no-spec")
+        run(workspace, "task", "claim", "0001", "--agent", "alice")
+        acquired = run(workspace, "lock", "acquire", "notes/plan.md", "--agent", "alice", "--task", "0001")
+        self.assertEqual(acquired.returncode, 0, acquired.stderr)
+        self.assertIn("scope_allowed", acquired.stdout)
+        task = next((workspace / "tasks" / "active").glob("0001-*.md")).read_text(encoding="utf-8")
+        self.assertIn("notes/plan.md", task)

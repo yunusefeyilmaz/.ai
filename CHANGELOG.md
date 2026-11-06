@@ -2,6 +2,102 @@
 
 All notable changes to this workspace are documented here.
 
+## [1.0.1] - 2026-11-06
+
+Bug-fix release from a real end-to-end run (setup → plan → spec → claim → commit →
+check → review → merge). Three of these blocked the merge path outright; the rest
+removed manual repairs (`git merge`, `rm -rf` of a worktree, editing a task's scope
+by hand) and misleading diagnostics.
+
+### Added
+
+- **`ai task reopen <id> --agent <name> [--reason ...] [--status ...]`**: brings a
+  `done` task back to `review`, restores its spec to `specs/active/` (marked `draft`
+  again) and clears `reviewed_by`, `reviewed_at`, `merged_into` and `merged_at`. It is
+  the repair path for a task archived without a merge; the ledger move is committed
+  like `done` does. (`lib/cmd/task.py`, `AGENTS.md`, `docs/task-flow.md`)
+- **`ai setup --check-timeout NAME=SECONDS`**: sets a configured check's
+  `timeoutSeconds` so the `ai git finish` guard budget stays inside
+  `locks.maxTtlSeconds`. `ai setup` now warns when the checks' total timeout reaches
+  the guard ceiling. (`lib/config/preferences.py`, `lib/cmd/setup.py`)
+- **`ai doctor` invariants**: a `done` task whose branch is not an ancestor of the
+  integration branch, and a bare `.ai` gitlink in the product repository (no
+  `.gitmodules`), are now reported with a fix hint. (`lib/runtime/health.py`)
+- **Answer provenance**: `config.preferences.answers` records who stored each setup
+  answer and when; `ai setup` prints `stored by <agent> at <time>` and `--json` exposes
+  `answeredBy`/`answeredAt`, so state another tool prefilled is no longer
+  indistinguishable from the user's own confirmation. (`lib/config/preferences.py`)
+- **`ai adopt` writes `.gitattributes`** (`* text=auto eol=lf`) when the project has
+  none, ending the Windows "LF will be replaced by CRLF" noise on every `git add`.
+  (`lib/config/adopt.py`, `lib/cmd/adopt.py`)
+- **`ai now --role chief` prints the setup questions** as `ASK <key>: ...` lines
+  instead of only pointing at `ai setup`, matching what `AGENTS.md` promises.
+  (`lib/cmd/now.py`)
+
+### Fixed
+
+- **`ai git finish` could never take the index guard.** The guard TTL was
+  `600 + sum(check timeouts)` (4 checks × 1800 s = 7800 s), above the default
+  `locks.maxTtlSeconds` (7200), so `acquire_lock` refused and the merge path was
+  dead while `ai lock status` showed no lock. The check budget is now clamped to
+  `maxTtlSeconds - 600`, and `acquire_git_guard` also clamps the requested TTL.
+  (`lib/git/flow.py`, `lib/git/repo.py`)
+- **`ai task done` archived tasks that were never merged.** It now refuses unless the
+  task branch is an ancestor of the integration branch (`git merge-base --is-ancestor`),
+  which is what let the board say `done` while `develop` stayed empty.
+  (`lib/tasks/gates.py`, `lib/git/repo.py`)
+- **A plan directory lock could not be committed.** A plain path (`packages/shared`)
+  is now a prefix match covering everything below it, the same semantics leases use,
+  so the commit scope and the held lock agree. A path taken with
+  `ai lock acquire <path> --task <id>` is added to that task's `scope_allowed` too.
+  (`lib/tasks/scope.py`, `lib/cmd/lock.py`)
+- **Refusals reported a lease that did not exist.** `acquire_git_guard` dropped
+  `result["error"]` and printed `git index is locked by None (task -)`; the real cause
+  (`ttl must be <= 7200 seconds`) appeared nowhere. Errors are now surfaced, refusal
+  events carry `conflict`, `conflict_agent` and `error`, and `refusal_detail` shows the
+  error instead of `conflict unknown`. (`lib/git/repo.py`, `lib/runtime/leases.py`,
+  `lib/cmd/task.py`)
+- **A failed `ai git finish` left the worktree behind.** `ai worktree prune` only
+  removed worktrees git still recognised, and `git worktree remove` refused a
+  directory holding `node_modules` on Windows (`Directory not empty`). Orphan folders
+  are now deleted from disk with a read-only-file retry, and a forced finish cleans up
+  after itself. (`lib/git/worktrees.py`, `lib/cmd/worktree.py`)
+- **`ai task show` hid leases taken after the claim.** Manually acquired leases are
+  listed under `Held leases`. (`lib/cmd/task.py`)
+- **Evidence stale wording blamed the code.** After a merge the message said "the code
+  changed since"; it now also names a merge or a new commit as the cause.
+  (`lib/runtime/evidence.py`)
+- **`ai git setup` silently accepted a bare `.ai` gitlink.** It now warns that the
+  ledger cannot be committed as files and names the two real options (a proper
+  submodule, or `git rm --cached` plus an ignore rule); the gitlink is left out of the
+  baseline commit instead of being staged as an empty pointer. (`lib/git/setup.py`)
+
+### Changed
+
+- `ai setup`, `ai task`, `ai adopt` and `capabilities` help text and the command
+  surface list the new flags, `ai task reopen`, and the check-timeout option.
+  (`lib/cmd/capabilities.py`, `AGENTS.md`)
+- `docs/git-workflow.md` documents the guard/check-timeout relationship and the cost
+  of a full `node_modules` per worktree; `docs/task-flow.md` documents directory
+  locks, scope widening by `ai lock acquire`, the merge gate, `ai task reopen`, and
+  plan id allocation in dependency order with `"tests": false`.
+
+### Tests
+
+- `lib/tests/test_field_report.py` gains seven regressions: the old four-check TTL
+  deadlock, `done` after an unmerged branch, a plan directory lock committed through
+  `ai git commit`, `ai task reopen`, `ai setup --check-timeout`,
+  `answeredBy` provenance, `ai now` printing the questions, and a manual lock widening
+  the commit scope.
+
+### Upgrade note (1.0.0 -> 1.0.1)
+
+- No migration is required. Existing `done` tasks are not rewritten; `ai doctor` only
+  warns about a done task whose branch was never merged. If your checks' total timeout
+  exceeds `locks.maxTtlSeconds - 600`, `ai git finish` now merges (the guard is
+  clamped) instead of failing — set explicit per-check timeouts if you want the guard
+  to cover the whole run.
+
 ## [1.0.0] - 2026-11-06
 
 No new features. This release is a reliability milestone: it ships the fixes that

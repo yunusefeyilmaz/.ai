@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from lib.config import roles
-from lib.config.settings import load_config
+from lib.config.settings import load_config, max_lock_ttl
 from lib.core.paths import (
     ACTIVE_DIR,
     PROJECT,
@@ -41,7 +41,14 @@ def checks_seconds_budget() -> int:
             total += int(item.get("timeoutSeconds") or config.get("checksTimeoutSeconds") or 1800)
         except (TypeError, ValueError):
             total += 1800
-    return total or 1800
+    # The guard lease cannot outlive `locks.maxTtlSeconds`. Clamp here instead of
+    # letting `acquire_lock` refuse the whole merge with a lease error: a check
+    # budget larger than the configured maximum is a warning, not a deadlock.
+    try:
+        ceiling = max(60, max_lock_ttl() - 600)
+    except (OSError, ValueError):
+        ceiling = 6600
+    return min(total or 1800, ceiling)
 
 
 def cmd_git_setup(args) -> int:

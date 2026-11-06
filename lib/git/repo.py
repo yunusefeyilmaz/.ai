@@ -12,6 +12,7 @@ import sys
 from lib.config.settings import (
     load_config,
     lock_settings,
+    max_lock_ttl,
 )
 from lib.core.fsio import (
     CorruptStateError,
@@ -213,9 +214,46 @@ def branch_ref_exists(name: str) -> bool:
     return code == 0
 
 
+def branch_merged(branch: str, target: str) -> bool:
+    """True when `target` already contains every commit of `branch`.
+
+    Used by `ai task done` (a task may not be archived before its branch landed
+    on the integration branch) and by `ai doctor` (a done task that was never
+    merged is a structural lie in the ledger).
+    """
+    if not branch_exists(branch) or not branch_exists(target):
+        return False
+    code, _, _ = run_git(["merge-base", "--is-ancestor", branch, target])
+    return code == 0
+
+
 def git_commit_id(revision: str) -> str | None:
     code, commit, _ = run_git(["rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}"])
     return commit if code == 0 and commit else None
+
+
+def workspace_gitlink(project: str | None = None) -> str | None:
+    """The `.ai` path when the host repository records it as a bare gitlink.
+
+    A subfolder workspace that is its own clone shows up in the host index as
+    mode 160000 with no `.gitmodules` entry: the product repo then tracks a
+    pointer nobody can check out, and every ledger add is silently ignored
+    ("is in submodule '.ai'"). Return the path so callers can ask for a decision
+    instead of pretending the baseline worked.
+    """
+    root = project or PROJECT
+    workspace = WORKSPACE
+    if os.path.abspath(root) == os.path.abspath(workspace):
+        return None
+    rel = os.path.relpath(workspace, root).replace(os.sep, "/")
+    code, output, _ = run_git(["ls-files", "-s", "--", rel], cwd=root)
+    if code != 0 or not output.strip():
+        return None
+    if not output.split()[0].startswith("160000"):
+        return None
+    if os.path.isfile(os.path.join(root, ".gitmodules")):
+        return None
+    return rel
 
 
 def is_workspace_ledger_path(path: str) -> bool:
@@ -254,6 +292,12 @@ def acquire_git_guard(agent: str, task_id: str, ttl: int = 600) -> tuple[bool, b
     interleave a commit between the check and the merge.
     """
     _, stale_after = lock_settings()
+    # The caller budgets for a long child command; never ask for a lease longer
+    # than the workspace allows, or the guard is refused before it is taken.
+    try:
+        ttl = max(1, min(int(ttl), max_lock_ttl()))
+    except (OSError, ValueError):
+        ttl = max(1, int(ttl))
     current = next(
         (
             lock for lock in list_locks()
@@ -264,7 +308,10 @@ def acquire_git_guard(agent: str, task_id: str, ttl: int = 600) -> tuple[bool, b
     )
     if current:
         if current.get("agent") != agent:
-            append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
+            append_event(
+                "lock_refused", resource="@git/index", agent=agent, task=task_id,
+                conflict="@git/index", conflict_agent=current.get("agent"),
+            )
             return False, False, (
                 f"git index is locked by {current.get('agent')} "
                 f"(task {current.get('task') or '-'})."
@@ -272,8 +319,18 @@ def acquire_git_guard(agent: str, task_id: str, ttl: int = 600) -> tuple[bool, b
         return True, False, ""
     result = acquire_lock("@git/index", agent=agent, task=task_id, ttl=ttl)
     if not result["ok"]:
-        holder = result["holder"] or {}
-        append_event("lock_refused", resource="@git/index", agent=agent, task=task_id)
+        holder = result.get("holder") or {}
+        error = str(result.get("error") or "")
+        append_event(
+            "lock_refused", resource="@git/index", agent=agent, task=task_id,
+            conflict="@git/index" if holder else None,
+            conflict_agent=holder.get("agent"),
+            error=error or None,
+        )
+        if error:
+            # A refused lease (ttl too long, invalid resource) is not a holder
+            # conflict; reporting "locked by None" hid the real cause.
+            return False, False, f"Could not take the git index guard: {error}"
         return False, False, (
             f"git index is locked by {holder.get('agent')} "
             f"(task {holder.get('task') or '-'})."

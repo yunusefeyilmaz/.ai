@@ -17,6 +17,8 @@ checkout's `git status` never sees them.
 from __future__ import annotations
 
 import os
+import shutil
+import stat
 
 from lib.core.fsio import write_text_atomic
 from lib.core.paths import PROJECT, WORKSPACE, WORKTREES_DIR
@@ -114,11 +116,41 @@ def create(meta: dict, branch: str, base: str) -> tuple[bool, str, str]:
     return True, path, "created"
 
 
+def _remove_directory(path: str) -> None:
+    """Delete a checkout even on Windows, where node_modules may be read-only.
+
+    `git worktree remove` refuses a directory it no longer recognises in
+    `worktrees/` and can fail with "Directory not empty" when a dependency
+    folder holds read-only files. The workspace owns everything under
+    `worktrees/`, so removing it ourselves is safe once the caller allowed it.
+    """
+    def force_writable(func, item, _exc):
+        try:
+            os.chmod(item, stat.S_IWRITE)
+            func(item)
+        except OSError:
+            pass
+
+    shutil.rmtree(path, onerror=force_writable)
+
+
 def remove(path: str, force: bool = False) -> tuple[bool, str]:
     args = ["worktree", "remove"] + (["--force"] if force else []) + [path]
     code, _, err = repo.run_git(args, cwd=PROJECT)
-    if code != 0 and os.path.isdir(path):
-        return False, err or "git worktree remove failed"
+    if code != 0:
+        if not os.path.isdir(path):
+            repo.run_git(["worktree", "prune"], cwd=PROJECT)
+            return True, ""
+        if not force:
+            return False, err or "git worktree remove failed"
+        # git refused but the caller explicitly allowed discarding the checkout:
+        # delete the leftover directory and forget the stale registration.
+        try:
+            _remove_directory(path)
+        except OSError as exc:
+            return False, f"{err or 'git worktree remove failed'}; deleting it failed: {exc}"
+        repo.run_git(["worktree", "prune"], cwd=PROJECT)
+        return True, "removed from disk (git worktree remove failed)"
     repo.run_git(["worktree", "prune"], cwd=PROJECT)
     return True, ""
 

@@ -236,3 +236,37 @@ def done_gate(meta: dict, agent: str, force: bool = False) -> str | None:
             "its own work. A different agent must run `ai task done`."
         )
     return None
+
+
+def done_merge_gate(meta: dict, force: bool = False) -> str | None:
+    """Refuse to archive a task whose branch never landed on the integration branch.
+
+    `ai task done` used to flip the ledger to done even after `ai git finish`
+    failed, so the board claimed completion while develop stayed empty. Check
+    the actual Git ancestry, not the recorded fields alone.
+    """
+    if force or not git_enabled():
+        return None
+    branch = str(meta.get("branch") or "")
+    if not branch:
+        return None
+    try:
+        integration = repo.git_config().get("integration") or "develop"
+    except (OSError, ValueError, KeyError):
+        return None
+    if not repo.branch_exists(integration):
+        return None  # Gitflow has not been set up in this checkout yet
+    task_id = str(meta.get("id"))
+    if repo.branch_merged(branch, integration):
+        return None
+    if not repo.branch_exists(branch):
+        return (
+            f"Task {task_id}: branch '{branch}' no longer exists and there is no verifiable "
+            f"merge into {integration}. Run `ai git finish --task {task_id} --agent <reviewer>` "
+            "before marking it done, or --force if it really was merged and deleted by hand."
+        )
+    return (
+        f"Task {task_id} is not merged into {integration}: branch '{branch}' is not an ancestor "
+        f"of {integration}. Run `ai git finish --task {task_id} --agent <reviewer>` first; "
+        "the ledger must not say done before the merge."
+    )

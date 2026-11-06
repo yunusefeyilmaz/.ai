@@ -43,7 +43,11 @@ def cmd_worktree(args) -> int:
         if row["dirty"] and not args.force:
             print(f"Kept {row['name']}: uncommitted changes (use --force to discard them).", file=sys.stderr)
             continue
-        ok, note = worktrees.remove(row["path"], force=args.force)
+        # A folder git no longer recognises as a worktree (its branch is gone or
+        # its registration was pruned) may still hold node_modules; `git worktree
+        # remove` refuses it, so let `remove` delete the directory itself.
+        discard = args.force or (row["branch"] is None and not row["dirty"])
+        ok, note = worktrees.remove(row["path"], force=discard)
         print(f"{'Removed' if ok else 'Could not remove'} {row['name']}" + (f": {note}" if not ok else ""))
         removed += 1 if ok else 0
     repo.run_git(["worktree", "prune"])

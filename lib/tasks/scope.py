@@ -68,7 +68,14 @@ def matches(pattern: str, path: str) -> bool:
     if path == ".." or path.startswith("../"):
         return False
     if pattern.endswith("/"):
-        pattern += "**"
+        pattern = pattern.rstrip("/")
+    # A plain path (no wildcard) is a directory or file lock: it covers the
+    # path itself and everything below it. This matches the lease semantics in
+    # `resources_overlap`, so a plan's `locks: ["src/api"]` can also be its
+    # commit scope instead of silently refusing every file under it.
+    if not any(char in pattern for char in "*?["):
+        pattern = normalize_rel_path(pattern)
+        return path == pattern or path.startswith(pattern + "/")
     return bool(_regex(normalize_rel_path(pattern)).match(path))
 
 

@@ -13,7 +13,33 @@ from lib.runtime.leases import (
     lock_status_payload,
     print_lock_table,
     release_lock,
+    resource_has_glob,
 )
+from lib.tasks import scope as task_scope
+from lib.tasks import store
+
+
+def _widen_scope(task_id: str | None, resource: str, agent: str) -> str | None:
+    """Add a manually acquired path to the task's commit scope.
+
+    Taking a lease proved the worker owns the file; the commit gate used to
+    disagree because `scope_allowed` still held only the plan's locks. Return a
+    note when the scope changed, None otherwise.
+    """
+    if not task_id or resource_has_glob(resource) or resource.startswith("@"):
+        return None
+    path = store.find_task(task_id)
+    if not path:
+        return None
+    meta, body = store.parse_task(path)
+    if str(meta.get("owner") or "") not in ("", agent):
+        return None
+    allowed = task_scope.split_globs(meta.get("scope_allowed"))
+    if not allowed or any(task_scope.matches(glob, resource) for glob in allowed):
+        return None
+    meta["scope_allowed"] = task_scope.join_globs(allowed + [resource])
+    store.write_task(path, meta, body)
+    return resource
 
 
 def cmd_lock(args) -> int:
@@ -30,6 +56,9 @@ def cmd_lock(args) -> int:
                 print(f"'{args.resource}' is already covered by {args.agent}'s lock '{result['covered_by']}'.")
             else:
                 print(f"Acquired '{args.resource}' for {args.agent}.")
+            widened = _widen_scope(args.task, args.resource, args.agent)
+            if widened:
+                print(f"Added '{widened}' to task {args.task}'s scope_allowed (so the commit gate accepts it).")
             return 0
         error = result.get("error")
         if error:

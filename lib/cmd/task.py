@@ -125,8 +125,26 @@ def cmd_task_show(args) -> int:
             print(f"  {r}")
     print()
     print(body)
+    _print_held_locks(str(meta.get("id") or args.task_id))
     _print_spec_criteria(meta)
     return 0
+
+
+def _print_held_locks(task_id: str) -> None:
+    """Leases taken after the plan (via `ai lock acquire`), not only the plan's list."""
+    try:
+        held = [
+            lock for lock in list_locks(ensure=False)
+            if str(lock.get("task") or "") == task_id
+        ]
+    except OSError:
+        return
+    if not held:
+        return
+    print()
+    print("Held leases:")
+    for lock in held:
+        print(f"  {lock.get('resource')} ({lock.get('agent')}, ttl {lock.get('ttl_seconds')}s)")
 
 
 def _print_spec_criteria(meta: dict) -> None:
@@ -673,6 +691,10 @@ def cmd_task_done(args) -> int:
     if gate_error:
         print(gate_error, file=sys.stderr)
         return 1
+    merge_error = gates.done_merge_gate(meta, args.force)
+    if merge_error:
+        print(merge_error, file=sys.stderr)
+        return 1
     resource = f"task-{task_id}"
     holder = effective_holder(resource)
     if holder.get("corrupt") and not args.force:
@@ -689,8 +711,18 @@ def cmd_task_done(args) -> int:
         # a live one, so a finished task can never stay stuck in review.
         result = acquire_lock(resource, agent=args.agent, task=task_id, force=args.force)
         if not result["ok"]:
-            append_event("lock_refused", resource=resource, agent=args.agent, task=task_id)
-            print(f"Task {task_id} is locked by {result['holder'].get('agent')}.", file=sys.stderr)
+            holder = result.get("holder") or {}
+            error = str(result.get("error") or "")
+            append_event(
+                "lock_refused", resource=resource, agent=args.agent, task=task_id,
+                conflict=resource if holder else None,
+                conflict_agent=holder.get("agent"),
+                error=error or None,
+            )
+            if error:
+                print(f"Cannot lock task {task_id}: {error}", file=sys.stderr)
+            else:
+                print(f"Task {task_id} is locked by {holder.get('agent')}.", file=sys.stderr)
             return 1
     target = os.path.join(DONE_DIR, os.path.basename(path))
     if os.path.exists(target):
@@ -753,6 +785,105 @@ def cmd_task_done(args) -> int:
         submitted_by=meta.get("submitted_by"),
     )
     print(f"Done: {os.path.relpath(target, PROJECT)}")
+    return 0
+
+
+def _restore_spec(meta: dict) -> str | None:
+    """Move an archived spec back to specs/active and mark it draft again."""
+    ref = str(meta.get("spec") or "")
+    if not ref:
+        return None
+    absolute = os.path.normpath(os.path.join(WORKSPACE, ref))
+    done = os.path.normpath(spec_lib.SPECS_DONE_DIR)
+    if os.path.dirname(absolute) != done or not os.path.isfile(absolute):
+        return None
+    active_dir = spec_lib.SPECS_ACTIVE_DIR
+    os.makedirs(active_dir, exist_ok=True)
+    target = os.path.join(active_dir, os.path.basename(absolute))
+    if os.path.exists(target):
+        return None
+    os.replace(absolute, target)
+    try:
+        from lib.core.fsio import write_text_atomic
+
+        write_text_atomic(target, spec_lib.mark_status(spec_lib.read_text(target), "draft"))
+    except OSError:
+        pass
+    return os.path.relpath(target, WORKSPACE).replace(os.sep, "/")
+
+
+def cmd_task_reopen(args) -> int:
+    """Bring a done task back to review when the ledger got ahead of Git.
+
+    `ai task done` used to be reachable after a failed `ai git finish`; without
+    this command the only repair was editing tasks/ and specs/ by hand. Reopen
+    moves the task and its spec back, clears the review stamps, and leaves the
+    product branch untouched.
+    """
+    path = store.find_task(args.task_id)
+    if not path:
+        print(f"No task with id {args.task_id}.", file=sys.stderr)
+        return 1
+    if os.path.dirname(path) != DONE_DIR:
+        print(f"Task {args.task_id} is not done; there is nothing to reopen.", file=sys.stderr)
+        return 1
+    denied = roles.authorize(args.agent, "task.reopen")
+    if denied:
+        print(denied, file=sys.stderr)
+        return 1
+    meta, body = store.parse_task(path)
+    task_id = str(meta.get("id") or args.task_id)
+    target = os.path.join(ACTIVE_DIR, os.path.basename(path))
+    if os.path.exists(target):
+        print(
+            f"Cannot reopen task {task_id}: {os.path.relpath(target, PROJECT)} already exists.",
+            file=sys.stderr,
+        )
+        return 1
+    previous_spec = meta.get("spec")
+    restored_spec = _restore_spec(meta)
+    if restored_spec:
+        meta["spec"] = restored_spec
+    elif previous_spec:
+        print(
+            f"WARN  could not restore the spec {previous_spec}; the task keeps its reference.",
+            file=sys.stderr,
+        )
+    meta["status"] = "review" if not args.status else args.status
+    meta["reviewed_by"] = None
+    meta["reviewed_at"] = None
+    meta["merged_into"] = None
+    meta["merged_at"] = None
+    meta["updated"] = iso()
+    body = history.append(
+        body, args.agent, "done", meta["status"], "reopened", args.reason or ""
+    )
+    try:
+        with workspace_state_guard():
+            store.write_task(path, meta, body)
+            os.replace(path, target)
+            board.write_board(store.load_tasks())
+    except OSError as exc:
+        print(f"Cannot reopen task {task_id}: {exc}", file=sys.stderr)
+        return 1
+    # Record the ledger move on the current branch, like `done` does.
+    if settings.git_enabled() and repo.git_state().get("repo"):
+        rels = [
+            repo.ledger_path(os.path.relpath(item, PROJECT))
+            for item in (target, path, BOARD_PATH)
+            if os.path.exists(item)
+        ]
+        if restored_spec:
+            rels.append(repo.ledger_path(restored_spec))
+            if previous_spec:
+                rels.append(previous_spec)
+        if rels:
+            repo.run_git(["add", "--"] + rels)
+            repo.run_git(["commit", "-m", f"chore(task): reopen {task_id}", "--"] + rels)
+    append_event("task_reopened", task=task_id, agent=args.agent, reason=args.reason or None)
+    print(f"Reopened {task_id} to {meta['status']}: {os.path.relpath(target, PROJECT)}")
+    if meta.get("branch"):
+        print(f"Branch {meta.get('branch')} was left as it is; merge it with `ai git finish --task {task_id} --agent <reviewer>`.")
     return 0
 
 
@@ -948,6 +1079,15 @@ def register(sub) -> None:
     task_done.add_argument("--agent", required=True)
     task_done.add_argument("--force", action="store_true")
     task_done.set_defaults(func=cmd_task_done)
+
+    task_reopen = task_sub.add_parser(
+        "reopen", help="bring a done task back to review (e.g. it was never merged)"
+    )
+    task_reopen.add_argument("task_id")
+    task_reopen.add_argument("--agent", required=True)
+    task_reopen.add_argument("--reason", default=None)
+    task_reopen.add_argument("--status", default=None, choices=["review", "changes_requested", "in_progress", "todo"])
+    task_reopen.set_defaults(func=cmd_task_reopen)
 
     task_discard = task_sub.add_parser(
         "discard", help="permanently remove one unwanted task (interactive operator action)"

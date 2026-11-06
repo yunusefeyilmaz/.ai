@@ -89,7 +89,16 @@ refreshed. Unless `--no-spec` is given, a spec skeleton is written from
 An explicit `--spec` only links an existing file; it is never rewritten.
 
 `depends_on` prevents parallel agents from starting work that needs unmerged
-predecessors.
+predecessors. Ids are allocated in dependency order, so the printed
+`id` / `key` pairs are the mapping between your plan table and the board.
+
+A plan `locks` entry is both the claim-time lease and the commit scope. A plain
+path is a directory lock: it covers the path itself and everything below it
+(`packages/shared` allows `packages/shared/src/index.ts`), while `**` globs stay
+glob-shaped. A path acquired later with `ai lock acquire <path> --task <id>`
+is added to that task's `scope_allowed`, so the commit gate and the lease agree.
+Plans default `tests: true`; set `"tests": false` on docs or infrastructure
+tasks that cannot have behavior tests so the criterion is not added.
 
 The chief fills the generated spec **before** anyone claims the task: the claim
 gate refuses while the spec is still the template. The spec is the contract; the
@@ -169,7 +178,12 @@ holding that claim may send it back; anyone else is refused. The task becomes
 re-submits. Nothing is lost: every transition stays in the task file.
 
 `ai task done` is refused unless the task is in `review` and the caller is not
-the agent that submitted it (`submitted_by`). In strict mode `ai task review` is
+the agent that submitted it (`submitted_by`), and unless the task's branch is an
+ancestor of the integration branch: a ledger may not claim `done` while the work
+never landed. If a task was archived wrongly (for example after a failed
+`ai git finish`), put it back in review with
+`ai task reopen <id> --agent <name> --reason "..."`; `ai doctor` reports the
+"done but never merged" state as a warning. In strict mode `ai task review` is
 also refused without green evidence recorded **for this task on the current
 HEAD** (`ai check --task <id> --agent <n>`; `--agent` alone attaches to your only
 in-progress task). New commits make older evidence stale. Both rules are
