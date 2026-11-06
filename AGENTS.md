@@ -1,131 +1,75 @@
 # AGENTS.md — read this first
 
-This project uses the `.ai` workspace. `ai.py` is the single entry point; the
-the scripts it runs are in `lib/`; the state it manages stays in `tasks/`, `specs/`, `runtime/`. Everything AI-generated stays
-under `.ai/`. The rest of the repository is product territory.
+`.ai` is the workspace: `ai.py` is the entry point, scripts are in `lib/`, state in
+`tasks/`, `specs/`, `runtime/`, `config/`. AI output stays under `.ai/`; the rest is
+product territory.
 
-## First: who are you?
+## Who are you?
+- No tasks yet and the user gave you a job -> **chief**: run `ai now --role chief`, ask
+  the setup questions (review? Git? tests? checks? workers?), store them, then plan.
+  Do not code and do not create tasks as a worker.
+- "Implementer" -> `ai task next` claims one; "reviewer" -> `ai task next --review`;
+  `.ai` is a dot-folder, so use the `ai` commands, not file globs, to read state.
 
-- The user gave you a job and **there are no tasks yet** -> you are the **chief**. Do not code and do not
-  create tasks as a worker. Run `ai now --role chief`, ask the user the setup questions (review? Git?
-  tests? checks? how many workers?), store the answers, then plan. `ai task new` and `ai plan apply` refuse
-  anyone who has not declared `--role chief` or has not asked the user first.
-- Tasks exist and the user says "you are an implementer" -> claim one with `ai task next`.
-- The user says "you are a reviewer" -> `ai task next --review`.
-- `.ai` is a dot-folder: some file tools skip it. Use the `ai` commands to read state instead of globbing.
-
-## Session loop (follow it, do not improvise)
-
+## Session loop
 ```sh
-ai now --agent <n> [--role chief|implementer|reviewer]   # 10 lines: state + the ONE next command
-ai context                                               # only when new: open work, shipped work, ADRs
+ai now --agent <n> [--role chief|implementer|reviewer]   # state + the ONE next command
+ai context                                               # only when new: open work, ADRs
 ```
+Run the command after `NEXT`, then `ai now` again; read task/spec files only when asked.
 
-The user tells you your role ("you are the chief / an implementer / a reviewer");
-pass it as `--role`. Roles and their one-command loops:
+- **chief**: `ai setup` (ask) -> `ai plan apply plan.json --role chief` -> fill specs -> `ai status`.
+- **implementer**: `ai task next` (claim + locks + branch) -> work -> `ai task review`, then stop.
+- **reviewer**: `ai task next --review` -> `ai git finish` + `ai task done`, or `ai task request-changes`.
 
-| Role | Loop |
-|------|------|
-| **chief** (`agents/orchestrator.md`) | `ai setup` (ask the user, stored in config) -> `ai plan apply plan.json --role chief` -> fill specs -> `ai status` |
-| **implementer** | `ai task next` (claims + locks + branch) -> work -> `ai task review` (checks + delivers). **Then stop** and wait for the user |
-| **reviewer** | `ai task next --review` -> `ai git finish` + `ai task done`, or `ai task request-changes` |
+## Required order (enforced)
+1. **Spec first.** Edit the linked file in `specs/active/` before any claim.
+2. `ai task next --agent <n>` needs a filled spec; it takes the task's file locks
+   and opens its branch. It refuses a missing dependency or a live lock.
+3. `ai git setup` once per clone; the claim opens the branch.
+4. Work inside your locks; extra files: `ai lock acquire <path> --agent <n> --task
+   <id>`. Checkpoint at milestones: `ai checkpoint <id> --agent <n> --next "<step>"`.
+5. `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat
+   --message "<subject>"`; every staged path needs your lock. Then `ai check --task
+   <id> --agent <n>` runs the project's `checks`; red means stop.
+6. `ai task review <id> --agent <n>` runs the checks and hands over; a different agent
+   runs `ai git finish` + `ai task done`, or `ai task request-changes`.
 
-Run the command printed after `NEXT`, then run `ai now` again. It reads the task
-state, Git and the last check, so you never have to work out the order yourself.
-Read task and spec files only when `NEXT` or the task asks you to.
+The producer never approves its own work; `ai task done` never works straight from
+`in_progress`. `--force` is the human's escape hatch, only on explicit request.
 
-## Required order (enforced, not advice)
+## Locks
+A lease is JSON under `runtime/locks/`; a live one is a refusal. Staleness comes only
+from `updated_at` and `locks.staleAfterSeconds` (default 3600) in
+`config/workspace.json`; the PID is diagnostic, not a liveness test, because a claim
+must outlive the CLI that created it. Refresh with `ai lock heartbeat`; never delete a
+lock file.
 
-| # | Step | Command | Refused when |
-|---|------|---------|--------------|
-| 1 | Spec (chief, before any claim) | edit the linked file in `specs/active/` (created by `ai task new`/`ai plan apply`) | — (no spec, no code) |
-| 2 | Pick work (needs a filled spec) | `ai task next --agent <n>`: also takes the task's file locks and opens its branch | a dependency is not done, or a declared file is locked |
-| 3 | Git base | `ai git setup` (once per clone) | — |
-| 4 | Branch | automatic at claim when Git is on; manual: `ai git start --task <id> --agent <n> --type feature` | before editing, always |
-| 5 | Work | the task's declared `locks` are already held; extra files: `ai lock acquire <path> --agent <n> --task <id>`; edit, `ai checkpoint <id> --agent <n> --next "<step>"` | a live lock is a refusal |
-| 6 | Commit | `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat --message "<subject>"` | staged paths not covered by your locks |
-| 7 | Check | `ai check --task <id> --agent <n>` (runs the *project's* `checks` from `config/workspace.json`) | red. Strict mode needs green evidence for this task on the current HEAD before review |
-| 8 | **Review** | `ai task review <id> --agent <n>`: runs the project checks itself when required, then hands the task over (no separate release) | not `in_progress`, not yours, or no green check when checks are required |
-| 9 | **Merge + done** (a *different* agent) | `ai git finish --task <id> --agent <r>`, then `ai task done <id> --agent <r>` | task not in `review`, or `<r>` is the producer |
-| 9b | Not good enough? | `ai task request-changes <id> --agent <r> --reason "..."` | not in `review`, `<r>` is the producer, or `<r>` does not hold the review claim (`ai task next --review`). The producer reclaims it |
-
-`ai task done` never works straight from `in_progress`. The producer never
-approves its own work. `--force` is an operator escape hatch reserved for the human: it applies to
-`ai task done`, `ai git finish`, `ai task claim`, `ai task discard` and `ai reset --hard`, and an agent
-must only use it when the user explicitly says so.
-
-## Parallel workers (worktrees)
-
-If `ai task claim|next` prints `worktree: <path>`, that directory is **your** checkout: `cd` into it and edit
-files only there. It has no `.ai/`; run the shared CLI by the absolute path it printed. `ai git commit`,
-`ai check --task`, `ai task review` find your worktree on their own. Never edit the main checkout.
-
-## Reading a task
-
-`ai history <id>` shows who moved it, when, why and on which proof; `ai resume <id>` says whether
-the recorded verification is still valid. A task may declare `scope_allowed`/`scope_forbidden`:
-`ai git verify --task <id>` before committing.
-
-## Running out of tokens (so another AI can continue)
-
-- ~70% of context: stop starting new work. ~85%: `ai checkpoint <id> --agent <n> --next "<step>"`.
-- Before the session ends or on a hard limit: `ai handoff <id> --agent <n> --reason "<why>"`.
-- The next agent (any vendor): `ai now` shows `HANDOFF`; then `ai resume <id>` prints the
-  checkpoint, the drift against the real repo, and a resume prompt. Verify drift before trusting it.
-- Checkpoints, handoffs, locks, events and logs are in `runtime/` (never committed).
+## Workers and continuation
+If `ai task claim|next` prints `worktree: <path>`, that directory is **your** checkout:
+`cd` there and edit only there; it has no `.ai/`, so run the shared CLI by the absolute
+path it printed. `ai git commit`, `ai check --task` and `ai task review` find your
+worktree themselves; never edit the main checkout. At ~70% context stop opening work;
+at ~85% `ai checkpoint`; before the window closes run `ai handoff` and stop.
 
 ## Invariants
+1. Nothing AI-generated escapes `.ai/`; claim before you work, one task per session.
+2. Lock shared resources; a live lock is a refusal; never delete lock files.
+3. No spec, no code; behavior changes need testable acceptance criteria.
+4. The producer never verifies its own work; "done" means `ai check` is green.
+5. Record lasting decisions with `ai decision new "<title>"`.
+6. Respect `mode` (`lite` or `strict`); Gitflow for every file-changing task, and
+   destructive actions (`ai task discard`, `ai reset --hard`) only on request.
 
-1. **Nothing AI-generated escapes `.ai/`.** Notes, scratch files, logs go to `ai artifact put` or `runtime/`.
-2. **Claim before you work.** One task per session. Never edit a task another agent owns.
-3. **Lock shared resources.** A live lock is a refusal, not a suggestion. Never delete lock files.
-4. **No spec, no code.** Behavior changes need testable acceptance criteria in `specs/`.
-5. **Producer never verifies its own work.** Roles in `config/workspace.json` (`team`) can limit who may review/approve; if `ai` says an action is denied, do not work around it. Review runs in a separate session.
-6. **"Done" means `ai check` is green.** Attach the command and result to the task.
-7. **Record lasting decisions:** `ai decision new "<title>"` (ADR in `docs/decisions/`).
-8. **Respect the mode** in `config/workspace.json`: `lite` or `strict` (human gates at spec, plan, triage).
-9. **Gitflow for every file-changing task** unless the user says not to use Git. Dubious-ownership errors: ask the
-   user to trust only this exact checkout; never a wildcard `safe.directory`.
-10. **Destructive operator actions** (`ai task discard`, `ai reset --hard`) only when the user explicitly directs them.
-
-## Where things live
-
-`lib/` holds only scripts. Data stays in the folders below.
-
-| Need | Data (read/write via `ai`) | Scripts (`lib/`) |
-|------|----------------------------|------------------|
-| Entry point | `ai.py`, launchers `ai`, `ai.cmd` | — |
-| Tasks, board | `tasks/active`, `tasks/done`, `tasks/BOARD.md` | `lib/tasks/` (rules: `gates.py`, `workflow.py`) |
-| Specs | `specs/active`, `specs/done` | `lib/specs/` |
-| Locks, checkpoints, handoffs, events, artifacts, logs | `runtime/` (never committed) | `lib/runtime/` |
-| Git flow, commit/PR templates | `templates/git/` | `lib/git/` |
-| Decisions (ADRs) | `docs/decisions/` | `lib/decisions/` |
-| Config (`workspace.json`) | `config/` | `lib/config/` |
-| CLI commands (one file each) | — | `lib/cmd/` |
-| Paths, atomic IO, time | — | `lib/core/` |
-| Tests of the workspace tooling itself (not your project; run only if you changed `.ai`) | — | `lib/tests/` |
-| Optional extensions (future) | `skills/` | — |
-| Module map and call flow | `lib/README.md` | |
-| Deep dives: flow, locks, git, recovery | `docs/` | |
-
-## Commands
-
+## Command surface
 ```sh
-ai now [--agent <n>] [--role r]   ai context [--limit N]   ai brief <id>   ai start
-ai setup [--set k=v ...] [--check NAME=COMMAND] [--defaults]
-ai plan apply|example            ai doctor [--fix]        ai check [--task <id> --agent <n>]
-ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock|link|discard
-  new flags: --role chief [--allow GLOB --forbid GLOB --lock GLOB --depends-on IDS]
-ai lock acquire|release|heartbeat|status
-ai checkpoint|handoff <id> --agent <n>   ai resume <id>   ai recover [--apply]
-ai git setup|start|commit|verify|finish|begin|end   (start --carry, commit --verify)
-ai history <id> [--evidence]     ai decision new|list     ai artifact put|list|clean
-ai review <id> [--stat] [--max-lines N] [--json]   # the reviewer's one-command package (read-only)
-ai status [--board]   ai capabilities   ai metrics   ai adopt   ai init   ai version   ai clean   ai reset
+ai now|context|brief|start|setup|doctor|check|status|metrics|capabilities|version
+ai plan apply|example   ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock|link|discard
+ai lock acquire|release|heartbeat|status   ai checkpoint|handoff|resume|recover
+ai git setup|start|commit|verify|finish|begin|end   ai history   ai decision new|list
+ai artifact put|list|clean   ai review <id>   ai clean   ai reset
 ```
 
-`ai capabilities --json` is the machine-readable command/flag surface; when this
-block and the parser disagree, the parser wins.
-
-If `ai` is unavailable, follow the same protocol by editing files directly
-(see `tasks/README.md`, "Manual operation"); do not invent a shortcut.
+`ai capabilities --json` is the machine-readable surface; the parser wins. If `ai` is
+unavailable, follow the same protocol by editing files directly (see
+`tasks/README.md`, "Manual operation").

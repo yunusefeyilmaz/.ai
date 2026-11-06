@@ -27,12 +27,12 @@ README and GUIDE claim adopt ignores .ai/, AGENTS.md claims PID is diagnostic on
 
 ## Acceptance criteria
 
-- [ ] README and GUIDE describe the actual ignore rules from lib/config/adopt.py
-- [ ] AGENTS.md describes the actual lock staleness rule and fits within the token target (~70 lines)
-- [ ] prompts/worker.md requires at most one document before the first command
-- [ ] Every command shown in the docs exists and runs (doc test covers it)
-- [ ] Doc tests pass
-- [ ] Tests cover the new behavior and pass
+- [x] README and GUIDE describe the actual ignore rules from lib/config/adopt.py
+- [x] AGENTS.md describes the actual lock staleness rule and fits within the token target (~70 lines)
+- [x] prompts/worker.md requires at most one document before the first command
+- [x] Every command shown in the docs exists and runs (doc test covers it)
+- [x] Doc tests pass
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 
