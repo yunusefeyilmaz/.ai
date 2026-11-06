@@ -167,9 +167,11 @@ How it works:
 - `ai task claim|next` (or `ai git start`) runs `git worktree add` from `develop`,
   records `worktree:` in the task and prints the path. The main checkout is not
   touched, so it does not need to be clean.
-- A worktree has no `.ai/` of its own (the workspace is git-ignored in the host).
-  The worker runs the shared CLI by absolute path (printed at claim time, also in
-  the `AGENTS.md`/`CLAUDE.md` briefing the workspace drops into the worktree).
+- A worktree has no separate workspace state: the `.ai/` ledger, leases and runtime
+  live in the main checkout (adopt ignores only `.ai/runtime/`, `.ai/worktrees/` and
+  the generated pointer files). The worker runs the shared CLI by absolute path
+  (printed at claim time, also in the `AGENTS.md`/`CLAUDE.md` briefing the
+  workspace drops into the worktree).
   `ai git commit|verify`, `ai check --task`, `ai checkpoint|resume` and
   `ai task review` find the task's worktree themselves, whatever the caller's
   directory.

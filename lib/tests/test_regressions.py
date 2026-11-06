@@ -19,8 +19,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
+
 ROOT = Path(__file__).resolve().parents[2]
-COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
+COPY_IGNORE = shutil.ignore_patterns(
+    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
+)
 
 sys.path.insert(0, str(ROOT))
 
@@ -43,26 +48,7 @@ def run(workspace: Path, *args: str, timeout: int = 20) -> subprocess.CompletedP
 
 class CliRegressionCase(unittest.TestCase):
     def make_workspace(self) -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-regressions-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["checks"] = []
-        config.setdefault("workflow", {})["chiefOnlyTasks"] = False
-        config["workflow"]["requireSpec"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-        return workspace
+        return build_workspace(self, "ai-regressions-")
 
     def lock_files(self, workspace: Path) -> list[Path]:
         return sorted((workspace / "runtime" / "locks").glob("*.lock"))

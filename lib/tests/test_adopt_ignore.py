@@ -16,8 +16,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _workspace import copy_project
+
 ROOT = Path(__file__).resolve().parents[2]
-COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
+COPY_IGNORE = shutil.ignore_patterns(
+    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
+)
 
 
 def run(host: Path, *args: str) -> subprocess.CompletedProcess:
@@ -46,7 +50,7 @@ class AdoptLedgerTest(unittest.TestCase):
         temp = Path(tempfile.mkdtemp(prefix="ai-adopt-ledger-"))
         self.addCleanup(shutil.rmtree, temp, True)
         host = temp / "project"
-        shutil.copytree(ROOT, host / ".ai", ignore=COPY_IGNORE)
+        copy_project(host / ".ai")
         config = host / ".ai" / "config" / "workspace.json"
         data = json.loads(config.read_text(encoding="utf-8"))
         data["checks"] = []

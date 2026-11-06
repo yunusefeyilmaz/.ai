@@ -84,3 +84,5 @@ python lib/tests/run.py              # parallel, one process per module (-j N)
 python lib/tests/run.py test_doctor  # selected modules
 python -m unittest discover -s lib/tests -q   # serial
 ```
+
+- `ui/`: the `ai ui` dashboard. `data.py` reads a snapshot through the same modules as the CLI, `view_*.py` draw screens, `art.py` holds the ASCII animations, `term.py` the raw-terminal layer, `app.py` the loop. Read-only.

@@ -48,14 +48,29 @@ def _task_payload(meta: dict, path: str) -> dict:
 def _spec_payload(meta: dict) -> dict:
     path = spec_lib.resolve_spec_path(meta)
     if not path:
-        return {"path": None, "criteria": [], "problem": "no spec is linked to this task", "body": None}
+        return {
+            "path": None, "criteria": [], "criteria_state": [], "done": 0, "total": 0,
+            "problem": "no spec is linked to this task", "body": None,
+        }
     try:
         text = read_text(path)
     except OSError as exc:
-        return {"path": ws_rel(path), "criteria": [], "problem": f"the spec cannot be read: {exc}", "body": None}
-    criteria = spec_lib.acceptance_criteria(text)
+        return {
+            "path": ws_rel(path), "criteria": [], "criteria_state": [], "done": 0, "total": 0,
+            "problem": f"the spec cannot be read: {exc}", "body": None,
+        }
+    state = spec_lib.acceptance_criteria(text)
+    done, total = spec_lib.criteria_progress(state)
     problem = spec_lib.spec_problem(meta)
-    return {"path": ws_rel(path), "criteria": criteria, "problem": problem, "body": text}
+    return {
+        "path": ws_rel(path),
+        "criteria": spec_lib.criterion_texts(state),
+        "criteria_state": [[is_done, item] for is_done, item in state],
+        "done": done,
+        "total": total,
+        "problem": problem,
+        "body": text,
+    }
 
 
 def _diff_payload(meta: dict, integration: str, max_lines: int, stat_only: bool) -> dict:
@@ -111,6 +126,13 @@ def _evidence_payload(task_id: str, head: str | None) -> dict:
 def _evidence_lines(payload: dict) -> list[str]:
     state = payload["state"]
     lines = [f"state: {state}"]
+    criteria = payload.get("criteria")
+    if criteria:
+        done, total = criteria["done"], criteria["total"]
+        if total:
+            lines.append(f"criteria: {done}/{total} ticked")
+            if done < total:
+                lines.append(f"  PROBLEM: {total - done} acceptance criteria are still unticked")
     if state == "none":
         lines.append("  (no check was ever recorded for this task)")
         return lines
@@ -166,8 +188,11 @@ def cmd_review(args) -> int:
         evidence_payload = _evidence_payload(task_id, state.get("head"))
 
     spec = _spec_payload(meta)
+    evidence_payload["criteria"] = {"done": spec["done"], "total": spec["total"]}
     checklist = list(CHECKLIST)
     checklist.append("claim it before approving: ai task next --review --agent <you>")
+    criteria_complete = spec["total"] > 0 and spec["done"] >= spec["total"]
+    checklist_boxes = [criteria_complete] + [False] * (len(checklist) - 1)
 
     payload: dict = {
         "task": _task_payload(meta, path),
@@ -199,13 +224,14 @@ def cmd_review(args) -> int:
         + (f"  (worktree {task['worktree']})" if task.get("worktree") else ""),
         f"Spec:     {spec['path'] or '-'}",
         "",
-        "Acceptance criteria",
+        "Acceptance criteria"
+        + (f"  {spec['done']}/{spec['total']} ticked" if spec["total"] else ""),
     ]
     if spec["problem"]:
         out.append(f"  PROBLEM: {spec['problem']}")
-    if spec["criteria"]:
-        for criterion in spec["criteria"]:
-            out.append(f"  - {criterion}")
+    if spec["criteria_state"]:
+        for is_done, criterion in spec["criteria_state"]:
+            out.append(f"  [{'x' if is_done else ' '}] {criterion}")
     elif not spec["problem"]:
         out.append("  (the spec lists no criteria)")
     out.append("")
@@ -237,7 +263,8 @@ def cmd_review(args) -> int:
     out.append("")
 
     out.append("Checklist")
-    out.extend(f"  [ ] {item}" for item in checklist)
+    for box, item in zip(checklist_boxes, checklist):
+        out.append(f"  [{'x' if box else ' '}] {item}")
     out.append("")
     out.append("=== END REVIEW PACKAGE ===")
     print("\n".join(out))

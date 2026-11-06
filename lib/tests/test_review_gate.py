@@ -12,9 +12,14 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo")
+COPY_IGNORE = shutil.ignore_patterns(
+    ".git", "__pycache__", ".mypy_cache", ".ruff_cache", "*.pyc", "*.pyo",
+)
 
 sys.path.insert(0, str(ROOT))
+
+from _workspace import GitSpec
+from _workspace import make_workspace as build_workspace
 
 from lib.git import repo
 
@@ -43,34 +48,8 @@ def git(workspace: Path, *args: str) -> None:
 
 class ReviewGateCase(unittest.TestCase):
     def make_workspace(self, git_repo: bool = True) -> Path:
-        temp = Path(tempfile.mkdtemp(prefix="ai-review-gate-"))
-        self.addCleanup(shutil.rmtree, temp, True)
-        workspace = temp / "project"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
-
-        for relative in ("tasks/active", "tasks/done", "specs/active", "specs/done"):
-            folder = workspace / relative
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir(parents=True)
-        for relative in ("runtime/locks", "runtime/state", "runtime/artifacts", "runtime/logs"):
-            shutil.rmtree(workspace / relative, ignore_errors=True)
-        (workspace / "tasks" / "BOARD.md").write_text("# Task board\n", encoding="utf-8")
-
-        config_path = workspace / "config" / "workspace.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["checks"] = []
-        config.setdefault("workflow", {})["chiefOnlyTasks"] = False
-        config["workflow"]["requireSpec"] = False
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-
-        if git_repo:
-            git(workspace, "init", "-q", "--initial-branch=develop")
-            git(workspace, "config", "user.name", "Review Gate Test")
-            git(workspace, "config", "user.email", "review@example.test")
-            git(workspace, "add", "-A")
-            git(workspace, "commit", "-qm", "test baseline")
-            git(workspace, "branch", "master")
-        return workspace
+        spec = GitSpec("develop", "Review Gate Test", "review@example.test", ("master",)) if git_repo else None
+        return build_workspace(self, "ai-review-gate-", git=spec)
 
     def claimed(self, workspace: Path, agent: str = "alice") -> None:
         created = run(workspace, "task", "new", "Review gate", "--no-spec")
@@ -155,7 +134,7 @@ class ReviewGateTest(ReviewGateCase):
         workspace = self.make_workspace()
         self.claimed(workspace)
         self.commit_all(workspace, "feat: work")
-        checked = run(workspace, "check", "--task", "0001", "--agent", "alice")
+        checked = run(workspace, "check", "--task", "0001", "--agent", "alice", "--allow-empty")
         self.assertEqual(checked.returncode, 0, checked.stderr + checked.stdout)
 
         (workspace / "README.md").write_text("moved on\n", encoding="utf-8")
@@ -166,7 +145,7 @@ class ReviewGateTest(ReviewGateCase):
         self.assertIn("evidence belongs to", refused.stderr)
         self.assertIn("ai check --task 0001", refused.stderr)
 
-        rechecked = run(workspace, "check", "--task", "0001", "--agent", "alice")
+        rechecked = run(workspace, "check", "--task", "0001", "--agent", "alice", "--allow-empty")
         self.assertEqual(rechecked.returncode, 0, rechecked.stderr + rechecked.stdout)
         reviewed = run(workspace, "task", "review", "0001", "--agent", "alice")
         self.assertEqual(reviewed.returncode, 0, reviewed.stderr + reviewed.stdout)

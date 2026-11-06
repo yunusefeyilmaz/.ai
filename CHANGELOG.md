@@ -2,6 +2,62 @@
 
 All notable changes to this workspace are documented here.
 
+## [1.0.0] - 2026-11-06
+
+No new features. This release is a reliability milestone: it ships the fixes that
+landed after 0.9.9 and makes the documented gates hold on the release commit.
+
+### Changed
+
+- **Lock semantics: staleness is TTL-only and derived from `updated_at`.** Lease
+  staleness now comes solely from the lease's `updated_at` timestamp compared with
+  `locks.staleAfterSeconds` in `config/workspace.json`; the recorded PID and host are
+  diagnostics, not a liveness test. This makes a claim outlive the CLI process that
+  created it and stops a live task lease from being treated as stale just because its
+  original process exited. Re-claiming an already-owned task is idempotent, and a stale
+  lease is replaced as `lock_replaced_stale` with an audit event.
+  (`lib/runtime/leases.py`, `AGENTS.md`)
+
+### Fixed
+
+- Reliability fixes from 0.9.4 through 0.9.9 are included: fail-loud check gating,
+  checkpoint enforcement at delivery, lock ownership and release guards, corrupt-state
+  handling, and the docs truth pass. See the entries below for the full history.
+
+### Upgrade note (0.9.9 -> 1.0.0)
+
+- **Lock semantics changed.** If you inspect lock files or build tooling around them,
+  do not use the PID to decide whether a lease is live. Read `updated_at` and compare
+  it with `locks.staleAfterSeconds` (default 3600). `ai lock heartbeat` refreshes the
+  lease; never delete a lock file by hand. Operators upgrading an existing workspace
+  need no migration: old lease files already carry `updated_at`, and a lease without
+  a parseable timestamp is treated as stale so `ai recover`/`ai clean` can remove it.
+
+## [0.9.9] - 2026-11-04
+
+### Added
+- `ai ui`: a read-only terminal dashboard (stdlib only, no new dependency, Python 3.8+).
+  - Ten screens (keys 1-9 and 0): Dashboard, Tasks, Board, Specs, Agents, Locks, Activity,
+    Health, Metrics, Project. Together they show tasks and their pipeline, spec acceptance
+    criteria progress, agents and roles, file leases with remaining TTL, the event stream,
+    `ai doctor` findings, evidence and checkpoints, metrics, Git history and ADRs.
+  - The dashboard always shows the single next command (`ai now`), and `n` previews it for
+    the chief, implementer or reviewer role.
+  - Live refresh from a background thread, so animation never stutters; toasts for new events.
+  - Animated ASCII art inspired by ASCII Magic, re-implemented in pure Python: startup digital
+    rain with the `.ai` logo decoding out of noise, spinning torus, starfield, plasma, pulse
+    rule, status donut, activity heatmap, mascot for empty states, confetti when a task is done.
+  - Four themes (aurora, ember, matrix, paper); truecolor, 256, 16 colors or plain text
+    (`NO_COLOR`); `--ascii` fallback; layouts adapt from 80x24 upward.
+  - `--demo` plays a self-running fake workspace; `--once` prints one frame (pipes, CI).
+  - `/` search, `f` filter, `s` jump from a task to its spec, `?` help.
+- `lib/ui/` package (`term`, `style`, `art`, `data`, `demo`, `widgets`, `view_main`, `view_ops`,
+  `app`), `lib/cmd/ui.py` and `lib/tests/test_ui.py`.
+
+### Changed
+- The `.ai` logo uses the pyfiglet "slant" style.
+- `capabilities` lists `ui`; `lib/README.md` documents the `ui/` package.
+
 ## [0.9.8] - 2026-11-03
 
 ### Added

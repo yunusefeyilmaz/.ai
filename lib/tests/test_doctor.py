@@ -14,6 +14,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _workspace import copy_project
 from test_start import COPY_IGNORE, ROOT, WorkspaceCase, run
 
 
@@ -41,6 +42,10 @@ def clear_ledger(workspace: Path, mode: str = "lite") -> None:
     config = json.loads(config_path.read_text(encoding="utf-8"))
     config["mode"] = mode
     config["checks"] = []
+    # The developer's `ai setup` answers must not change what the suite gates on.
+    config.setdefault("workflow", {})["requireCheck"] = "strict"
+    config.setdefault("preferences", {})["confirmed"] = False
+    config["preferences"]["answered"] = []
     config.setdefault("workflow", {})["chiefOnlyTasks"] = False
     config["workflow"]["requireSpec"] = False
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
@@ -167,7 +172,7 @@ class SubfolderDoctorTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, temp, True)
         project = temp / "project"
         workspace = project / ".ai"
-        shutil.copytree(ROOT, workspace, ignore=COPY_IGNORE)
+        copy_project(workspace)
         clear_ledger(workspace)
         (project / "package.json").write_text("{}\n", encoding="utf-8")
         return project

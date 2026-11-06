@@ -72,9 +72,13 @@ def next_action(task: dict, agent: str | None, git: dict, git_ready: bool, git_o
             "why": "work on the task branch, never on develop/master",
             "extra": extra,
         }
-    age = ckpt.checkpoint_age_minutes(task_id)
-    if age is None or age > preference("handoff.warnAfterMinutes", 30):
-        extra.append(f'ai checkpoint {task_id} --agent {a} --next "<step>"   # {"none yet" if age is None else f"{int(age)}m old"}')
+    missing_checkpoint = ckpt.checkpoint_required(
+        task_id, gates.claim_started(task_id), preference("handoff.warnAfterMinutes", 30)
+    )
+    if missing_checkpoint:
+        extra.append(
+            f'ai checkpoint {task_id} --agent {a} --next "<step>"   # required before review'
+        )
     dirty = [] if not git_on else [p for p in (git.get("dirty") or []) if not repo.is_workspace_ledger_path(p) and not p.startswith(".ai/")]
     if dirty:
         return {

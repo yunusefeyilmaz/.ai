@@ -39,8 +39,9 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 ```
 
 `adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
-`CLAUDE.md`, Cursor and Copilot rules) and adds them and `.ai/` to `.gitignore`, so
-nothing from the workspace ends up in your product history. Run it once per clone.
+`CLAUDE.md`, Cursor and Copilot rules). It adds those pointers, `.ai/runtime/`,
+`.ai/worktrees/` and `.github/workflows/ai-check.yml` to `.gitignore`; the ledger
+(`tasks/`, `specs/`, `config/`, `docs/`) stays committed. Run it once per clone.
 `doctor` should end with `0 error(s)`.
 
 ### First verified change (90 seconds)
@@ -182,8 +183,9 @@ your-project/
 ```
 
 The split matters: `.ai/` is agent territory, the rest is product territory.
-`ai adopt` is the explicit operator action that creates ignored local pointers
-and ignore rules at the project root.
+`ai adopt` is the explicit operator action that creates local pointers and the
+narrow ignore rules (`.ai/runtime/`, `.ai/worktrees/`); the workspace ledger stays
+in version control.
 
 ## When something breaks
 
