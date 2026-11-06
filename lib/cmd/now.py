@@ -48,6 +48,17 @@ def cmd_now(args) -> int:
     lines.append(f"WHY   {rec['why']}")
     for extra in rec.get("extra", []):
         lines.append(f"ALSO  {extra}")
+    if rec["cmd"] == "ai setup":
+        # AGENTS.md promises the chief sees the questions here, not only in
+        # `ai setup`; print the unanswered ones so the doc and the CLI agree.
+        from lib.config import preferences
+
+        try:
+            for row in preferences.status()["questions"]:
+                if not row["answered"]:
+                    lines.append(f"ASK   {row['key']}: {row['ask']}")
+        except (OSError, ValueError):
+            pass
     if data["handoffs"] and not (rec["cmd"] or "").startswith("ai resume"):
         h = data["handoffs"][0]
         lines.append(f"HANDOFF task {h.get('task')} from {h.get('agent')}: {h.get('reason')} -> ai resume {h.get('task')}")

@@ -474,6 +474,11 @@ def recent_refusals(limit: int = 5) -> list[dict]:
 
 
 def refusal_detail(event: dict) -> str:
+    error = event.get("error")
+    if error:
+        # The lease was not refused by another holder (e.g. an out-of-range TTL
+        # or a corrupt state file); name the real cause instead of "unknown".
+        return f"error: {error}"
     conflict = event.get("conflict")
     if not conflict:
         return "conflict unknown"

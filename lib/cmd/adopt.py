@@ -44,9 +44,11 @@ def cmd_adopt(args) -> int:
     print(f"{ignore_state.upper():<10} .gitignore")
     if missing_ignore:
         print("Missing ignore rules: " + ", ".join(missing_ignore))
+    attributes_state, _ = config_adopt.adopt_gitattributes(check=args.check)
+    print(f"{attributes_state.upper():<10} .gitattributes")
     if args.check:
         missing = [path for path, state in results if state != "ok"]
-        return 1 if missing or missing_ignore else 0
+        return 1 if missing or missing_ignore or attributes_state != "ok" else 0
     if args.ci:
         config_adopt.write_ci()
     baseline_code = commit_workspace_baseline()

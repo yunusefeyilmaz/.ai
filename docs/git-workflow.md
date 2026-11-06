@@ -129,6 +129,12 @@ ai task done 0001 --agent reviewer-a
 It merges with `--no-ff`, deletes the branch when `deleteAfterMerge` is true,
 and records `merged_into` / `merged_at` on the task. It never pushes.
 
+The index guard is held while the checks run, so its lease must cover the
+configured checks' total timeout. `ai git finish` clamps that budget to
+`locks.maxTtlSeconds - 600`; if your checks could take longer, lower their
+`timeoutSeconds` (`ai setup --check-timeout tests=1200`) or raise
+`locks.maxTtlSeconds`, or the guard can expire mid-merge.
+
 ## Branch naming
 
 ```text
@@ -182,7 +188,13 @@ How it works:
   worktree and the branch.
 - `ai worktree list` shows each worktree and its task; `ai worktree prune`
   removes those of finished or discarded tasks (it keeps any with uncommitted
-  changes unless `--force`); `ai doctor` warns about orphans.
+  changes unless `--force`); `ai doctor` warns about orphans. A folder git no
+  longer recognises as a worktree is deleted from disk too (with a retry for
+  read-only files on Windows), so a failed finish leaves nothing to `rm -rf`.
+- Every worktree is a full checkout, so `node_modules` (or a virtualenv) is
+  installed once per worktree, not shared. Prefer `npm ci --prefer-offline` or a
+  shared package cache; parallel workers multiply disk and install time by the
+  number of open tasks.
 - File locks and scope still apply: two workers cannot lock overlapping paths, so
   they rarely conflict at merge time. When they do, the second `ai git finish`
   fails safely (merge aborted); the producer rebases and the reviewer retries.

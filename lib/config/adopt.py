@@ -147,6 +147,22 @@ def normalized_ignore_entry(line: str) -> str | None:
     return value
 
 
+def adopt_gitattributes(check: bool = False) -> tuple[str, bool]:
+    """Add `* text=auto eol=lf` when the project has no .gitattributes yet.
+
+    Only a missing file is created: rewriting an existing policy is the
+    project's decision. The point is to end Windows' "LF will be replaced by
+    CRLF" noise and cross-platform diffs on a fresh adopt.
+    """
+    path = os.path.join(PROJECT, ".gitattributes")
+    if os.path.exists(path):
+        return "ok", False
+    if check:
+        return "missing", True
+    write_text_atomic(path, "* text=auto eol=lf\n")
+    return "created", True
+
+
 def adopt_gitignore(check: bool = False) -> tuple[str, list[str]]:
     path = os.path.join(PROJECT, ".gitignore")
     existing = ""

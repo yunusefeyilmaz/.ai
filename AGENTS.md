@@ -36,7 +36,8 @@ Run the command after `NEXT`, then `ai now` again; read task/spec files only whe
    runs `ai git finish` + `ai task done`, or `ai task request-changes`.
 
 The producer never approves its own work; `ai task done` never works straight from
-`in_progress`. `--force` is the human's escape hatch, only on explicit request.
+`in_progress`, and it refuses a task whose branch is not merged into the integration
+branch (`ai task reopen <id>` puts a wrongly-archived task back in review). `--force` is the human's escape hatch, only on explicit request.
 
 ## Locks
 A lease is JSON under `runtime/locks/`; a live one is a refusal. Staleness comes only
@@ -64,7 +65,7 @@ at ~85% `ai checkpoint`; before the window closes run `ai handoff` and stop.
 ## Command surface
 ```sh
 ai now|context|brief|start|setup|doctor|check|status|metrics|capabilities|version
-ai plan apply|example   ai task new|list|show|ready|next|claim|release|review|request-changes|done|block|unblock|link|discard
+ai plan apply|example   ai task new|list|show|ready|next|claim|release|review|request-changes|done|reopen|block|unblock|link|discard
 ai lock acquire|release|heartbeat|status   ai checkpoint|handoff|resume|recover
 ai git setup|start|commit|verify|finish|begin|end   ai history   ai decision new|list
 ai artifact put|list|clean   ai review <id>   ai clean   ai reset

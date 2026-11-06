@@ -74,6 +74,7 @@ def status(config: dict | None = None) -> dict:
     config = config if config is not None else load_config()
     prefs = config.get("preferences") or {}
     answered = set(prefs.get("answered") or [])
+    provenance = prefs.get("answers") or {}
     rows = []
     for key, dotted, kind, recommended, ask in QUESTIONS:
         value = _get(config, dotted)
@@ -82,6 +83,8 @@ def status(config: dict | None = None) -> dict:
         rows.append({
             "key": key, "ask": ask, "type": kind, "recommended": recommended,
             "current": value, "answered": key in answered,
+            "answeredBy": (provenance.get(key) or {}).get("by"),
+            "answeredAt": (provenance.get(key) or {}).get("at"),
         })
     confirmed = all(key in answered for key in REQUIRED_KEYS)
     return {"confirmed": confirmed, "questions": rows,
@@ -92,7 +95,12 @@ def status(config: dict | None = None) -> dict:
             ]}
 
 
-def apply(answers: dict[str, str], checks: list[str] | None = None, agent: str | None = None) -> dict:
+def apply(
+    answers: dict[str, str],
+    checks: list[str] | None = None,
+    agent: str | None = None,
+    timeouts: list[str] | None = None,
+) -> dict:
     """Validate and store answers (key -> raw text) and optional check commands."""
     config = load_config()
     known = {key: (dotted, kind) for key, dotted, kind, _, _ in QUESTIONS}
@@ -101,10 +109,15 @@ def apply(answers: dict[str, str], checks: list[str] | None = None, agent: str |
         raise ValueError(f"unknown setting(s): {', '.join(unknown)}; use {', '.join(known)}")
     prefs = config.setdefault("preferences", {})
     answered = set(prefs.get("answered") or [])
+    provenance = prefs.setdefault("answers", {})
+    who = agent or os.environ.get("AI_AGENT") or "unrecorded"
     for key, raw in answers.items():
         dotted, kind = known[key]
         _set(config, dotted, parse_value(kind, raw))
         answered.add(key)
+        # Record WHO stored each answer: an agent resuming a workspace must be
+        # able to tell the user's answers from state another tool prefilled.
+        provenance[key] = {"by": who, "at": iso()}
     if "workers" in answers:
         # parallel workers cannot share one working directory: give each task its own checkout
         _set(config, "git.isolation", "worktree" if parse_value("int", answers["workers"]) > 1 else "branch")
@@ -117,10 +130,29 @@ def apply(answers: dict[str, str], checks: list[str] | None = None, agent: str |
         entries.append({
             "name": name.strip(),
             "command": command.strip(),
-            "addedBy": agent or os.environ.get("AI_AGENT") or "unrecorded",
+            "addedBy": who,
             "addedAt": iso(),
         })
         config["checks"] = entries
+    for item in timeouts or []:
+        name, sep, seconds = item.partition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"--check-timeout expects NAME=SECONDS, got '{item}'")
+        try:
+            value = int(seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"--check-timeout expects whole seconds, got '{seconds}'") from exc
+        if value < 1:
+            raise ValueError("--check-timeout must be at least 1 second")
+        matches = [
+            check for check in (config.get("checks") or [])
+            if (check.get("name") or check.get("command")) == name.strip()
+        ]
+        if not matches:
+            names = ", ".join(str(c.get("name") or c.get("command")) for c in (config.get("checks") or [])) or "none"
+            raise ValueError(f"--check-timeout: no check named '{name}' (configured: {names})")
+        for check in matches:
+            check["timeoutSeconds"] = value
     prefs["answered"] = sorted(answered)
     prefs["confirmed"] = all(key in answered for key in REQUIRED_KEYS)
     prefs["at"] = iso()

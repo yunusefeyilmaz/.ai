@@ -362,8 +362,10 @@ def collect_checks() -> list[Finding]:
 
     try:
         branches_enabled = git_enabled() and bool(repo.git_state().get("repo"))
+        integration = None
         if branches_enabled:
             branches = repo.git_config()
+            integration = branches["integration"]
             # Without the Gitflow base a claim cannot open a branch yet, and that
             # is a setup step (`ai git setup`), not an unowned task branch.
             branches_enabled = (
@@ -372,6 +374,7 @@ def collect_checks() -> list[Finding]:
             )
     except (OSError, ValueError, KeyError):
         branches_enabled = False
+        integration = None
     # Auditing spec content next to the claim gate is only fair when the project
     # asked for specs at all.
     require_spec = bool((config.get("workflow") or {}).get("requireSpec", True))
@@ -449,6 +452,17 @@ def collect_checks() -> list[Finding]:
                     f"run `ai task done {task_id} --agent <name>` to archive it",
                 )
             )
+        if task["_folder"] == "done" and integration and task.get("branch"):
+            branch = str(task.get("branch"))
+            if repo.branch_exists(branch) and not repo.branch_merged(branch, integration):
+                problems.append(
+                    Finding(
+                        "warn",
+                        f"{path}: done but branch '{branch}' was never merged into {integration}",
+                        f"run `ai git finish --task {task_id} --agent <reviewer>`, then "
+                        f"`ai task done {task_id} --agent <reviewer>` again, or `ai task reopen {task_id}`",
+                    )
+                )
         depends = task.get("depends_on")
         if depends:
             for dependency in re.split(r"[,\s]+", str(depends)):
@@ -559,6 +573,22 @@ def collect_checks() -> list[Finding]:
                     "warn",
                     f"{path}: done task still holds task lock",
                     "ai recover --apply",
+                )
+            )
+
+    if workspace_shape() == "subfolder":
+        try:
+            gitlink = repo.workspace_gitlink()
+        except (OSError, ValueError):
+            gitlink = None
+        if gitlink:
+            problems.append(
+                Finding(
+                    "warn",
+                    f"{gitlink} is a bare gitlink in the product repository (no .gitmodules)",
+                    "decide how the ledger is versioned: add a real submodule with a pinned "
+                    "commit (`git submodule add <url> .ai`), or keep the workspace out of the "
+                    "product history (`git rm --cached .ai` and add `.ai/` to .gitignore)",
                 )
             )
 

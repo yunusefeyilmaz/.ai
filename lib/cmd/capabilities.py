@@ -57,7 +57,7 @@ CAPABILITIES = {
 # is. A command missing here still appears in the output with a --help pointer.
 DESCRIPTIONS = {
     "init": "create the workspace state in a fresh checkout; --wire adds the root adapters",
-    "setup": "chief: the questions for the user and where answers are stored; --set k=v, --check NAME=CMD, --defaults (+ --yes), --json",
+    "setup": "chief: the questions for the user and where answers are stored; --set k=v, --check NAME=CMD, --check-timeout NAME=SECONDS, --defaults (+ --yes), --json",
     "plan": "chief: apply <plan.json> creates linked tasks; example prints a skeleton; --dry-run, --role chief",
     "version": "print the workspace version",
     "now": "10-line state + the single next required command; --agent, --json",
@@ -74,7 +74,7 @@ DESCRIPTIONS = {
     "ui": "live terminal dashboard (read-only): tasks, specs, agents, locks, activity, health; --demo, --once, --theme",
     "metrics": "summarize local workflow events; --since, --json",
     "reset": "--hard: interactively clear task/spec/decision/runtime state; preserves framework files",
-    "task": "new | list | show | link | ready | next [--review] | claim | release | review | request-changes | done | discard | block | unblock",
+    "task": "new | list | show | link | ready | next [--review] | claim | release | review | request-changes | done | reopen | discard | block | unblock",
     "spec": "show | check <task-id> <n>: each criterion with its box and done/total, or tick criterion n",
     "lock": "acquire | release | heartbeat | status",
     "checkpoint": "save resumable context",

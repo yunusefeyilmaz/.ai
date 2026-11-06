@@ -20,13 +20,22 @@ def baseline_paths() -> list[str]:
     """The only paths `ai adopt` may commit: the workspace ledger and .gitignore.
 
     Root adapters (AGENTS.md, CLAUDE.md, ...) are listed in .gitignore by adopt
-    itself, so they are never part of a product commit.
+    itself, so they are never part of a product commit. A `.ai` folder that is a
+    bare gitlink cannot be staged as files, so it is left out and reported.
     """
-    candidates = [WORKSPACE, os.path.join(PROJECT, ".gitignore")]
+    candidates = [
+        WORKSPACE,
+        os.path.join(PROJECT, ".gitignore"),
+        os.path.join(PROJECT, ".gitattributes"),
+    ]
+    try:
+        gitlink = repo.workspace_gitlink()
+    except (OSError, ValueError):
+        gitlink = None
     return [
         os.path.relpath(path, PROJECT).replace(os.sep, "/")
         for path in candidates
-        if os.path.exists(path)
+        if os.path.exists(path) and not (gitlink and os.path.abspath(path) == os.path.abspath(WORKSPACE))
     ]
 
 
@@ -164,6 +173,18 @@ def setup_git(yes: bool = False, json_out: bool = False) -> int:
     if not os.path.isfile(template):
         print(f"Commit template not found: {os.path.relpath(template, PROJECT)}", file=sys.stderr)
         return 1
+    try:
+        gitlink = repo.workspace_gitlink()
+    except (OSError, ValueError):
+        gitlink = None
+    if gitlink:
+        print(
+            f"WARN  {gitlink} is a bare gitlink in this repository (it is its own clone and "
+            "there is no .gitmodules). The ledger cannot be committed as files. Decide how it "
+            "is versioned: `git submodule add <url> .ai` (pinned commit) or `git rm --cached "
+            f"{gitlink}` plus `{gitlink}/` in .gitignore.",
+            file=sys.stderr,
+        )
     config_code, current_template, _ = repo.run_git(["config", "--local", "--get", "commit.template"])
     if (
         config_code != 0

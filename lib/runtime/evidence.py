@@ -132,7 +132,7 @@ def evaluate(task_id: str, head: str | None, since_iso: str | None = None) -> di
             "state": "stale",
             "reason": (
                 f"the evidence was taken on {(latest.get('head') or 'no-git')[:8]} but HEAD is "
-                f"{(head or 'no-git')[:8]}; the code changed since"
+                f"{(head or 'no-git')[:8]}; a merge or a new commit moved HEAD after the check"
             ),
         }
     if since_iso:

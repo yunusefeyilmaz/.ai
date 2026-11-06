@@ -36,7 +36,10 @@ def cmd_setup(args) -> int:
                 return 1
             answers[key.strip()] = value
         try:
-            result = preferences.apply(answers, args.check, agent=getattr(args, "agent", None))
+            result = preferences.apply(
+                answers, args.check, agent=getattr(args, "agent", None),
+                timeouts=getattr(args, "check_timeout", None),
+            )
         except ValueError as exc:
             print(f"Cannot store the answers: {exc}", file=sys.stderr)
             return 1
@@ -48,6 +51,18 @@ def cmd_setup(args) -> int:
         print(f"Saved to config/workspace.json: {pretty}")
         if result["checks"]:
             print(f"project checks: {', '.join(result['checks'])}")
+            from lib.config.settings import max_lock_ttl
+            from lib.git.flow import checks_seconds_budget
+
+            budget = checks_seconds_budget()
+            ceiling = max_lock_ttl() - 600
+            if budget >= ceiling:
+                print(
+                    f"NOTE  the checks may take up to {budget}s, which is the ceiling "
+                    f"`ai git finish` can hold the index guard (maxTtlSeconds {max_lock_ttl()}s). "
+                    "Lower a check's timeoutSeconds, or raise locks.maxTtlSeconds.",
+                    file=sys.stderr,
+                )
         if result["confirmed"]:
             print("Preferences confirmed. Next: plan the work (`ai plan example`, then `ai plan apply plan.json --role chief`).")
         else:
@@ -65,6 +80,10 @@ def cmd_setup(args) -> int:
         current = row["current"]
         current_text = "yes" if current is True else "no" if current is False else current
         print(f"  [{mark:<8}] {row['key']:<9} now={current_text!s:<5} recommended={'yes' if row['recommended'] is True else 'no' if row['recommended'] is False else row['recommended']}")
+        if row.get("answeredBy") and row.get("answeredBy") != "unrecorded":
+            # Say who stored the answer: an agent must not mistake another
+            # tool's prefill for something the user confirmed.
+            print(f"             stored by {row['answeredBy']}" + (f" at {row['answeredAt']}" if row.get("answeredAt") else ""))
         print(f"             {row['ask']}")
     if result["checks"]:
         print(f"  project checks: {', '.join(result['checks'])}")
@@ -80,6 +99,8 @@ def register(sub) -> None:
     setup = sub.add_parser("setup", help="chief: ask the user which workflow features to use; stored in config")
     setup.add_argument("--set", nargs="+", metavar="KEY=VALUE", help="review, checks, git, tests, continue, workers")
     setup.add_argument("--check", action="append", metavar="NAME=COMMAND", help="add a project check command")
+    setup.add_argument("--check-timeout", action="append", metavar="NAME=SECONDS",
+                       help="set a configured check's timeout (the git finish guard budgets for it)")
     setup.add_argument("--defaults", action="store_true", help="accept the recommended answers")
     setup.add_argument("--yes", action="store_true", help="confirm --defaults yourself; needs a terminal")
     setup.add_argument("--agent", default=None, help="who records the answers/checks (stored as check provenance)")
