@@ -1,5 +1,5 @@
 ---
-status: draft
+status: shipped
 task: 0004
 approved_by: null
 approved_on: null
@@ -27,11 +27,11 @@ approved_on: null
 
 ## Acceptance criteria
 
-- [ ] `ai check` exits non-zero with an actionable message when no project checks are configured
-- [ ] An explicit opt-out (or documented flag) exists for projects that intentionally run no checks, and it is printed in the output
-- [ ] `ai task review` cannot pass on an empty check result in strict mode
-- [ ] Regression tests cover both the refusal and the opt-out
-- [ ] Tests cover the new behavior and pass
+- [x] `ai check` exits non-zero with an actionable message when no project checks are configured
+- [x] An explicit opt-out (or documented flag) exists for projects that intentionally run no checks, and it is printed in the output
+- [x] `ai task review` cannot pass on an empty check result in strict mode
+- [x] Regression tests cover both the refusal and the opt-out
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 

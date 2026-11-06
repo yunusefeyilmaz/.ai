@@ -1,21 +1,23 @@
 ---
 id: 0004
 title: "No silent green: fail loudly when the project has no checks"
-status: review
+status: done
 owner: evren-deep-seek-reviewer
 priority: medium
-spec: specs/active/0004-no-silent-green-fail-loudly-when-the-project-has-no-checks.md
+spec: specs/done/0004-no-silent-green-fail-loudly-when-the-project-has-no-checks.md
 depends_on: null
 scope_allowed: "lib/cmd/doctor.py, lib/config/settings.py, lib/git/flow.py, lib/tests/test_check_gate.py, lib/tests/test_review_gate.py, lib/tests/test_start.py, lib/tests/test_workflow.py"
 scope_forbidden: null
 locks: "lib/cmd/doctor.py, lib/config/settings.py, lib/git/flow.py, lib/tests/test_check_gate.py, lib/tests/test_review_gate.py, lib/tests/test_start.py, lib/tests/test_workflow.py"
 branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-05T19:56:20Z
-lock: task-0004
+updated: 2026-11-05T20:00:50Z
+lock: null
 submitted_by: evren-deep-seek
 merged_into: develop
 merged_at: 2026-11-05T19:56:20Z
+reviewed_by: evren-deep-seek-reviewer
+reviewed_at: 2026-11-05T20:00:50Z
 ---
 
 # 0004 - No silent green: fail loudly when the project has no checks
@@ -68,3 +70,4 @@ Spec: `specs/active/0004-no-silent-green-fail-loudly-when-the-project-has-no-che
 - 2026-11-05T19:20:45Z | evren-deep-seek-reviewer | review -> review | claimed
 - 2026-11-05T19:54:33Z committed: chore(task): record review handover for 0004
 - 2026-11-05T19:56:20Z merged feature/0004-no-silent-green-fail-loudly-when-the-pro into develop by evren-deep-seek-reviewer
+- 2026-11-05T20:00:50Z | evren-deep-seek-reviewer | review -> done | approved | check passed @71420e99 by evren-deep-seek-reviewer (tests passed, ruff passed, mypy passed)
