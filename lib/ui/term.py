@@ -14,7 +14,7 @@ import shutil
 import sys
 import time
 import unicodedata
-from typing import Any
+from typing import Any, cast
 
 
 def _detect_windows() -> bool:
@@ -25,6 +25,8 @@ IS_WINDOWS: bool = _detect_windows()
 
 if IS_WINDOWS:  # pragma: no cover - exercised on Windows only
     import msvcrt
+
+    _msvcrt = cast(Any, msvcrt)
 else:
     import select
 
@@ -208,10 +210,10 @@ class Terminal:
     def _read_key_windows(self, timeout: float) -> str | None:  # pragma: no cover
         end = time.time() + timeout
         while time.time() < end:
-            if msvcrt.kbhit():
-                ch = msvcrt.getwch()
+            if _msvcrt.kbhit():
+                ch = _msvcrt.getwch()
                 if ch in ("\x00", "\xe0"):
-                    code = msvcrt.getwch()
+                    code = _msvcrt.getwch()
                     return {"H": "up", "P": "down", "K": "left", "M": "right", "G": "home",
                             "O": "end", "I": "pgup", "Q": "pgdn"}.get(code)
                 if ch == "\r":
