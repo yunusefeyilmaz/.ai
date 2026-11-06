@@ -1,21 +1,23 @@
 ---
 id: 0005
 title: "Checkpoints: enforce at delivery, commit task ledger on done"
-status: review
+status: done
 owner: deep-seek-reviewer
 priority: medium
-spec: specs/active/0005-checkpoints-enforce-at-delivery-commit-task-ledger-on-done.md
+spec: specs/done/0005-checkpoints-enforce-at-delivery-commit-task-ledger-on-done.md
 depends_on: "0001, 0003"
 scope_allowed: "lib/runtime/checkpoints.py, lib/tasks/workflow.py, lib/cmd/task.py, lib/cmd/checkpoint.py, lib/tests/test_checkpoint_gate.py"
 scope_forbidden: null
 locks: "lib/runtime/checkpoints.py, lib/tasks/workflow.py, lib/cmd/task.py, lib/cmd/checkpoint.py, lib/tests/test_checkpoint_gate.py"
 branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T07:53:39Z
-lock: task-0005
+updated: 2026-11-06T07:54:01Z
+lock: null
 submitted_by: deep-seek
 merged_into: develop
 merged_at: 2026-11-06T07:53:39Z
+reviewed_by: deep-seek-reviewer
+reviewed_at: 2026-11-06T07:54:00Z
 ---
 
 # 0005 - Checkpoints: enforce at delivery, commit task ledger on done
@@ -51,3 +53,4 @@ Spec: `specs/active/0005-checkpoints-enforce-at-delivery-commit-task-ledger-on-d
 - 2026-11-06T07:37:16Z | deep-seek-reviewer | review -> review | claimed
 - 2026-11-06T07:50:37Z committed: chore(task): record review claim for 0005
 - 2026-11-06T07:53:39Z merged feature/0005-checkpoints-enforce-at-delivery-commit-t into develop by deep-seek-reviewer
+- 2026-11-06T07:54:01Z | deep-seek-reviewer | review -> done | approved | check passed @7e17f962 by deep-seek-reviewer (tests passed, ruff passed, mypy passed)
