@@ -1,22 +1,24 @@
 ---
 id: 0007
 title: "Docs truth pass and token diet"
-status: review
+status: done
 owner: evren-deepseek-reviewer
 priority: medium
-spec: specs/active/0007-docs-truth-pass-and-token-diet.md
+spec: specs/done/0007-docs-truth-pass-and-token-diet.md
 depends_on: "0001, 0002, 0003, 0005, 0004"
 scope_allowed: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, adapters/README.md, lib/tests/test_docs.py"
 scope_forbidden: null
 locks: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, adapters/README.md, lib/tests/test_docs.py"
 branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T11:55:35Z
-lock: task-0007
+updated: 2026-11-06T11:55:49Z
+lock: null
 submitted_by: evren-deepseek
 changes_requested_by: evren-deepseek-reviewer
 merged_into: develop
 merged_at: 2026-11-06T11:55:35Z
+reviewed_by: evren-deepseek-reviewer
+reviewed_at: 2026-11-06T11:55:49Z
 ---
 
 # 0007 - Docs truth pass and token diet
@@ -66,3 +68,4 @@ Spec: `specs/active/0007-docs-truth-pass-and-token-diet.md`
 - 2026-11-06T11:35:05Z | evren-deepseek-reviewer | review -> review | claimed
 - 2026-11-06T11:53:16Z committed: chore: chore(task): record review claim for 0007
 - 2026-11-06T11:55:35Z merged feature/0007-docs-truth-pass-and-token-diet into develop by evren-deepseek-reviewer
+- 2026-11-06T11:55:49Z | evren-deepseek-reviewer | review -> done | approved | check passed @213a57fe by evren-deepseek-reviewer (tests passed, ruff passed, mypy passed)
