@@ -18,6 +18,7 @@ from lib.core.fsio import (
 )
 from lib.core.paths import (
     ACTIVE_DIR,
+    BOARD_PATH,
     DONE_DIR,
     PROJECT,
     WORKSPACE,
@@ -428,6 +429,13 @@ def cmd_task_review(args) -> int:
             holder = {}
         if holder.get("agent") != args.agent:
             raise transition.Refused(f"Task {task_id} does not have a live claim for {args.agent}.")
+        checkpoint_error = ckpt.checkpoint_required(
+            task_id,
+            gates.claim_started(task_id),
+            settings.preference("handoff.warnAfterMinutes", 30),
+        )
+        if checkpoint_error:
+            raise transition.Refused(checkpoint_error)
         denied = roles.authorize(args.agent, "task.review")
         if denied:
             raise transition.Refused(denied)
@@ -589,6 +597,63 @@ def cmd_task_unblock(args) -> int:
     return 0
 
 
+def _commit_done_ledger(
+    target_path: str,
+    previous_task_path: str,
+    meta: dict,
+    previous_spec: str | None,
+    agent: str,
+) -> None:
+    """Record the archived task, shipped spec and board on the current branch.
+
+    `done` is the last ledger write in a task's life; leaving it uncommitted
+    hands the next agent a dirty tree. Only coordination paths are staged, so
+    product work the user has in flight stays untouched.
+    """
+    if not settings.git_enabled() or not repo.git_state().get("repo"):
+        return
+    candidates = [target_path, previous_task_path, BOARD_PATH]
+    archived_spec = meta.get("spec")
+    if archived_spec and archived_spec != previous_spec:
+        candidates.append(os.path.join(WORKSPACE, str(archived_spec).replace("/", os.sep)))
+        if previous_spec:
+            candidates.append(os.path.join(WORKSPACE, str(previous_spec).replace("/", os.sep)))
+    rels: list[str] = []
+    for item in candidates:
+        rel = repo.ledger_path(os.path.relpath(item, PROJECT))
+        if rel in rels or not repo.is_workspace_ledger_path(rel):
+            continue
+        if not os.path.exists(os.path.join(PROJECT, rel)):
+            # A moved file no longer exists; stage its deletion only when git
+            # already tracks it (an untracked file leaves nothing to record).
+            code, _, _ = repo.run_git(["ls-files", "--error-unmatch", "--", rel])
+            if code != 0:
+                continue
+        rels.append(rel)
+    if not rels:
+        return
+    code, _, err = repo.run_git(["add", "--"] + rels)
+    if code != 0:
+        print(f"WARN  could not stage the task ledger: {err}", file=sys.stderr)
+        return
+    # Commit by pathspec so staged product work never joins the ledger commit.
+    # The explicit list also records the old paths a move deleted, which git
+    # reports as renames rather than as separate staged deletions.
+    code, _, _ = repo.run_git(["diff", "--cached", "--quiet", "--"] + rels)
+    if code == 0:
+        return
+    task_id = meta.get("id")
+    code, _, err = repo.run_git(
+        ["commit", "-m", f"chore(task): record done {task_id}", "--"] + rels
+    )
+    if code != 0:
+        print(
+            f"WARN  task {task_id} was archived but its ledger was not committed: {err}. "
+            "Commit tasks/, specs/ and tasks/BOARD.md manually.",
+            file=sys.stderr,
+        )
+
+
 def cmd_task_done(args) -> int:
     path = store.find_task(args.task_id)
     if not path:
@@ -599,6 +664,7 @@ def cmd_task_done(args) -> int:
         return 0
     meta, _ = store.parse_task(path)
     task_id = str(meta.get("id"))
+    previous_spec = meta.get("spec")
     denied = None if args.force else roles.authorize(args.agent, "task.done")
     if denied:
         print(denied, file=sys.stderr)
@@ -681,6 +747,7 @@ def cmd_task_done(args) -> int:
             os.remove(marker)
         except OSError:
             pass
+    _commit_done_ledger(target, path, meta, previous_spec, args.agent)
     append_event(
         "task_done", task=task_id, agent=args.agent, forced=True if args.force else None,
         submitted_by=meta.get("submitted_by"),

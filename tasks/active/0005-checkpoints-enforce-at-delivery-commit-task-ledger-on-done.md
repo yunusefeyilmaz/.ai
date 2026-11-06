@@ -1,17 +1,18 @@
 ---
 id: 0005
 title: "Checkpoints: enforce at delivery, commit task ledger on done"
-status: todo
-owner: null
+status: in_progress
+owner: deep-seek
 priority: medium
 spec: specs/active/0005-checkpoints-enforce-at-delivery-commit-task-ledger-on-done.md
 depends_on: "0001, 0003"
 scope_allowed: "lib/runtime/checkpoints.py, lib/tasks/workflow.py, lib/cmd/task.py, lib/cmd/checkpoint.py, lib/tests/test_checkpoint_gate.py"
 scope_forbidden: null
 locks: "lib/runtime/checkpoints.py, lib/tasks/workflow.py, lib/cmd/task.py, lib/cmd/checkpoint.py, lib/tests/test_checkpoint_gate.py"
+branch: feature/0005-checkpoints-enforce-at-delivery-commit-t
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
-lock: null
+updated: 2026-11-06T07:03:13Z
+lock: task-0005
 ---
 
 # 0005 - Checkpoints: enforce at delivery, commit task ledger on done
@@ -40,3 +41,6 @@ Spec: `specs/active/0005-checkpoints-enforce-at-delivery-commit-task-ledger-on-d
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-06T06:50:01Z | deep-seek | todo -> in_progress | claimed
+- 2026-11-06T06:50:03Z created branch feature/0005-checkpoints-enforce-at-delivery-commit-t from develop by deep-seek
+- 2026-11-06T07:03:13Z committed: feat: enforce checkpoints at delivery and commit the done ledger
