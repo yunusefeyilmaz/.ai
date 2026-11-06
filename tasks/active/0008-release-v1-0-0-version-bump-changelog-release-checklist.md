@@ -1,17 +1,18 @@
 ---
 id: 0008
 title: "Release v1.0.0: version bump, changelog, release checklist"
-status: todo
-owner: null
+status: in_progress
+owner: evren-deepseek
 priority: high
 spec: specs/active/0008-release-v1-0-0-version-bump-changelog-release-checklist.md
 depends_on: "0006, 0007"
 scope_allowed: "VERSION, lib/core/paths.py, CHANGELOG.md"
 scope_forbidden: null
 locks: "VERSION, lib/core/paths.py, CHANGELOG.md"
+branch: feature/0008-release-v1-0-0-version-bump-changelog-re
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
-lock: null
+updated: 2026-11-06T12:41:44Z
+lock: task-0008
 ---
 
 # 0008 - Release v1.0.0: version bump, changelog, release checklist
@@ -40,3 +41,6 @@ Spec: `specs/active/0008-release-v1-0-0-version-bump-changelog-release-checklist
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-06T12:07:28Z | evren-deepseek | todo -> in_progress | claimed
+- 2026-11-06T12:07:29Z created branch feature/0008-release-v1-0-0-version-bump-changelog-re from develop by evren-deepseek
+- 2026-11-06T12:41:44Z committed: chore: release: bump version to 1.0.0 and record the changelog
