@@ -2,7 +2,7 @@
 id: 0006
 title: "End-to-end test: existing repo through the full v1.0.0 flow"
 status: review
-owner: null
+owner: deep-seek-reviewer
 priority: high
 spec: specs/active/0006-end-to-end-test-existing-repo-through-the-full-v1-0-0-flow.md
 depends_on: "0001, 0002, 0003, 0005, 0004"
@@ -11,8 +11,8 @@ scope_forbidden: null
 locks: lib/tests/test_e2e_flow.py
 branch: feature/0006-end-to-end-test-existing-repo-through-th
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T08:42:36Z
-lock: null
+updated: 2026-11-06T09:54:30Z
+lock: task-0006
 submitted_by: deep-seek
 ---
 
@@ -47,3 +47,5 @@ Spec: `specs/active/0006-end-to-end-test-existing-repo-through-the-full-v1-0-0-f
 - 2026-11-06T08:36:47Z committed: test: add existing-repo end-to-end flow test
 - 2026-11-06T08:41:12Z | deep-seek | in_progress -> review | submitted for independent review | check passed @909bb3ea by deep-seek (tests passed, ruff passed, mypy passed)
 - 2026-11-06T08:42:36Z committed: chore: record review handover for 0006
+- 2026-11-06T09:32:54Z | deep-seek-reviewer | review -> review | claimed
+- 2026-11-06T09:54:30Z committed: chore: chore(task): record review claim for 0006
