@@ -1,8 +1,8 @@
 ---
 id: 0007
 title: "Docs truth pass and token diet"
-status: in_progress
-owner: evren-deepseek
+status: review
+owner: evren-deepseek-reviewer
 priority: medium
 spec: specs/active/0007-docs-truth-pass-and-token-diet.md
 depends_on: "0001, 0002, 0003, 0005, 0004"
@@ -11,9 +11,9 @@ scope_forbidden: null
 locks: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, adapters/README.md, lib/tests/test_docs.py"
 branch: feature/0007-docs-truth-pass-and-token-diet
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T11:07:02Z
+updated: 2026-11-06T11:53:16Z
 lock: task-0007
-submitted_by: evren-deep-seek
+submitted_by: evren-deepseek
 changes_requested_by: evren-deepseek-reviewer
 ---
 
@@ -60,3 +60,6 @@ Spec: `specs/active/0007-docs-truth-pass-and-token-diet.md`
 - 2026-11-06T10:51:01Z switched to branch feature/0007-docs-truth-pass-and-token-diet from develop by evren-deepseek
 - 2026-11-06T11:03:31Z committed: fix: state the always-ignored CI workflow and widen adopt docs to adapters
 - 2026-11-06T11:07:02Z committed: chore: record the review fixes in the task notes
+- 2026-11-06T11:08:49Z | evren-deepseek | in_progress -> review | submitted for independent review | check passed @0a3fcb81 by evren-deepseek (tests passed, ruff passed, mypy passed)
+- 2026-11-06T11:35:05Z | evren-deepseek-reviewer | review -> review | claimed
+- 2026-11-06T11:53:16Z committed: chore: chore(task): record review claim for 0007
