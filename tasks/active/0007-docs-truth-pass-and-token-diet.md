@@ -11,7 +11,7 @@ scope_forbidden: null
 locks: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, adapters/README.md, lib/tests/test_docs.py"
 branch: feature/0007-docs-truth-pass-and-token-diet
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T11:03:31Z
+updated: 2026-11-06T11:07:02Z
 lock: task-0007
 submitted_by: evren-deep-seek
 changes_requested_by: evren-deepseek-reviewer
@@ -40,6 +40,13 @@ Spec: `specs/active/0007-docs-truth-pass-and-token-diet.md`
 
 ## Notes
 
+- 2026-11-06 review fixes: GUIDE/README/adapters now say the CI workflow path is
+  always in `.gitignore` and `--ci` only writes the workflow file; docs/git-workflow
+  no longer claims `.ai/` is ignored wholesale; AGENTS.md trimmed to 74 lines;
+  test_adopt_ignore_rules_match_the_docs asserts the workflow entry and that
+  README/GUIDE mention it. adapters/README.md was added to this task's scope and
+  locks so the same truth pass could fix it.
+
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
@@ -52,3 +59,4 @@ Spec: `specs/active/0007-docs-truth-pass-and-token-diet.md`
 - 2026-11-06T10:51:00Z | evren-deepseek | changes_requested -> in_progress | claimed
 - 2026-11-06T10:51:01Z switched to branch feature/0007-docs-truth-pass-and-token-diet from develop by evren-deepseek
 - 2026-11-06T11:03:31Z committed: fix: state the always-ignored CI workflow and widen adopt docs to adapters
+- 2026-11-06T11:07:02Z committed: chore: record the review fixes in the task notes
