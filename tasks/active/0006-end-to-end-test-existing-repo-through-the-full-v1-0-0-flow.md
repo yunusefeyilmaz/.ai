@@ -9,11 +9,13 @@ depends_on: "0001, 0002, 0003, 0005, 0004"
 scope_allowed: lib/tests/test_e2e_flow.py
 scope_forbidden: null
 locks: lib/tests/test_e2e_flow.py
-branch: feature/0006-end-to-end-test-existing-repo-through-th
+branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T09:54:30Z
+updated: 2026-11-06T09:58:12Z
 lock: task-0006
 submitted_by: deep-seek
+merged_into: develop
+merged_at: 2026-11-06T09:58:12Z
 ---
 
 # 0006 - End-to-end test: existing repo through the full v1.0.0 flow
@@ -49,3 +51,4 @@ Spec: `specs/active/0006-end-to-end-test-existing-repo-through-the-full-v1-0-0-f
 - 2026-11-06T08:42:36Z committed: chore: record review handover for 0006
 - 2026-11-06T09:32:54Z | deep-seek-reviewer | review -> review | claimed
 - 2026-11-06T09:54:30Z committed: chore: chore(task): record review claim for 0006
+- 2026-11-06T09:58:12Z merged feature/0006-end-to-end-test-existing-repo-through-th into develop by deep-seek-reviewer
