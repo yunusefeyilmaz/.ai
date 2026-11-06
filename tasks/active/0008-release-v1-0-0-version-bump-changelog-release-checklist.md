@@ -9,11 +9,13 @@ depends_on: "0006, 0007"
 scope_allowed: "VERSION, lib/core/paths.py, CHANGELOG.md"
 scope_forbidden: null
 locks: "VERSION, lib/core/paths.py, CHANGELOG.md"
-branch: feature/0008-release-v1-0-0-version-bump-changelog-re
+branch: null
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-06T13:13:10Z
+updated: 2026-11-06T13:15:11Z
 lock: task-0008
 submitted_by: evren-deepseek
+merged_into: develop
+merged_at: 2026-11-06T13:15:11Z
 ---
 
 # 0008 - Release v1.0.0: version bump, changelog, release checklist
@@ -49,3 +51,4 @@ Spec: `specs/active/0008-release-v1-0-0-version-bump-changelog-release-checklist
 - 2026-11-06T12:49:45Z | evren-deepseek | in_progress -> review | submitted for independent review | check passed @2cb80c60 by evren-deepseek (tests passed, ruff passed, mypy passed)
 - 2026-11-06T12:55:25Z | evren-deepseek-reviewer | review -> review | claimed
 - 2026-11-06T13:13:10Z committed: chore: record review claim for 0008
+- 2026-11-06T13:15:11Z merged feature/0008-release-v1-0-0-version-bump-changelog-re into develop by evren-deepseek-reviewer
