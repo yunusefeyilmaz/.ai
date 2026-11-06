@@ -16,7 +16,6 @@ product territory.
 ai now --agent <n> [--role chief|implementer|reviewer]   # state + the ONE next command
 ai context                                               # only when new: open work, ADRs
 ```
-
 Run the command after `NEXT`, then `ai now` again; read task/spec files only when asked.
 
 - **chief**: `ai setup` (ask) -> `ai plan apply plan.json --role chief` -> fill specs -> `ai status`.
@@ -27,8 +26,7 @@ Run the command after `NEXT`, then `ai now` again; read task/spec files only whe
 1. **Spec first.** Edit the linked file in `specs/active/` before any claim.
 2. `ai task next --agent <n>` needs a filled spec; it takes the task's file locks
    and opens its branch. It refuses a missing dependency or a live lock.
-3. `ai git setup` once per clone; the claim opens the branch (manual:
-   `ai git start --task <id> --agent <n> --type feature`).
+3. `ai git setup` once per clone; the claim opens the branch.
 4. Work inside your locks; extra files: `ai lock acquire <path> --agent <n> --task
    <id>`. Checkpoint at milestones: `ai checkpoint <id> --agent <n> --next "<step>"`.
 5. `ai git verify --strict`, then `ai git commit --task <id> --agent <n> --type feat
@@ -51,9 +49,8 @@ lock file.
 If `ai task claim|next` prints `worktree: <path>`, that directory is **your** checkout:
 `cd` there and edit only there; it has no `.ai/`, so run the shared CLI by the absolute
 path it printed. `ai git commit`, `ai check --task` and `ai task review` find your
-worktree themselves; never edit the main checkout. `ai history <id>` explains moves,
-`ai resume <id>` reports drift. At ~70% context stop opening work; at ~85% `ai
-checkpoint`; before the window closes run `ai handoff` and stop.
+worktree themselves; never edit the main checkout. At ~70% context stop opening work;
+at ~85% `ai checkpoint`; before the window closes run `ai handoff` and stop.
 
 ## Invariants
 1. Nothing AI-generated escapes `.ai/`; claim before you work, one task per session.

@@ -39,10 +39,10 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 ```
 
 `adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
-`CLAUDE.md`, Cursor and Copilot rules). It adds those pointers, `.ai/runtime/` and
-`.ai/worktrees/` to `.gitignore`; the ledger (`tasks/`, `specs/`, `config/`,
-`docs/`) stays committed. Run it once per clone. `doctor` should end with
-`0 error(s)`.
+`CLAUDE.md`, Cursor and Copilot rules). It adds those pointers, `.ai/runtime/`,
+`.ai/worktrees/` and `.github/workflows/ai-check.yml` to `.gitignore`; the ledger
+(`tasks/`, `specs/`, `config/`, `docs/`) stays committed. Run it once per clone.
+`doctor` should end with `0 error(s)`.
 
 ### First verified change (90 seconds)
 

@@ -89,11 +89,17 @@ class DocumentedCommandsTest(WorkspaceCase):
 
         self.assertIn(".ai/runtime/", ADOPT_IGNORE_ENTRIES)
         self.assertIn(".ai/worktrees/", ADOPT_IGNORE_ENTRIES)
+        self.assertIn(".github/workflows/ai-check.yml", ADOPT_IGNORE_ENTRIES)
         self.assertNotIn(".ai", {entry.strip().strip("/") for entry in ADOPT_IGNORE_ENTRIES})
         for name in ("README.md", "GUIDE.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn(".ai/runtime/", text, f"{name} omits .ai/runtime/")
             self.assertIn(".ai/worktrees/", text, f"{name} omits .ai/worktrees/")
+            self.assertIn(
+                ".github/workflows/ai-check.yml",
+                text,
+                f"{name} omits the always-ignored CI workflow path",
+            )
             for number, line in enumerate(text.splitlines(), 1):
                 if ".gitignore" in line:
                     self.assertNotIn(

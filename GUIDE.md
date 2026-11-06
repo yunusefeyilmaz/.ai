@@ -54,17 +54,17 @@ straight to the first pass below.
 | `.github/copilot-instructions.md` | GitHub Copilot |
 
 It also creates or updates the host project's `.gitignore` with these four pointer
-files, `.ai/runtime/` and `.ai/worktrees/`. The ledger (`tasks/`, `specs/`,
-`config/`, `docs/`) stays committed, and the optional CI workflow is ignored only
-when `--ci` writes it. The pointer files are local and ignored, so each clone runs
-`ai adopt` for its own setup.
+files, `.ai/runtime/`, `.ai/worktrees/` and `.github/workflows/ai-check.yml`. The
+ledger (`tasks/`, `specs/`, `config/`, `docs/`) stays committed. The workflow path
+is always ignored; `--ci` only writes the workflow file. The pointer files are
+local and ignored, so each clone runs `ai adopt` for its own setup.
 
 Useful variants:
 
 ```sh
 ai adopt --check     # non-zero if a pointer or ignore rule is missing
 ai adopt --print     # bootstrap prompt for a chat-only tool
-ai adopt --ci        # add .github/workflows/ai-check.yml as well
+ai adopt --ci        # write the .github/workflows/ai-check.yml workflow file
 ```
 
 The pointer block is delimited by `<!-- ai-workspace:start -->` and
