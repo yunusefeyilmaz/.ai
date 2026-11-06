@@ -1,110 +1,83 @@
 {
-  "version": 1,
-  "name": "ai-workspace",
-  "mode": "lite",
-  "language": {
-    "documents": "en",
-    "interviews": "en"
-  },
-  "agents": [
-    "orchestrator",
-    "planner",
-    "implementer",
-    "reviewer",
-    "qa"
-  ],
-  "orchestration": {
-    "maxParallel": 1
-  },
-  "workflow": {
-    "requireReview": true,
-    "requireCheck": true,
-    "autoContinue": false,
-    "chiefOnlyTasks": true,
-    "requireSpec": true
-  },
-  "team": {},
-  "policy": {
-    "unknownAgent": "allow"
-  },
-  "git": {
-    "enabled": true,
-    "integrationBranch": "develop",
-    "productionBranch": "master",
-    "branchTypes": [
-      "feature",
-      "fix",
-      "chore",
-      "docs",
-      "refactor",
-      "hotfix"
-    ],
-    "commitTemplate": "templates/git/commit-template.txt",
-    "merge": "no-ff",
-    "deleteAfterMerge": true,
-    "isolation": "branch"
-  },
-  "locks": {
-    "defaultTtlSeconds": 1800,
-    "staleAfterSeconds": 3600,
-    "maxTtlSeconds": 7200
-  },
-  "handoff": {
-    "checkpointEveryMinutes": 20,
-    "warnAfterMinutes": 30
-  },
-  "budget": {
-    "contextTokens": 200000,
-    "warnAtPercent": 70,
-    "checkpointAtPercent": 85
-  },
-  "artifacts": {
-    "quarantine": "runtime/artifacts",
-    "watch": [
-      "tmp",
-      "temp",
-      "scratch",
-      ".cache",
-      "ai-notes",
-      "notes-ai"
-    ]
-  },
-  "security": {
-    "warnTrackedSecrets": true
-  },
-  "testing": {
-    "writeTests": true
-  },
-  "preferences": {
-    "confirmed": true,
-    "answered": [
-      "checks",
-      "continue",
-      "git",
-      "review",
-      "tests",
-      "workers"
-    ],
-    "at": "2026-11-04T08:13:03Z"
-  },
-  "checks": [
-    {
-      "name": "tests",
-      "command": "python lib/tests/run.py -j 8",
-      "addedBy": "chief-1",
-      "addedAt": "2026-11-04T08:13:03Z"
+    "version": 1,
+    "name": "ai-workspace",
+    "mode": "lite",
+    "language": {
+        "documents": "en",
+        "interviews": "en"
     },
-    {
-      "name": "ruff",
-      "command": "python -m ruff check .",
-      "addedBy": "chief-1",
-      "addedAt": "2026-11-04T08:13:03Z"
+    "agents": [
+        "orchestrator",
+        "planner",
+        "implementer",
+        "reviewer",
+        "qa"
+    ],
+    "orchestration": {
+        "maxParallel": 3
     },
-    {
-      "name": "mypy",
-      "command": "python -m mypy",
-      "addedBy": "chief-1",
-      "addedAt": "2026-11-04T08:13:03Z"
-    }
-  ]
+    "workflow": {
+        "requireReview": true,
+        "requireCheck": "strict",
+        "autoContinue": false,
+        "chiefOnlyTasks": true,
+        "requireSpec": true
+    },
+    "team": {},
+    "policy": {
+        "unknownAgent": "allow"
+    },
+    "git": {
+        "enabled": true,
+        "integrationBranch": "develop",
+        "productionBranch": "master",
+        "branchTypes": [
+            "feature",
+            "fix",
+            "chore",
+            "docs",
+            "refactor",
+            "hotfix"
+        ],
+        "commitTemplate": "templates/git/commit-template.txt",
+        "merge": "no-ff",
+        "deleteAfterMerge": true,
+        "isolation": "branch"
+    },
+    "locks": {
+        "defaultTtlSeconds": 1800,
+        "staleAfterSeconds": 3600,
+        "maxTtlSeconds": 7200
+    },
+    "handoff": {
+        "checkpointEveryMinutes": 20,
+        "warnAfterMinutes": 30
+    },
+    "budget": {
+        "contextTokens": 200000,
+        "warnAtPercent": 70,
+        "checkpointAtPercent": 85
+    },
+    "artifacts": {
+        "quarantine": "runtime/artifacts",
+        "watch": [
+            "tmp",
+            "temp",
+            "scratch",
+            ".cache",
+            "ai-notes",
+            "notes-ai"
+        ]
+    },
+    "security": {
+        "warnTrackedSecrets": true
+    },
+    "testing": {
+        "writeTests": true
+    },
+    "preferences": {
+        "confirmed": false,
+        "answered": []
+    },
+    "checks": []
 }
