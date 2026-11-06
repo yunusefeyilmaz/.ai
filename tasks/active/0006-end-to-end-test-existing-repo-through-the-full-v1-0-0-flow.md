@@ -1,17 +1,18 @@
 ---
 id: 0006
 title: "End-to-end test: existing repo through the full v1.0.0 flow"
-status: todo
-owner: null
+status: in_progress
+owner: deep-seek
 priority: high
 spec: specs/active/0006-end-to-end-test-existing-repo-through-the-full-v1-0-0-flow.md
 depends_on: "0001, 0002, 0003, 0005, 0004"
 scope_allowed: lib/tests/test_e2e_flow.py
 scope_forbidden: null
 locks: lib/tests/test_e2e_flow.py
+branch: feature/0006-end-to-end-test-existing-repo-through-th
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
-lock: null
+updated: 2026-11-06T08:36:47Z
+lock: task-0006
 ---
 
 # 0006 - End-to-end test: existing repo through the full v1.0.0 flow
@@ -39,3 +40,7 @@ Spec: `specs/active/0006-end-to-end-test-existing-repo-through-the-full-v1-0-0-f
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-06T08:08:03Z | deep-seek | todo -> in_progress | claimed
+- 2026-11-06T08:08:05Z created branch feature/0006-end-to-end-test-existing-repo-through-th from develop by deep-seek
+- 2026-11-06T08:35:29Z checkpoint by deep-seek (checkpoint, ?%)
+- 2026-11-06T08:36:47Z committed: test: add existing-repo end-to-end flow test

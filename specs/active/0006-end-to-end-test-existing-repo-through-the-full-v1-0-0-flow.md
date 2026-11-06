@@ -26,11 +26,11 @@ No test covers an existing Git repo end to end, which is why onboarding, the che
 
 ## Acceptance criteria
 
-- [ ] One test builds an existing Git repo, runs adopt, setup, plan, claim, checkpoint, criterion ticks, commit, check, review, finish and done
-- [ ] The test asserts HEAD is develop after setup, the tree is clean after done, the checks really ran, and the spec is archived as shipped with all criteria ticked
-- [ ] The test asserts review is refused while a criterion is unticked (negative case)
-- [ ] The test runs green on the CI matrix
-- [ ] Tests cover the new behavior and pass
+- [x] One test builds an existing Git repo, runs adopt, setup, plan, claim, checkpoint, criterion ticks, commit, check, review, finish and done
+- [x] The test asserts HEAD is develop after setup, the tree is clean after done, the checks really ran, and the spec is archived as shipped with all criteria ticked
+- [x] The test asserts review is refused while a criterion is unticked (negative case)
+- [x] The test runs green on the CI matrix
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 
