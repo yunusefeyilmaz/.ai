@@ -1,17 +1,18 @@
 ---
 id: 0007
 title: "Docs truth pass and token diet"
-status: todo
-owner: null
+status: in_progress
+owner: evren-deep-seek
 priority: medium
 spec: specs/active/0007-docs-truth-pass-and-token-diet.md
 depends_on: "0001, 0002, 0003, 0005, 0004"
 scope_allowed: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, lib/tests/test_docs.py"
 scope_forbidden: null
 locks: "README.md, GUIDE.md, AGENTS.md, docs/**, prompts/**, lib/tests/test_docs.py"
+branch: feature/0007-docs-truth-pass-and-token-diet
 created: 2026-11-04T08:14:04Z
-updated: 2026-11-04T08:14:04Z
-lock: null
+updated: 2026-11-06T10:19:08Z
+lock: task-0007
 ---
 
 # 0007 - Docs truth pass and token diet
@@ -40,3 +41,6 @@ Spec: `specs/active/0007-docs-truth-pass-and-token-diet.md`
 ## Log
 
 - 2026-11-04T08:14:04Z | chief-1 | - -> todo | created
+- 2026-11-06T10:13:05Z | evren-deep-seek | todo -> in_progress | claimed
+- 2026-11-06T10:13:06Z created branch feature/0007-docs-truth-pass-and-token-diet from develop by evren-deep-seek
+- 2026-11-06T10:19:08Z committed: docs: docs: align adopt, lock and worker docs with the code

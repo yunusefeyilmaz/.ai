@@ -53,9 +53,11 @@ straight to the first pass below.
 | `.cursor/rules/ai-workspace.mdc` | Cursor |
 | `.github/copilot-instructions.md` | GitHub Copilot |
 
-It also creates or updates the host project's `.gitignore` with `.ai/`, these
-four pointer files, and the optional generated AI workflow. The pointer files
-are local and ignored, so each clone runs `ai adopt` for its own setup.
+It also creates or updates the host project's `.gitignore` with these four pointer
+files, `.ai/runtime/` and `.ai/worktrees/`. The ledger (`tasks/`, `specs/`,
+`config/`, `docs/`) stays committed, and the optional CI workflow is ignored only
+when `--ci` writes it. The pointer files are local and ignored, so each clone runs
+`ai adopt` for its own setup.
 
 Useful variants:
 
@@ -488,10 +490,10 @@ end up writing the same file.
 ### Opening a session
 
 ```text
-This project uses the .ai workspace. Read AGENTS.md, GUIDE.md,
-docs/task-flow.md and docs/multi-agent.md. Run `ai status`, choose one task,
-claim it with `ai task claim <id> --agent <name>`, and work only on that task.
-Checkpoint before your context fills. Do not use the word "done" without `ai check`.
+This project uses the .ai workspace. Read AGENTS.md. Run `ai now --agent <name>
+--role implementer`, then `ai task next --agent <name>` to claim one task, and work
+only on that task. Checkpoint before your context fills. Do not use the word "done"
+without `ai check`.
 ```
 
 ### Approaching the context limit

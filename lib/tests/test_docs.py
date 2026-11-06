@@ -84,6 +84,42 @@ class DocumentedCommandsTest(WorkspaceCase):
                     problems.append(f"{path.relative_to(ROOT)} mentions {stale}")
         self.assertEqual(problems, [])
 
+    def test_adopt_ignore_rules_match_the_docs(self) -> None:
+        from lib.config.adopt import ADOPT_IGNORE_ENTRIES
+
+        self.assertIn(".ai/runtime/", ADOPT_IGNORE_ENTRIES)
+        self.assertIn(".ai/worktrees/", ADOPT_IGNORE_ENTRIES)
+        self.assertNotIn(".ai", {entry.strip().strip("/") for entry in ADOPT_IGNORE_ENTRIES})
+        for name in ("README.md", "GUIDE.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn(".ai/runtime/", text, f"{name} omits .ai/runtime/")
+            self.assertIn(".ai/worktrees/", text, f"{name} omits .ai/worktrees/")
+            for number, line in enumerate(text.splitlines(), 1):
+                if ".gitignore" in line:
+                    self.assertNotIn(
+                        "`.ai/`",
+                        line,
+                        f"{name}:{number} claims a blanket .ai/ ignore that adopt does not write",
+                    )
+
+    def test_agents_md_is_compact_and_states_the_staleness_rule(self) -> None:
+        text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        lines = text.splitlines()
+        self.assertLessEqual(len(lines), 85, f"AGENTS.md has {len(lines)} lines; keep it near 70")
+        self.assertIn("staleAfterSeconds", text)
+        self.assertIn("updated_at", text)
+        self.assertIn("PID", text)
+        self.assertIn("diagnostic", text)
+
+    def test_worker_prompt_reads_at_most_one_document_first(self) -> None:
+        text = (ROOT / "prompts" / "worker.md").read_text(encoding="utf-8")
+        self.assertNotIn("First read:", text)
+        first_step = re.search(r"^\s*1\.\s", text, flags=re.M)
+        self.assertIsNotNone(first_step)
+        preamble = text[: first_step.start()]
+        docs = set(re.findall(r"(?:\.ai/|agents/)[A-Za-z0-9_./-]+\.md", preamble))
+        self.assertLessEqual(len(docs), 1, f"worker.md asks for {sorted(docs)} before the first step")
+
     def test_capabilities_list_every_command(self) -> None:
         workspace = self.make_workspace(git_repo=False)
         published = set(json.loads(run(workspace, "capabilities").stdout)["commands"])
