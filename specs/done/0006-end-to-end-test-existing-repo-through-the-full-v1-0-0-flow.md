@@ -1,5 +1,5 @@
 ---
-status: draft
+status: shipped
 task: 0006
 approved_by: null
 approved_on: null
