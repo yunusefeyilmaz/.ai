@@ -28,12 +28,12 @@ approved_on: null
 
 ## Acceptance criteria
 
-- [ ] A checkpoint is required at `ai task review` once the task has been claimed longer than the configured warn threshold, and the refusal names `ai checkpoint`
-- [ ] A fresh task can still be delivered without a checkpoint (no busywork)
-- [ ] Checkpoint output records real state: status, branch, HEAD, and next step, without unresolved HTML placeholders
-- [ ] `ai task done` commits the archived task/spec/board changes so the working tree is clean afterwards
-- [ ] Regression tests cover the required-checkpoint case, the fresh-task case, and the clean tree after done
-- [ ] Tests cover the new behavior and pass
+- [x] A checkpoint is required at `ai task review` once the task has been claimed longer than the configured warn threshold, and the refusal names `ai checkpoint`
+- [x] A fresh task can still be delivered without a checkpoint (no busywork)
+- [x] Checkpoint output records real state: status, branch, HEAD, and next step, without unresolved HTML placeholders
+- [x] `ai task done` commits the archived task/spec/board changes so the working tree is clean afterwards
+- [x] Regression tests cover the required-checkpoint case, the fresh-task case, and the clean tree after done
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 

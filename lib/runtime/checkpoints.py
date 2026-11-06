@@ -149,6 +149,43 @@ def checkpoint_age_minutes(task_id: str) -> float | None:
         return None
 
 
+def checkpoint_required(
+    task_id: str,
+    claimed_at: str | None,
+    warn_after_minutes: float | None,
+) -> str | None:
+    """Return the refusal text when a long-running claim has no fresh checkpoint.
+
+    Delivery is the moment a task changes hands, so a claim older than
+    `handoff.warnAfterMinutes` must carry recoverable state. A checkpoint made
+    before the current claim does not count: the next agent would resume a
+    previous attempt. A fresh task (or a workspace without a claim timestamp)
+    is never blocked, so short work needs no busywork.
+    """
+    if not claimed_at or warn_after_minutes is None:
+        return None
+    try:
+        started = parse_iso(str(claimed_at))
+        threshold = float(warn_after_minutes)
+    except (TypeError, ValueError):
+        return None
+    elapsed = (now() - started).total_seconds() / 60.0
+    if elapsed <= threshold:
+        return None
+    data = read_checkpoint(task_id)
+    if data:
+        try:
+            if parse_iso(str(data[0].get("created") or "")) >= started:
+                return None
+        except (TypeError, ValueError):
+            pass
+    return (
+        f"Task {task_id} has been claimed for {int(elapsed)} minutes without a checkpoint "
+        f"(the warn threshold is {int(threshold)} minutes). Save recoverable state first: "
+        f'`ai checkpoint {task_id} --agent <name> --next "<step>"`, then deliver again.'
+    )
+
+
 def write_checkpoint(
     task_id: str,
     agent: str,
@@ -182,6 +219,18 @@ def write_checkpoint(
             detail = "large file (size/mtime only)" if item.get("large") else str(item.get("sha256") or "")[:12]
             lines.append(f"- `{rel}` {detail}".rstrip())
         fields["files_text"] = "\n".join(lines)
+    title = fields.get("title") or "task"
+    branch = state.get("branch") or "no branch"
+    head = str(state.get("head") or "")
+    head_short = head[:8] if head else "no commit"
+    status_line = fields.get("status_line") or "in progress"
+    # The writer, not the caller, is responsible for recording where the task
+    # stands: a checkpoint that only says "in progress" cannot be resumed.
+    auto_status = f"{status_line} on branch {branch} at {head_short}."
+    auto_next = fields.get("next") or (
+        f"Continue task {task_id} ({title}) from the current step; "
+        "re-read the task and its spec before editing."
+    )
     meta = {
         "task": task_id,
         "agent": agent,
@@ -190,50 +239,50 @@ def write_checkpoint(
         "percent": percent,
         "branch": state.get("branch"),
         "head": state.get("head"),
-        "next": fields.get("next"),
+        "next": auto_next,
         "status_line": fields.get("status_line"),
     }
-    body = f"""# Checkpoint {task_id} - {fields.get('title') or 'task'}
+    body = f"""# Checkpoint {task_id} - {title}
 
 ## Objective
 
-{fields.get('objective') or '<!-- restate the task intent in one paragraph -->'}
+{fields.get('objective') or f'Task {task_id}: {title}'}
 
 ## Status
 
-{fields.get('status') or '<!-- what is true right now -->'}
+{fields.get('status') or auto_status}
 
 ## Done
 
-{fields.get('done') or '<!-- finished items, with evidence -->'}
+{fields.get('done') or 'Nothing recorded yet.'}
 
 ## In progress
 
-{fields.get('in_progress') or '<!-- exact step being executed, and where it stopped -->'}
+{fields.get('in_progress') or auto_status}
 
 ## Next steps
 
-{fields.get('next') or '<!-- ordered, concrete, resume from step 1 -->'}
+{auto_next}
 
 ## Decisions
 
-{fields.get('decisions') or '<!-- choices made and why, so the next agent does not relitigate -->'}
+{fields.get('decisions') or 'No decisions recorded.'}
 
 ## Do not
 
-{fields.get('do_not') or '<!-- failed approaches, forbidden actions, user constraints -->'}
+{fields.get('do_not') or 'No constraints recorded.'}
 
 ## Open questions
 
-{fields.get('questions') or '<!-- what needs a human answer -->'}
+{fields.get('questions') or 'None open.'}
 
 ## Files
 
-{fields.get('files_text') or '<!-- files touched or opened, with why -->'}
+{fields.get('files_text') or 'No files recorded.'}
 
 ## Verification
 
-{fields.get('verification') or '<!-- commands already run and their results -->'}
+{fields.get('verification') or 'No verification run yet.'}
 """
     store.write_task(checkpoint_path(task_id), meta, body)
     write_json_atomic(
