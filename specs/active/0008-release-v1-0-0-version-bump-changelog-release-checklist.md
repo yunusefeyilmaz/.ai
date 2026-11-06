@@ -26,12 +26,12 @@ Ship the first release whose claims are true: bump version, record the changelog
 
 ## Acceptance criteria
 
-- [ ] VERSION and lib/core/paths.py both report 1.0.0
-- [ ] CHANGELOG has a 1.0.0 entry that states there are no new features, only reliability fixes, and lists the lock semantics change
-- [ ] ai version prints 1.0.0
-- [ ] ai doctor --strict and the full check suite are green on the release commit
-- [ ] Release notes mention the 0.9.9 to 1.0.0 upgrade note for lock semantics
-- [ ] Tests cover the new behavior and pass
+- [x] VERSION and lib/core/paths.py both report 1.0.0
+- [x] CHANGELOG has a 1.0.0 entry that states there are no new features, only reliability fixes, and lists the lock semantics change
+- [x] ai version prints 1.0.0
+- [x] ai doctor --strict and the full check suite are green on the release commit
+- [x] Release notes mention the 0.9.9 to 1.0.0 upgrade note for lock semantics
+- [x] Tests cover the new behavior and pass
 
 ## Out of scope
 
