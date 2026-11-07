@@ -11,8 +11,10 @@ third, extras last. Every item names the observable result, not the feature.
 | 3 | `0005` adapter contract | P1 | shipped 0.6.0 | A new agent or CI provider plugs in without touching the core. |
 | 4 | `0006` visibility board | P2 | shipped 0.6.0 | A blocked session explains itself without reading logs. |
 
-Since 0.7.0 the work is tracked in `CHANGELOG.md`: the `lib/` split, the chief /
+Since 0.7.0 the work is tracked in `CHANGELOG.md`: the module split, the chief /
 implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
+Version 1.1.0 replaced the Python implementation with the Rust one; the on-disk
+protocol is unchanged, so the roadmap below still describes the same product.
 
 ## Guardrails
 
@@ -20,7 +22,10 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
   verification. Extra ceremony is opt-in or belongs to `strict`.
 - **No new state without a reader.** Every file the CLI writes must be consumed
   by a command or a check.
-- **No new dependency.** Python standard library and Git only.
+- **No new dependency without a reason.** The Rust binary uses a handful of small
+  crates (clap, serde/serde_json, chrono, regex, sha1/sha2, fs2); Git is the only
+  external program. Adding a dependency means the three-OS matrix and the MSRV
+  check must still pass.
 - **One command per common path.** Setup, resume and verification each get a
   single entry point; flags refine, they do not replace it.
 - **Delete before adding.** If a step is not load-bearing, removing it beats

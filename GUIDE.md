@@ -5,7 +5,9 @@ the human supervising a session or the agent doing the work.
 
 The handbook assumes the CLI is available as `ai`. In a subfolder install that
 means `.ai/ai` (`.ai\ai.cmd` on Windows); you can add
-`.ai` to `PATH`. Without Python, every step still works by editing files.
+`.ai` to `PATH`. The CLI is a Rust binary built once with
+`cargo build --release`; if it is missing entirely, every step still works by
+editing files.
 
 ## Three concepts
 
@@ -30,16 +32,24 @@ Two rules follow from this:
 
 ### Root template
 
-Copy the repository contents into the project root. `AGENTS.md` at the root is
-already the entry point, so nothing needs to run. The CLI notices that the
-workspace is the project root.
+Copy the repository contents into the project root and build the CLI once:
+
+```sh
+cargo build --release
+```
+
+`AGENTS.md` at the root is already the entry point, so no adapters are needed.
+The CLI notices that the workspace is the project root.
 
 ### Subfolder
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+cargo build --release --manifest-path .ai/Cargo.toml
 .ai/ai adopt
 ```
+
+On macOS/Linux, `chmod +x .ai/ai` once so the shell launcher runs directly.
 
 `ai start` performs the same wiring automatically, so a first clone can go
 straight to the first pass below.
@@ -180,8 +190,8 @@ evidence the review gate reads, and `--strict --task` records that same
 evidence with warnings promoted, so CI and the reviewer read one record.
 `ai check` runs only the
 *project's* commands from `checks` in `config/workspace.json` (empty by default:
-add your test/lint commands). It never runs the workspace's own tests in
-`lib/tests/`. `--fast` runs only checks marked fast in
+add your test/lint commands). It never runs the workspace's own test suite in
+`tests/`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
 
 `ai status --board` is the read-only one-screen view: active tasks in
@@ -566,15 +576,17 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 |------|---------|
 | `0` | Success |
 | `1` | Verification failed or an operation was refused |
-| `127` | No Python 3 found; use the file protocol |
+| `2` | Invalid `--since` value for `ai metrics` |
+| `127` | `git` is not installed (Git commands only) |
 
 ### File map
 
 | Path | Purpose |
 |------|---------|
 | `AGENTS.md` | Invariants every session accepts |
-| `ai.py`, `ai`, `ai.cmd` | Entry point and launchers |
-| `lib/` | Scripts only, one folder per domain (see `lib/README.md`) |
+| `Cargo.toml`, `src/` | The Rust CLI: `main.rs` dispatches, `cli.rs` defines the flags, one folder per domain |
+| `ai`, `ai.cmd` | Launchers (release binary → debug binary → `cargo run`) |
+| `tests/` | End-to-end CLI tests (`cargo test`) |
 | `config/workspace.json` | Mode, leases, budget, workflow rules, checks |
 | `tasks/` | Ledger (active/done), template, generated board |
 | `specs/` | Acceptance criteria, active and shipped |
@@ -582,13 +594,14 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | `templates/git/` | Commit and PR templates |
 | `docs/` | Flow, concurrency, orchestration, recovery, hygiene, `decisions/` |
 | `agents/`, `prompts/`, `adapters/` | Role cards, prompt bodies, per-tool wiring |
-| `skills/` | Optional extensions (loaded automatically) |
+| `skills/` | Optional extensions (see `skills/README.md`) |
 
 ## If something looks wrong
 
 - **`ai` missing:** call the launcher path directly or add `.ai` to
-  `PATH`.
-- **No Python:** follow `docs/task-flow.md`; keep the JSON lease shape if you
+  `PATH`. If the launcher says `cargo: command not found`, build once with
+  `cargo build --release`.
+- **No CLI at all:** follow `docs/task-flow.md`; keep the JSON lease shape if you
   must edit one by hand.
 - **A warning in `ai check`:** warnings are signals. `--strict` turns them into
   failures, which is what CI does.

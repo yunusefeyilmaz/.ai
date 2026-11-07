@@ -55,6 +55,6 @@ If the CLI is unavailable, copy `TEMPLATE.md`, allocate the next free id by
 inspecting both folders, and create the task's lock file under `runtime/locks/`
 before editing. The CLI names lock files `<safe-name>-<sha1[:8]>.lock` (for a task:
 `safe_name("task-0001") + "-" + sha1("task-0001")[:8]`), so a hand-made
-`task-0001.lock` is invisible to `ai lock status`; prefer
-`python -c` one-liners from `docs/recovery.md` or rerun `ai` as soon as it is
+`task-0001.lock` is invisible to `ai lock status`; prefer the JSON examples in
+`docs/recovery.md`, or rerun `ai` (or `cargo run -- doctor`) as soon as it is
 available. The state machine is the contract; the CLI only makes it atomic.

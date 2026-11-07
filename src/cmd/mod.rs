@@ -1,0 +1,30 @@
+//! CLI command modules.
+
+pub mod adopt;
+pub mod artifact;
+pub mod brief;
+pub mod capabilities;
+pub mod checkpoint;
+pub mod clean;
+pub mod common;
+pub mod context;
+pub mod decision;
+pub mod doctor;
+pub mod git;
+pub mod history;
+pub mod init;
+pub mod lock;
+pub mod metrics;
+pub mod now;
+pub mod plan;
+pub mod recover;
+pub mod reset;
+pub mod review;
+pub mod setup;
+pub mod spec;
+pub mod start;
+pub mod status;
+pub mod task;
+pub mod ui;
+pub mod version;
+pub mod worktree;

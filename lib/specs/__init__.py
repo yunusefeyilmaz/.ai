@@ -1,1 +1,0 @@
-"""Spec templates and resolution."""

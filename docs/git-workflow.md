@@ -155,7 +155,7 @@ both. With `git.isolation = worktree` (set automatically by
 ```
 project/
 ├── .ai/                      <- the single shared workspace (tasks, locks, runtime, config)
-│   ├── ai.py
+│   ├── target/release/ai     <- the CLI the worktree runs by absolute path
 │   └── worktrees/
 │       ├── feature-0001-login/      <- task 0001, branch feature/0001-login
 │       └── feature-0002-payment/    <- task 0002, branch feature/0002-payment

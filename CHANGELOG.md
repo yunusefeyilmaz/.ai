@@ -2,6 +2,103 @@
 
 All notable changes to this workspace are documented here.
 
+## [1.1.0] - 2026-11-07
+
+The workspace is now a **Rust program**. Same commands, same on-disk contract,
+same behaviour; the Python CLI (`ai.py` + `lib/`) is replaced by a single
+statically-typed binary that runs on Windows, macOS and Linux with no runtime
+dependency.
+
+An existing `.ai` directory keeps working unchanged: task/spec front matter, JSON
+leases, the event ledger, checkpoints, handoffs, the board and ADRs are written
+byte-for-byte the same way. Both implementations can operate on one workspace,
+which is what made a verified port possible.
+
+### Changed
+
+- **Language and runtime.** Python 3.8+ and `lib/` are gone; the CLI is Rust
+  (`src/`, edition 2021, MSRV 1.85). `cargo build --release` produces one
+  self-contained `ai` / `ai.exe`; no interpreter, no `pip install`, no
+  `sys.executable` subprocesses.
+- **Source layout mirrors the old package tree**, so the two implementations read
+  side by side: `src/core/` (error, fsio, time, workspace), `src/config/`
+  (settings, preferences, roles, adopt), `src/tasks/` (store, frontmatter,
+  lifecycle, history, board, plan, scope, gates), `src/specs/`, `src/runtime/`
+  (leases, checkpoints, evidence, events, metrics, health, mutex, overview,
+  dirs), `src/git/` (repo, flow, worktrees), `src/decisions/`, `src/ui/` and
+  `src/cmd/` (one file per command).
+- **Library + binary split.** `src/lib.rs` exposes the modules and `src/cli.rs`
+  holds the clap surface, so `capabilities` derives its contract from the real
+  parser and tests can call internals directly instead of shelling out.
+- **Launchers try the binary first.** `ai.cmd` and `ai` run the release build,
+  then the debug build, then fall back to `cargo run`.
+- **Exit codes.** `0` success, `1` refusal or a failed check. The Python-only
+  `127` ("no Python 3 found") is gone; a missing `git` binary now exits `127`
+  from the Git layer with `git is not available`.
+
+### Added
+
+- **`cargo test` suite: 183 tests** (10 unit + 173 end-to-end), ported from the
+  Python suites: acceptance criteria, board snapshots, lock ownership, workflow
+  and request-changes gates, front-matter lists, task ids, check gate,
+  `now --json`, setup gate, review gate, checkpoint gate, claim rollback, stale
+  locks on `done`, worktrees, events/metrics, the evidence state machine,
+  metadata commits, doctor repairs, command smoke tests, adopt ignore rules,
+  capabilities contract, platform regressions and documentation drift.
+- **Cross-platform CI** (`.github/workflows/ci.yml`): build + test + `doctor` +
+  both launchers on Ubuntu, macOS and Windows; `cargo fmt --check` and
+  `clippy -D warnings`; an MSRV job pinned to 1.85; and a release job that
+  packages a binary per OS only after the matrix is green.
+- **`tests/support/mod.rs`**, the Rust port of `lib/tests/_workspace.py`: every
+  test gets a private, normalised workspace copied from this checkout, with
+  colliding names impossible under parallel execution.
+- **`PORTING.md`**: the Python→Rust file mapping, the test matrix, the platform
+  notes and an explicit list of suites that are not ported and why.
+
+### Fixed
+
+Behaviour that only the ported tests exposed, all of which existed in the Python
+version too:
+
+- **`ai task done` left the ledger dirty.** The archived task, the shipped spec
+  and `BOARD.md` were written but never committed, so the next agent inherited a
+  dirty tree. `done` now stages exactly those coordination paths, including the
+  deletion of the old `specs/active/` file, and commits them as
+  `chore(task): record done <id>`.
+- **Ledger detection failed for moved files on Windows.** `is_workspace_ledger_path`
+  canonicalised the file itself, which fails once a rename removes it and which
+  returns a `\\?\`-prefixed path on Windows. It now canonicalises the parent when
+  the file is gone, so a deletion is correctly recognised as coordination state
+  and product paths are never mistaken for it.
+- **CRLF task files were not normalised.** A file written by another tool on
+  Windows parsed with trailing `\r` and round-tripped as CRLF. `read_text` now
+  converts line endings the way Python's text mode did, so the CLI always writes
+  LF.
+- **`ai task review` ignored an isolated worktree.** With
+  `git.isolation=worktree` the branch/tree/evidence gate read the main checkout,
+  which sits on the integration branch by design, and refused every review with
+  "belongs to branch …". The gate now inspects the task's own worktree.
+- **`ai task show` printed `-` for empty fields.** Python printed `None`; the
+  Rust port normalised it and broke scripts that matched on it. `task show` now
+  renders `None`/`True`/`False` again.
+- **`ai now --json` reported a blocker when work was actionable.** `blocker` was
+  stuck at `"nothing to do"` instead of `null`, so a harness that keys on the
+  field would always ask a human.
+- **`ai doctor` checked too few required files.** `docs/*.md`, `agents/*.md`,
+  the spec template and the PR template were missing from the invariant list, so
+  a half-copied workspace passed. The corrupt-config message also now names the
+  file the way the Python version did.
+- **`ai task discard` used a private wording** ("is leased by …") that no guidance
+  or test referred to; it now names the holder as `lock held by <agent>`.
+
+### Not ported
+
+- `ai ui` prints one static read-only frame instead of animating the Python TUI.
+- The Python-only test harnesses that drive the interactive `ai reset --hard`
+  in-process (`test_reset_mutex.py`) and the TUI (`test_ui.py`) are not ported;
+  their safety rules are enforced in `src/cmd/reset.rs` and covered by the
+  commands that call it.
+
 ## [1.0.1] - 2026-11-06
 
 Bug-fix release from a real end-to-end run (setup → plan → spec → claim → commit →

@@ -1,6 +1,7 @@
 # AGENTS.md — read this first
 
-`.ai` is the workspace: `ai.py` is the entry point, scripts are in `lib/`, state in
+`.ai` is the workspace: the `ai` binary is the entry point (built from `src/`;
+launchers `ai` and `ai.cmd`), state lives in
 `tasks/`, `specs/`, `runtime/`, `config/`. AI output stays under `.ai/`; the rest is
 product territory.
 

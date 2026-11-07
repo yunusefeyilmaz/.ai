@@ -1,17 +1,23 @@
 # skills
 
-Optional extensions. Each folder with a `skill.py` that defines `register(sub)` is
-loaded automatically by `ai.py` (data/prompts live here; shared scripts stay in `lib/`). Nothing here is required by the core.
+Optional extensions. In the Rust port a skill is **data**, not code: prompt
+bodies, templates and reference material that an agent loads when the skill's
+`README.md` says it applies. Nothing here is required by the core, and the CLI
+never executes anything from this folder.
 
-A skill is a folder with a `skill.py`:
+A skill is a folder:
 
 ```
 skills/<name>/
-├── skill.py        defines register(sub) (same contract as lib/cmd/*.py)
 ├── README.md       what it does and when an agent should use it
 └── ...             prompts, templates, data the skill owns
 ```
 
-Rules: depend downward only (tasks, git, runtime, config, core); never edit the
-core's state files directly, use the library functions; keep output short
-(agents pay per token); add black-box tests in `lib/tests/`.
+Rules: depend downward only (the skill may reference `tasks/`, `specs/`,
+`docs/`, `prompts/`); never edit the core's state files directly — use the `ai`
+commands; keep output short (agents pay per token).
+
+The Python version auto-loaded a `skill.py` that registered new subcommands. The
+Rust binary has one fixed command surface (see `ai capabilities --json`), so a
+skill that needs new behaviour is a change to `src/cmd/` plus a test in
+`tests/`, not a drop-in folder.
