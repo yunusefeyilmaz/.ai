@@ -13,8 +13,6 @@ third, extras last. Every item names the observable result, not the feature.
 
 Since 0.7.0 the work is tracked in `CHANGELOG.md`: the module split, the chief /
 implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
-Version 1.1.0 replaced the Python implementation with the Rust one; the on-disk
-protocol is unchanged, so the roadmap below still describes the same product.
 
 ## Guardrails
 

@@ -16,8 +16,3 @@ skills/<name>/
 Rules: depend downward only (the skill may reference `tasks/`, `specs/`,
 `docs/`, `prompts/`); never edit the core's state files directly — use the `ai`
 commands; keep output short (agents pay per token).
-
-The Python version auto-loaded a `skill.py` that registered new subcommands. The
-Rust binary has one fixed command surface (see `ai capabilities --json`), so a
-skill that needs new behaviour is a change to `src/cmd/` plus a test in
-`tests/`, not a drop-in folder.

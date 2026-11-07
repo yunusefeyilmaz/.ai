@@ -207,10 +207,6 @@ The split matters: `.ai/` is agent territory, the rest is product territory.
 narrow ignore rules (`.ai/runtime/`, `.ai/worktrees/`); the workspace ledger stays
 in version control.
 
-`src/` mirrors the original `lib/` package tree one folder per domain, so the Rust
-and Python implementations can be read side by side. `PORTING.md` has the full
-table.
-
 ### Building and testing
 
 ```sh
