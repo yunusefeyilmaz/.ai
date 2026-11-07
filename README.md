@@ -16,10 +16,6 @@ You give your AI one short request. The chief asks you how much process you want
 up. The `ai` command does the bookkeeping, so the agents spend their effort on the
 code.
 
-This checkout is the **Rust implementation**. It reads and writes exactly the same
-files as the original Python workspace, so an existing `.ai` ledger keeps working.
-See [`PORTING.md`](PORTING.md) for the module-by-module mapping and the known gaps.
-
 ## 1. Install
 
 You need [Rust](https://rustup.rs) (1.85 or newer) and `git`. Nothing else — no
