@@ -65,7 +65,7 @@ fn strict_mode_review_needs_a_green_check() {
         refused.all()
     );
 
-    ws.ok(&["setup", "--check", "unit=cmd /C echo 1"]);
+    ws.ok(&["setup", "--check", "unit=echo 1"]);
     let accepted = ws.run(&["task", "review", "0001", "--agent", "alice"]);
     assert_eq!(accepted.code, 0, "{}", accepted.all());
     assert!(

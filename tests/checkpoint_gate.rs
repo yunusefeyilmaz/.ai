@@ -19,9 +19,23 @@ fn commit_all(ws: &Ws, message: &str) {
 
 fn old_claim_workspace() -> Ws {
     let ws = Ws::new("ai-checkpoint-gate-old-");
-    ws.set_config(|config| config["handoff"]["warnAfterMinutes"] = serde_json::json!(0));
     ws.git_init();
     claimed(&ws, "alice");
+
+    // Backdate the claim itself instead of lowering the warning threshold to
+    // zero: claim and review can land in the same whole second, and a zero
+    // threshold then makes the gate depend on timing rather than claim age.
+    let lock = ws.one("runtime/locks", "task-0001");
+    let mut holder: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&lock).expect("read claim lock"))
+            .expect("claim lock json");
+    holder["started_at"] = serde_json::json!("2000-01-01T00:00:00Z");
+    std::fs::write(
+        &lock,
+        serde_json::to_string_pretty(&holder).expect("serialise claim lock"),
+    )
+    .expect("write claim lock");
+
     commit_all(&ws, "feat: work");
     ws
 }
