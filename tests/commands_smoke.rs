@@ -96,6 +96,28 @@ fn brief_contains_the_task_and_the_rules() {
 }
 
 #[test]
+fn a_truncated_brief_keeps_the_rules_and_commands() {
+    let ws = Ws::new("ai-smoke-brief-truncate-");
+    ws.new_task("Brief me").ok("task new");
+    let full = ws.ok(&["brief", "0001"]).stdout;
+    let budget = 1200.min(full.chars().count() - 1).max(400);
+    let cut = ws
+        .ok(&["brief", "0001", "--max-chars", &budget.to_string()])
+        .stdout;
+    assert!(
+        cut.chars().count() <= budget + 120,
+        "{}",
+        cut.chars().count()
+    );
+    assert!(
+        cut.contains("--- Commands available to the human ---"),
+        "{cut}"
+    );
+    assert!(cut.contains("=== END BRIEF ==="), "{cut}");
+    assert!(cut.contains("Operating rules"), "{cut}");
+}
+
+#[test]
 fn artifact_put_list_clean() {
     let host = Ws::subfolder("ai-smoke-artifact-");
     let scratch = host.host().join("scratch.txt");

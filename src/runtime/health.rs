@@ -2,12 +2,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use regex::Regex;
 use serde_json::{json, Value};
 
+use crate::config::blueprint;
 use crate::config::roles;
 use crate::config::settings::{self as config, configured_checks, load, lock_settings};
 use crate::core::error::Result;
@@ -138,9 +138,10 @@ pub fn report_problems(problems: &[Finding]) -> i32 {
     }
 }
 
-/// Run the configured project checks; append results to `results` when given.
+/// Run the configured project checks in `cwd`; append results to `results` when given.
 pub fn run_commands(
     ws: &Workspace,
+    cwd: &Path,
     fast_only: bool,
     results: &mut Vec<Value>,
     out: Option<bool>,
@@ -179,7 +180,9 @@ pub fn run_commands(
             println!("{line}");
         }
         let started = Instant::now();
-        let (exit_code, output) = run_shell(&command, &ws.project);
+        let limit = Duration::from_secs(check_timeout(item, &config));
+        let outcome = crate::core::process::run(&command, cwd, Some(limit));
+        let output = outcome.combined();
         if !output.trim().is_empty() {
             if stderr_mode {
                 eprintln!("{output}");
@@ -191,13 +194,26 @@ pub fn run_commands(
         results.push(json!({
             "name": name,
             "command": command,
-            "exit_code": exit_code,
+            "exit_code": outcome.code,
             "seconds": (seconds * 100.0).round() / 100.0,
+            "timed_out": outcome.timed_out,
+            "timeout_seconds": limit.as_secs(),
         }));
-        if exit_code != 0 {
+        if outcome.timed_out {
             problems.push(Finding::new(
                 "error",
-                format!("check '{name}' failed with exit code {exit_code}"),
+                format!(
+                    "check '{name}' timed out after {}s (exit 124)",
+                    limit.as_secs()
+                ),
+                format!(
+                    "raise this check's `timeoutSeconds` (ai setup --check-timeout {name}=<seconds>) or make the command faster: {command}"
+                ),
+            ));
+        } else if outcome.code != 0 {
+            problems.push(Finding::new(
+                "error",
+                format!("check '{name}' failed with exit code {}", outcome.code),
                 format!("run the failing command yourself: {command}"),
             ));
         }
@@ -205,36 +221,13 @@ pub fn run_commands(
     Ok(problems)
 }
 
-fn run_shell(command: &str, cwd: &Path) -> (i32, String) {
-    #[cfg(windows)]
-    let output = Command::new("cmd")
-        .arg("/C")
-        .arg(command)
-        .current_dir(cwd)
-        .output();
-    #[cfg(not(windows))]
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(cwd)
-        .output();
-    match output {
-        Ok(result) => {
-            let mut text = String::from_utf8_lossy(&result.stdout).to_string();
-            let err = String::from_utf8_lossy(&result.stderr).to_string();
-            if !err.is_empty() {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(&err);
-            }
-            (
-                result.status.code().unwrap_or(124),
-                text.trim_end().to_string(),
-            )
-        }
-        Err(error) => (127, error.to_string()),
-    }
+/// The budget for one check: its own `timeoutSeconds`, then the shared
+/// `checksTimeoutSeconds`, then a safe default.
+fn check_timeout(item: &Value, config: &Value) -> u64 {
+    item.get("timeoutSeconds")
+        .and_then(Value::as_u64)
+        .or_else(|| config.get("checksTimeoutSeconds").and_then(Value::as_u64))
+        .unwrap_or(1800)
 }
 
 fn collect_state_files(ws: &Workspace) -> Vec<PathBuf> {
@@ -891,6 +884,99 @@ pub fn collect_checks(ws: &Workspace) -> Vec<Finding> {
         }
     }
 
+    problems
+}
+
+/// Health invariants about the checkout itself. Kept out of `ai check` because
+/// they describe the workspace, not the diff under review.
+pub fn collect_git_invariants(ws: &Workspace) -> Vec<Finding> {
+    let mut problems = Vec::new();
+    if !config::git_enabled(ws) {
+        return problems;
+    }
+    let state = git::state(ws);
+    if !state.get("repo").and_then(Value::as_bool).unwrap_or(false) {
+        return problems;
+    }
+    let git_config = git::config(ws);
+    if !git::branch_exists(&ws.project, &git_config.integration)
+        || !git::branch_exists(&ws.project, &git_config.production)
+    {
+        return problems;
+    }
+    let current = state
+        .get("branch")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if !git_config.production.is_empty()
+        && current == git_config.production
+        && git_config.production != git_config.integration
+    {
+        problems.push(Finding::new(
+            "warn",
+            format!(
+                "the main checkout is on production branch '{current}', not the integration branch '{}'",
+                git_config.integration
+            ),
+            format!(
+                "git checkout {}   # task branches and worktrees start from the integration branch",
+                git_config.integration
+            ),
+        ));
+    }
+    // Untracked planning artifacts are the failure mode `ai plan apply` must not
+    // leave behind: a task worktree or a fresh clone would not contain the plan.
+    let untracked = git::parse_porcelain_z(&git::run_git_raw(
+        &ws.project,
+        &["status", "--porcelain", "-z"],
+    ));
+    let ledger: Vec<String> = untracked
+        .iter()
+        .filter(|(status, _)| status == "??")
+        .map(|(_, path)| path.clone())
+        .filter(|path| git::is_workspace_ledger_path(ws, path))
+        .collect();
+    if !ledger.is_empty() {
+        problems.push(Finding::new(
+            "warn",
+            format!(
+                "{} planning file(s) under tasks/specs/config are untracked",
+                ledger.len()
+            ),
+            "commit the plan once (the chief's `ai plan apply` commits it) so worktrees and other agents see it",
+        ));
+    }
+    problems
+}
+
+/// The architecture proposal is the chief's first deliverable; report it while
+/// it is missing-by-policy or waiting for the user's decision.
+pub fn collect_blueprint_check(ws: &Workspace) -> Vec<Finding> {
+    let mut problems = Vec::new();
+    match blueprint::status(ws) {
+        blueprint::State::Pending => problems.push(Finding::new(
+            "warn",
+            "the architecture proposal is waiting for the user",
+            "ask the user to approve or change it: `ai blueprint show`, then `ai blueprint approve --agent <name>` or `ai blueprint revise --set naming.files=snake_case`",
+        )),
+        blueprint::State::Missing => {
+            let required = config::load(ws)
+                .ok()
+                .and_then(|config| config.get("blueprint").cloned())
+                .and_then(|blueprint| blueprint.get("required").cloned())
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            if required {
+                problems.push(Finding::new(
+                    "warn",
+                    "no architecture proposal exists",
+                    "run `ai blueprint propose` (you are the chief), analyze the facts, then `ai blueprint propose --from <analysis.json>` and ask the user to approve it",
+                ));
+            }
+        }
+        blueprint::State::Approved => {}
+    }
     problems
 }
 

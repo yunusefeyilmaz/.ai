@@ -47,6 +47,7 @@ fn run(ws: &Workspace, command: Command) -> ai::core::error::Result<i32> {
         Command::Brief(args) => cmd::brief::run(ws, &args),
         Command::Start(args) => cmd::start::run(ws, &args),
         Command::Setup(args) => cmd::setup::run(ws, &args),
+        Command::Blueprint(args) => cmd::blueprint::run(ws, &args),
         Command::Init(args) => cmd::init::run(ws, &args),
         Command::Doctor(args) => cmd::doctor::doctor(ws, &args),
         Command::Check(args) => cmd::doctor::check(ws, &args),

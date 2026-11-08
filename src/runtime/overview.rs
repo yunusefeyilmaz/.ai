@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 
+use crate::config::blueprint;
 use crate::config::preferences;
 use crate::config::roles;
 use crate::config::settings::{self as config, configured_checks, git_enabled, lock_settings};
@@ -74,7 +75,10 @@ fn human_question(recommended: &Value) -> Option<String> {
     let command = recommended.get("cmd").and_then(Value::as_str).unwrap_or("");
     let why = recommended.get("why").and_then(Value::as_str).unwrap_or("");
     if command == "ai setup" {
-        return Some("Before planning: how much process do you want for this project (independent review, checks required, Git, tests, auto-continue, number of workers)?".to_string());
+        return Some("Before planning: how much process do you want for this project (independent review, checks required, Git, tests, auto-continue, number of workers, lite/strict mode, solo/pair/team playbook)?".to_string());
+    }
+    if command == "ai blueprint show" {
+        return Some("Review the architecture proposal: approve it, or change the naming, architecture, mode or playbook before any task is planned.".to_string());
     }
     if command.is_empty() {
         return Some(if why.is_empty() {
@@ -120,35 +124,33 @@ fn setup_extras(state: &preferences::PreferenceStatus) -> Vec<String> {
     if pending.is_empty() {
         return Vec::new();
     }
-    let asks = pending
-        .iter()
-        .map(|row| format!("{} ({})", row.key, answer_text(&row.recommended)))
-        .collect::<Vec<_>>()
-        .join(", ");
     let answers = state
         .questions
         .iter()
         .map(|row| format!("{}={}", row.key, answer_text(&row.recommended)))
         .collect::<Vec<_>>()
         .join(" ");
-    let mut command = format!("then: ai setup --set {answers}");
+    let mut command = format!("ai setup --set {answers}");
     if state.checks.is_empty() {
         command.push_str(" --check \"tests=<command>\"");
     }
-    vec![format!("ask the user: {asks}"), command]
+    vec![format!(
+        "{command}   # pending: {}",
+        pending
+            .iter()
+            .map(|row| row.key.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )]
 }
 
 fn task_state(ws: &Workspace, task: &Task) -> Value {
-    match git::task_root(ws, task) {
-        Some(root) => {
-            let mut state = git::state_at(&root);
-            let integration = git::config(ws).integration;
-            let ahead = git::commits_ahead(&root, &integration);
-            state["ahead"] = json!(ahead);
-            state
-        }
-        None => git::state(ws),
-    }
+    let root = git::task_checkout(ws, task);
+    let mut state = git::state_at(&root);
+    let integration = git::config(ws).integration;
+    let ahead = git::commits_ahead(&root, &integration);
+    state["ahead"] = json!(ahead);
+    state
 }
 
 /// `{"cmd","why","extra"}` for one task's current state.
@@ -188,9 +190,21 @@ pub fn next_action(
         let submitter = task.get_str("submitted_by");
         if let (Some(agent), Some(submitter)) = (agent, submitter.as_deref()) {
             if agent == submitter {
+                if gates::allows_self_review(ws) {
+                    let cmd = if git_on {
+                        format!("ai git finish --task {task_id} --agent {a}")
+                    } else {
+                        format!("ai task done {task_id} --agent {a}")
+                    };
+                    return json!({
+                        "cmd": cmd,
+                        "why": "solo playbook: you delivered it, so you approve and ship it — re-read the diff first, then run the same final step",
+                        "extra": extra,
+                    });
+                }
                 return json!({
                     "cmd": null,
-                    "why": "you delivered it; a different agent must review. Start a reviewer session (`ai now --agent <reviewer> --role reviewer`), or a solo user can disable the gate with `ai setup --set review=no`. Report to the user and wait",
+                    "why": "you delivered it; a different agent must review. Start a reviewer session (`ai now --agent <reviewer> --role reviewer`), or choose the solo playbook (`ai setup --set playbook=solo`) or review=no for low-risk work. Report to the user and wait",
                     "extra": extra,
                 });
             }
@@ -276,7 +290,8 @@ pub fn next_action(
             return json!({"cmd": "ai setup --check \"tests=<command>\"", "why": "verification is required but no project checks are configured", "extra": extra});
         }
         let head = git_state.get("head").and_then(Value::as_str);
-        let (ok, reason) = evidence::task_green(ws, &task_id, head, None);
+        let started = gates::claim_started(ws, &task_id);
+        let (ok, reason) = evidence::task_green(ws, &task_id, head, started.as_deref());
         if !ok {
             return json!({
                 "cmd": format!("ai check --task {task_id} --agent {a}"),
@@ -324,8 +339,7 @@ pub fn build(ws: &Workspace, agent: Option<&str>, history: usize, role_arg: Opti
         .iter()
         .copied()
         .filter(|task| {
-            task.status() == "review"
-                && task.owner().is_none()
+            lifecycle::review_is_claimable(ws, task)
                 && (agent.is_none() || task.get_str("submitted_by").as_deref() != agent)
         })
         .collect();
@@ -432,10 +446,20 @@ pub fn build(ws: &Workspace, agent: Option<&str>, history: usize, role_arg: Opti
             rec["why"] =
                 json!("ask the user the setup questions first; answers are stored in config");
             rec
+        } else if blueprint::status(ws) == blueprint::State::Missing {
+            let mut rec = nothing.clone();
+            rec["cmd"] = json!("ai blueprint propose");
+            rec["why"] = json!("scan the machine (OS, top-level tree, installed toolchains), then author the proposal from your analysis; the user approves it");
+            rec
+        } else if blueprint::status(ws) == blueprint::State::Pending {
+            let mut rec = nothing.clone();
+            rec["cmd"] = json!("ai blueprint show");
+            rec["why"] = json!("the architecture proposal is waiting for the user: approve it or change the naming, architecture, mode or playbook");
+            rec
         } else if active.is_empty() {
             let mut rec = nothing.clone();
             rec["cmd"] = json!("ai plan apply plan.json");
-            rec["why"] = json!("no tasks yet: split the request into linked tasks (see `ai plan example`), then fill each spec");
+            rec["why"] = json!("the blueprint is approved and there are no tasks yet: split the request into linked tasks (see `ai plan example`), then fill each spec");
             rec
         } else {
             let mut rec = nothing.clone();
@@ -464,16 +488,31 @@ pub fn build(ws: &Workspace, agent: Option<&str>, history: usize, role_arg: Opti
         }
         rec
     } else if !delivered.is_empty() && !autocontinue {
-        let ids = delivered
-            .iter()
-            .map(|task| task.id())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let mut rec = nothing.clone();
-        rec["why"] = json!(format!(
-            "you delivered {ids}; report it and wait for the user's go-ahead (then: ai task next --agent {who})"
-        ));
-        rec
+        if gates::allows_self_review(ws) {
+            let task = delivered
+                .iter()
+                .max_by_key(|task| task.get_str("updated").unwrap_or_default())
+                .copied()
+                .unwrap_or(delivered[0]);
+            let task_id = task.id();
+            let state_for_task = task_state(ws, task);
+            let mut rec = next_action(ws, task, agent, &state_for_task, git_ready, git_on);
+            if let Some(object) = rec.as_object_mut() {
+                object.insert("task".into(), json!(task_id));
+            }
+            rec
+        } else {
+            let ids = delivered
+                .iter()
+                .map(|task| task.id())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut rec = nothing.clone();
+            rec["why"] = json!(format!(
+                "you delivered {ids}; report it and wait for the user's go-ahead (then: ai task next --agent {who})"
+            ));
+            rec
+        }
     } else if let Some(task) = ready_all.first() {
         json!({
             "task": task.id(),
@@ -533,6 +572,11 @@ pub fn build(ws: &Workspace, agent: Option<&str>, history: usize, role_arg: Opti
         },
         "agent": agent,
         "role": role,
+        "playbook": gates::playbook(ws),
+        "blueprint": {
+            "status": blueprint::status(ws).as_str(),
+            "path": blueprint::FILE,
+        },
         "mine": mine.iter().map(|task| task.to_json()).collect::<Vec<_>>(),
         "recommended": recommended,
         "ready": ready_all.iter().map(Task::to_json).collect::<Vec<_>>(),

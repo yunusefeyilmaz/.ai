@@ -4,6 +4,7 @@ use std::fs;
 
 use serde_json::{json, Map, Value};
 
+use crate::config::blueprint;
 use crate::config::settings as config;
 use crate::core::error::Result;
 use crate::core::time::iso;
@@ -51,6 +52,10 @@ pub fn run(ws: &Workspace, args: &BriefArgs) -> Result<i32> {
         ),
         format!("Workspace: {}", if ws.ws_prefix().is_empty() { "./" } else { ws.ws_prefix() }),
         format!("Mode:      {}", config.get("mode").and_then(Value::as_str).unwrap_or("-")),
+        format!("Playbook:  {}", crate::tasks::gates::playbook(ws)),
+        String::new(),
+        "--- Project conventions (approved blueprint) ---".to_string(),
+        conventions(ws),
         String::new(),
         "You are an external assistant. You may not have filesystem or shell access.".to_string(),
         "Never claim that you ran a command, test or check. Ask the human to run the".to_string(),
@@ -62,7 +67,14 @@ pub fn run(ws: &Workspace, args: &BriefArgs) -> Result<i32> {
         "1. One task per session. Claim it before editing anything.".to_string(),
         "2. Lease the files or subsystem you will touch; a live lease is a refusal.".to_string(),
         "3. A behavior change needs a spec with testable acceptance criteria.".to_string(),
-        "4. The producer never reviews its own work.".to_string(),
+        format!(
+            "4. {}.",
+            if crate::tasks::gates::allows_self_review(ws) {
+                "Solo playbook: review your own work honestly and record the evidence"
+            } else {
+                "The producer never reviews its own work"
+            }
+        ),
         "5. Work is done only when `ai check` is green and its output is recorded.".to_string(),
         "6. Checkpoint at milestones and before the context window fills.".to_string(),
         format!(
@@ -202,11 +214,7 @@ pub fn run(ws: &Workspace, args: &BriefArgs) -> Result<i32> {
     ]);
     let mut text = lines.join("\n");
     if args.max_chars > 0 && text.chars().count() > args.max_chars {
-        let truncated: String = text.chars().take(args.max_chars).collect();
-        text = format!(
-            "{}\n\n[truncated by ai brief]\n=== END BRIEF ===",
-            truncated.trim_end()
-        );
+        text = truncate_brief(&text, args.max_chars);
     }
     if args.json {
         let spec_body = spec_path
@@ -232,6 +240,40 @@ pub fn run(ws: &Workspace, args: &BriefArgs) -> Result<i32> {
     }
     println!("{text}");
     Ok(0)
+}
+
+/// The approved naming/layout/rules, rendered by the blueprint module so the
+/// brief and `ai blueprint show` can never drift apart.
+fn conventions(ws: &Workspace) -> String {
+    blueprint::conventions_block(ws)
+}
+
+/// Keep the actionable sections when a brief must fit a token budget: the head
+/// (identity, conventions, rules) and the tail (how to answer, exact commands)
+/// survive; the middle (task body, spec, checkpoint) is cut.
+fn truncate_brief(text: &str, max_chars: usize) -> String {
+    const MARKER: &str = "--- Commands available to the human ---";
+    let split = text.find(MARKER).unwrap_or(text.len());
+    let (head, tail) = text.split_at(split);
+    let marker =
+        "\n\n[... middle truncated by ai brief — read the task/spec with `ai task show` ...]\n\n";
+    if max_chars <= marker.chars().count() + 80 {
+        let truncated: String = text.chars().take(max_chars).collect();
+        return format!(
+            "{}\n\n[truncated by ai brief]\n=== END BRIEF ===",
+            truncated.trim_end()
+        );
+    }
+    let body = max_chars - marker.chars().count();
+    let head_len = (body * 2) / 3;
+    let tail_len = body - head_len;
+    let head: String = head.chars().take(head_len).collect();
+    let tail_chars: Vec<char> = tail.chars().collect();
+    let tail: String = tail_chars
+        .iter()
+        .skip(tail_chars.len().saturating_sub(tail_len))
+        .collect();
+    format!("{}{marker}{}", head.trim_end(), tail.trim_start())
 }
 
 fn text(value: Option<&Value>) -> String {

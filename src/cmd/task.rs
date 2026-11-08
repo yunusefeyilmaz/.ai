@@ -180,9 +180,10 @@ fn task_list(ws: &Workspace, all: bool, json: bool) -> Result<i32> {
     let active: Vec<&Task> = tasks.iter().filter(|task| task.is_active()).collect();
     let done: Vec<&Task> = tasks.iter().filter(|task| task.folder == "done").collect();
     if json {
+        // List views must stay compact: the Markdown body belongs to `task show`.
         let payload = json!({
-            "active": active.iter().map(|task| task.to_json()).collect::<Vec<_>>(),
-            "done": done.iter().map(|task| task.to_json()).collect::<Vec<_>>(),
+            "active": active.iter().map(|task| task.slim_json()).collect::<Vec<_>>(),
+            "done": done.iter().map(|task| task.slim_json()).collect::<Vec<_>>(),
         });
         println!("{}", serde_json::to_string_pretty(&payload)?);
         return Ok(0);
@@ -320,6 +321,17 @@ fn print_spec_criteria(ws: &Workspace, meta: &Map<String, Value>) {
     }
 }
 
+/// A task in `done/` is archived history: only `reopen` may change it.
+fn require_active(ws: &Workspace, task_id: &str, path: &Path, action: &str) -> Option<i32> {
+    if path.parent() == Some(ws.active_dir().as_path()) {
+        return None;
+    }
+    eprintln!(
+        "Task {task_id} is archived in done/ and cannot be changed by `{action}`. Bring it back first with `ai task reopen {task_id} --agent <name>`."
+    );
+    Some(1)
+}
+
 fn task_link(
     ws: &Workspace,
     task_id: &str,
@@ -338,6 +350,9 @@ fn task_link(
     if issue.is_none() && pr.is_none() {
         eprintln!("Specify at least --issue or --pr.");
         return Ok(1);
+    }
+    if let Some(code) = require_active(ws, task_id, &path, "task link") {
+        return Ok(code);
     }
     let (mut meta, mut body, _) = store::parse_task(&path)?;
     let mut links = Vec::new();
@@ -387,9 +402,9 @@ fn task_ready(ws: &Workspace, json: bool) -> Result<i32> {
     let (ready, waiting) = lifecycle::ready_and_waiting(ws);
     if json {
         let payload = json!({
-            "ready": ready.iter().map(|task| task.to_json()).collect::<Vec<_>>(),
+            "ready": ready.iter().map(|task| task.slim_json()).collect::<Vec<_>>(),
             "waiting": waiting.iter().map(|(task, reasons)| json!({
-                "task": task.to_json(),
+                "task": task.slim_json(),
                 "reasons": reasons,
             })).collect::<Vec<_>>(),
         });
@@ -472,7 +487,7 @@ fn task_next(ws: &Workspace, agent: &str, review: bool, json: bool) -> Result<i3
         let payload = json!({
             "ready": [],
             "waiting": waiting.iter().map(|(task, reasons)| json!({
-                "task": task.to_json(),
+                "task": task.slim_json(),
                 "reasons": reasons,
             })).collect::<Vec<_>>(),
         });
@@ -491,9 +506,8 @@ fn next_review(ws: &Workspace, agent: &str, json: bool) -> Result<i32> {
         .into_iter()
         .filter(|task| {
             task.is_active()
-                && task.status() == "review"
+                && lifecycle::review_is_claimable(ws, task)
                 && task.get_str("submitted_by").as_deref() != Some(agent)
-                && task.owner().is_none()
         })
         .collect();
     queue.sort_by_key(|task| task.id());
@@ -711,7 +725,12 @@ fn auto_verify(ws: &Workspace, path: &Path, agent: &str) -> Result<Option<String
         return Ok(None);
     }
     let task_id = text_or(meta.get("id"), "");
-    let head = git::state(ws)
+    let task = match store::task_of(ws, &task_id) {
+        Some(task) => task,
+        None => return Ok(None),
+    };
+    let checkout = git::task_checkout(ws, &task);
+    let head = git::state_at(&checkout)
         .get("head")
         .and_then(Value::as_str)
         .map(ToString::to_string);
@@ -721,7 +740,7 @@ fn auto_verify(ws: &Workspace, path: &Path, agent: &str) -> Result<Option<String
     }
     eprintln!("Running the project checks for task {task_id} before review...");
     let mut results: Vec<Value> = Vec::new();
-    let problems = crate::runtime::health::run_commands(ws, false, &mut results, None)?;
+    let problems = crate::runtime::health::run_commands(ws, &checkout, false, &mut results, None)?;
     let ok = !problems.iter().any(|finding| finding.level == "error");
     evidence::record_task_check(
         ws,
@@ -861,8 +880,8 @@ fn task_review(ws: &Workspace, task_id: &str, agent: &str) -> Result<i32> {
         &proof,
     );
     store::write_task(&current, &meta, &new_body)?;
-    drop(_guard);
     board::write_board(ws, &store::load_tasks(ws))?;
+    drop(_guard);
     append_event(
         ws,
         "task_reviewed",
@@ -871,7 +890,14 @@ fn task_review(ws: &Workspace, task_id: &str, agent: &str) -> Result<i32> {
     lifecycle::release_task_locks(ws, &meta, Some(agent))?;
     release_lock(ws, &format!("task-{id}"), Some(agent), false, true)?;
     println!("Task {id} is delivered for independent review and handed over.");
-    println!("Reviewer next: {}", approve_steps(ws, &id, "<reviewer>"));
+    if gates::allows_self_review(ws) {
+        println!(
+            "Solo playbook: approve and ship it yourself: {} (re-read the diff first).",
+            approve_steps(ws, &id, agent)
+        );
+    } else {
+        println!("Reviewer next: {}", approve_steps(ws, &id, "<reviewer>"));
+    }
     if !gates::workflow_config(ws).auto_continue {
         println!(
             "STOP: report what you delivered and wait for the user before starting another task."
@@ -899,7 +925,9 @@ fn task_request_changes(ws: &Workspace, task_id: &str, agent: &str, reason: &str
             path: path.clone(),
             folder: "active".into(),
         };
-        if let Some(error) = gates::request_changes_gate(&task, agent) {
+        if let Some(error) =
+            gates::request_changes_gate(&task, agent, gates::allows_self_review(ws))
+        {
             return fail(error);
         }
         meta.insert("status".into(), json!("changes_requested"));
@@ -960,6 +988,9 @@ fn task_block(ws: &Workspace, task_id: &str, agent: &str, reason: &str) -> Resul
         println!("Task {id} is already blocked.");
         return Ok(0);
     }
+    if let Some(code) = require_active(ws, task_id, &path, "task block") {
+        return Ok(code);
+    }
     let result = apply_transition(ws, task_id, &path, false, |meta, body| {
         let previous = meta
             .get("status")
@@ -990,6 +1021,9 @@ fn task_block(ws: &Workspace, task_id: &str, agent: &str, reason: &str) -> Resul
     };
     if meta.get("blocked_from").and_then(Value::as_str) == Some("in_progress") {
         release_lock(ws, &format!("task-{id}"), None, true, true)?;
+        // File leases taken for this task would otherwise linger for the whole
+        // stale window and refuse other agents on those paths.
+        lifecycle::release_task_locks(ws, &meta, None)?;
     }
     println!("Blocked {}: {reason}", text_or(meta.get("id"), task_id));
     Ok(0)
@@ -1003,6 +1037,9 @@ fn task_unblock(ws: &Workspace, task_id: &str, agent: &str) -> Result<i32> {
             return Ok(1);
         }
     };
+    if let Some(code) = require_active(ws, task_id, &path, "task unblock") {
+        return Ok(code);
+    }
     let result = apply_transition(ws, task_id, &path, false, |meta, body| {
         let previous = meta
             .get("status")
@@ -1062,7 +1099,12 @@ fn task_done(ws: &Workspace, task_id: &str, agent: &str, force: bool) -> Result<
     let (meta, _, _) = store::parse_task(&path)?;
     let id = text_or(meta.get("id"), task_id);
     let previous_spec = meta.get("spec").and_then(Value::as_str);
-    if !force {
+    let submitted_by = meta
+        .get("submitted_by")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let solo_self = gates::allows_self_review(ws) && submitted_by.as_deref() == Some(agent);
+    if !force && !solo_self {
         if let Err(denied) = roles::authorize(ws, Some(agent), "task.done") {
             eprintln!("{denied}");
             return Ok(1);
@@ -1305,6 +1347,17 @@ fn task_reopen(
         eprintln!("{denied}");
         return Ok(1);
     }
+    // A free-form status would make the task disappear from every reader, so the
+    // reopened state is a real status from the state machine.
+    const REOPEN_STATUSES: &[&str] = &["review", "todo", "in_progress", "changes_requested"];
+    let reopen_status = status.unwrap_or("review");
+    if !REOPEN_STATUSES.contains(&reopen_status) {
+        eprintln!(
+            "Cannot reopen into '{reopen_status}'; use one of: {}.",
+            REOPEN_STATUSES.join(", ")
+        );
+        return Ok(1);
+    }
     let (mut meta, body, _) = store::parse_task(&path)?;
     let id = text_or(meta.get("id"), task_id);
     let target = ws.active_dir().join(
@@ -1328,7 +1381,7 @@ fn task_reopen(
     } else if let Some(previous) = previous_spec {
         eprintln!("WARN  could not restore the spec {previous}; the task keeps its reference.");
     }
-    meta.insert("status".into(), json!(status.unwrap_or("review")));
+    meta.insert("status".into(), json!(reopen_status));
     meta.insert("reviewed_by".into(), Value::Null);
     meta.insert("reviewed_at".into(), Value::Null);
     meta.insert("merged_into".into(), Value::Null);
@@ -1451,70 +1504,10 @@ fn task_discard(ws: &Workspace, task_id: &str) -> Result<i32> {
 }
 
 /// Stage and commit only coordination paths (tasks, specs, board).
+///
+/// Delegates to `git::flow::commit_ledger`, which knows how to record a moved or
+/// deleted task, so the two callers cannot drift apart.
 pub fn commit_ledger(ws: &Workspace, paths: &[&Path], message: &str) {
-    if !config::git_enabled(ws) {
-        return;
-    }
-    let state = git::state(ws);
-    if !state.get("repo").and_then(Value::as_bool).unwrap_or(false) {
-        return;
-    }
-    let rels: Vec<String> = {
-        let mut kept: Vec<String> = Vec::new();
-        for path in paths {
-            let relative = match path.strip_prefix(&ws.project) {
-                Ok(rest) => rest.to_string_lossy().replace('\\', "/"),
-                Err(_) => continue,
-            };
-            if !git::is_workspace_ledger_path(ws, &relative) || kept.contains(&relative) {
-                continue;
-            }
-            if !path.exists() {
-                // A moved file no longer exists; stage its deletion only when
-                // git already tracks it (an untracked file has nothing to
-                // record, and `git add` would refuse the whole pathspec).
-                let tracked = git::run_git(
-                    &ws.project,
-                    &["ls-files", "--error-unmatch", "--", &relative],
-                );
-                if tracked.code != 0 {
-                    continue;
-                }
-            }
-            kept.push(relative);
-        }
-        kept
-    };
-    if rels.is_empty() {
-        return;
-    }
-    let mut add = vec!["add".to_string(), "--".to_string()];
-    add.extend(rels.iter().cloned());
-    let add_refs: Vec<&str> = add.iter().map(String::as_str).collect();
-    let _ = git::run_git(&ws.project, &add_refs);
-    let mut diff = vec![
-        "diff".to_string(),
-        "--cached".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
-    ];
-    diff.extend(rels.iter().cloned());
-    let diff_refs: Vec<&str> = diff.iter().map(String::as_str).collect();
-    if git::run_git(&ws.project, &diff_refs).code == 0 {
-        return;
-    }
-    let mut commit = vec![
-        "commit".to_string(),
-        "-m".to_string(),
-        message.to_string(),
-        "--".to_string(),
-    ];
-    commit.extend(rels);
-    let commit_refs: Vec<&str> = commit.iter().map(String::as_str).collect();
-    let git::GitOutput { code, stderr, .. } = git::run_git(&ws.project, &commit_refs);
-    if code != 0 {
-        eprintln!(
-            "WARN  the task ledger was written but not committed: {stderr}. Commit tasks/, specs/ and tasks/BOARD.md manually."
-        );
-    }
+    let owned: Vec<std::path::PathBuf> = paths.iter().map(|path| path.to_path_buf()).collect();
+    let _ = gitflow::commit_ledger(ws, &owned, message);
 }

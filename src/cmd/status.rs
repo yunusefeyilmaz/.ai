@@ -18,7 +18,7 @@ use crate::StatusArgs;
 pub fn status(ws: &Workspace, args: &StatusArgs) -> Result<i32> {
     let config = config::load_or_default(ws);
     let tasks = store::load_tasks(ws);
-    let locks = list_locks(ws, true);
+    let locks = list_locks(ws, false);
     if args.board && !args.json {
         println!(
             "{}",
@@ -37,7 +37,7 @@ pub fn status(ws: &Workspace, args: &StatusArgs) -> Result<i32> {
         .ok()
         .flatten()
         .unwrap_or_else(|| json!([]));
-    let handoffs = checkpoints::list_handoff_markers(ws, true);
+    let handoffs = checkpoints::list_handoff_markers(ws, false);
     let mut checkpoints = Vec::new();
     if let Ok(entries) = fs::read_dir(ws.checkpoint_dir()) {
         let mut names: Vec<String> = entries
@@ -59,7 +59,7 @@ pub fn status(ws: &Workspace, args: &StatusArgs) -> Result<i32> {
                 "workspace": ws.root.to_string_lossy(),
                 "project": ws.project.to_string_lossy(),
                 "mode": config.get("mode"),
-                "active": active.iter().map(|task| task.to_json()).collect::<Vec<_>>(),
+                "active": active.iter().map(|task| task.slim_json()).collect::<Vec<_>>(),
                 "locks": locks,
                 "handoffs": handoffs,
                 "checkpoints": checkpoints,

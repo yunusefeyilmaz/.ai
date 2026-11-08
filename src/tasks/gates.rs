@@ -17,6 +17,7 @@
 
 use serde_json::Value;
 
+use crate::config::blueprint;
 use crate::config::preferences;
 use crate::config::settings::{configured_checks, git_enabled, load, preference};
 use crate::core::error::Result;
@@ -89,7 +90,19 @@ pub fn creation_gate(ws: &Workspace, role: Option<&str>) -> Option<String> {
         .unwrap_or(false);
     if !confirmed {
         return Some(
-            "Ask the user how much process they want before planning: run `ai setup`, ask them the questions (review, checks, git, tests, continue, workers) and store the answers with `ai setup --set ...`."
+            "Ask the user how much process they want before planning: run `ai setup`, ask them the questions (review, checks, git, tests, continue, workers, mode, playbook) and store the answers with `ai setup --set ...`."
+                .to_string(),
+        );
+    }
+    if blueprint::status(ws) == blueprint::State::Pending {
+        return Some(
+            "The architecture proposal is waiting for the user: run `ai blueprint show`, ask them to approve or change it (`ai blueprint approve --agent <name>` or `ai blueprint revise --set naming.files=snake_case`), then plan."
+                .to_string(),
+        );
+    }
+    if blueprint::status(ws) == blueprint::State::Missing {
+        return Some(
+            "No architecture proposal exists yet: run `ai blueprint propose --from <analysis.json>` (you are the chief), then ask the user to approve or change it before planning."
                 .to_string(),
         );
     }
@@ -117,6 +130,27 @@ pub fn check_required(ws: &Workspace) -> bool {
     }
 }
 
+/// Who implements and who reviews: `solo`, `pair` or `team`.
+pub fn playbook(ws: &Workspace) -> String {
+    let config = load(ws).unwrap_or_else(|_| crate::config::settings::default_config(ws));
+    let name = config
+        .get("workflow")
+        .and_then(|workflow| workflow.get("playbook"))
+        .and_then(Value::as_str)
+        .unwrap_or("pair");
+    if crate::config::blueprint::PLAYBOOKS.contains(&name) {
+        name.to_string()
+    } else {
+        "pair".to_string()
+    }
+}
+
+/// In the solo playbook one agent designs, implements and reviews its own work;
+/// every other playbook keeps the producer/reviewer separation.
+pub fn allows_self_review(ws: &Workspace) -> bool {
+    playbook(ws) == "solo"
+}
+
 pub fn claim_started(ws: &Workspace, task_id: &str) -> Option<String> {
     let path = lock_path(&ws.locks_dir(), &format!("task-{task_id}"));
     let holder = read_holder(&path)?;
@@ -137,7 +171,7 @@ pub fn review_gate(ws: &Workspace, task: &Task, _agent: &str) -> Result<(Option<
             String::new(),
         ));
     }
-    let head = git::state(ws)
+    let head = git::state_at(&git::task_checkout(ws, task))
         .get("head")
         .and_then(Value::as_str)
         .map(ToString::to_string);
@@ -217,27 +251,22 @@ pub fn review_git_gate(
         ));
     }
     if include_evidence {
-        if let Some(latest) = evidence::task_records(ws, &task_id).last() {
-            if !latest
-                .get("invalidated")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
-                let recorded = latest.get("head").and_then(Value::as_str).unwrap_or("");
-                if !recorded.is_empty() && recorded != head {
-                    return Some(format!(
-                        "Task {task_id}: verification evidence belongs to {} but HEAD is {}. Re-run `ai check --task {task_id} --agent {agent}` on the current commit before review.",
-                        &recorded[..recorded.len().min(8)],
-                        &head[..head.len().min(8)]
-                    ));
-                }
-            }
+        // Only the "proof belongs to another commit" dimension here: `review_gate`
+        // already enforces `green` when checks are required, and a workspace that
+        // opted out of checks must not be blocked by a partial record.
+        if !evidence::task_records(ws, &task_id).is_empty()
+            && !evidence::recorded_on(ws, &task_id, Some(head))
+        {
+            return Some(format!(
+                "Task {task_id}: verification evidence belongs to another commit but HEAD is {}. Re-run `ai check --task {task_id} --agent {agent}` on the current commit before review.",
+                &head[..head.len().min(8)]
+            ));
         }
     }
     None
 }
 
-pub fn request_changes_gate(task: &Task, agent: &str) -> Option<String> {
+pub fn request_changes_gate(task: &Task, agent: &str, allow_self: bool) -> Option<String> {
     let task_id = task.id();
     if task.status() != "review" {
         return Some(format!(
@@ -246,6 +275,9 @@ pub fn request_changes_gate(task: &Task, agent: &str) -> Option<String> {
         ));
     }
     if task.get_str("submitted_by").as_deref() == Some(agent) {
+        if allow_self {
+            return None;
+        }
         return Some(format!(
             "Task {task_id} was submitted by {agent}; an independent agent must request changes."
         ));
@@ -273,9 +305,9 @@ pub fn done_gate(ws: &Workspace, task: &Task, agent: &str, force: bool) -> Optio
             task.status()
         ));
     }
-    if task.get_str("submitted_by").as_deref() == Some(agent) {
+    if task.get_str("submitted_by").as_deref() == Some(agent) && !allows_self_review(ws) {
         return Some(format!(
-            "Task {task_id} was submitted by {agent}; the producer never approves its own work. A different agent must run `ai task done`."
+            "Task {task_id} was submitted by {agent}; the producer never approves its own work. A different agent must run `ai task done` (or choose the solo playbook with `ai setup --set playbook=solo`)."
         ));
     }
     None

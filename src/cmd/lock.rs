@@ -9,6 +9,7 @@ use crate::runtime::leases::{
     self, acquire_lock, heartbeat_lock, list_locks, lock_status_payload, print_lock_table,
     release_lock, resource_has_glob,
 };
+use crate::runtime::mutex::workspace_state_guard;
 use crate::tasks::scope as task_scope;
 use crate::tasks::store;
 
@@ -19,16 +20,23 @@ fn widen_scope(
     task_id: Option<&str>,
     resource: &str,
     agent: &str,
-) -> Option<String> {
-    let task_id = task_id?;
+) -> Result<Option<String>> {
+    let task_id = match task_id {
+        Some(task_id) => task_id,
+        None => return Ok(None),
+    };
     if resource_has_glob(resource) || resource.starts_with('@') {
-        return None;
+        return Ok(None);
     }
-    let path = store::find_task(ws, task_id)?;
-    let (mut meta, body, _) = store::parse_task(&path).ok()?;
+    let path = match store::find_task(ws, task_id) {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+    let _guard = workspace_state_guard(ws)?;
+    let (mut meta, body, _) = store::parse_task(&path)?;
     let owner = meta.get("owner").and_then(Value::as_str).unwrap_or("");
     if !owner.is_empty() && owner != agent {
-        return None;
+        return Ok(None);
     }
     let allowed = task_scope::split_globs(meta.get("scope_allowed"));
     if allowed.is_empty()
@@ -36,7 +44,7 @@ fn widen_scope(
             .iter()
             .any(|glob| task_scope::matches(glob, resource))
     {
-        return None;
+        return Ok(None);
     }
     let mut widened = allowed.clone();
     widened.push(resource.to_string());
@@ -44,8 +52,9 @@ fn widen_scope(
         "scope_allowed".into(),
         json!(task_scope::join_globs(Some(&widened)).unwrap_or_default()),
     );
-    let _ = store::write_task(&path, &meta, &body);
-    Some(resource.to_string())
+    meta.insert("updated".into(), json!(crate::core::time::iso(None)));
+    store::write_task(&path, &meta, &body)?;
+    Ok(Some(resource.to_string()))
 }
 
 pub fn run(ws: &Workspace, args: &LockArgs) -> Result<i32> {
@@ -71,7 +80,7 @@ pub fn run(ws: &Workspace, args: &LockArgs) -> Result<i32> {
                 } else {
                     println!("Acquired '{resource}' for {agent}.");
                 }
-                if let Some(widened) = widen_scope(ws, task.as_deref(), resource, agent) {
+                if let Some(widened) = widen_scope(ws, task.as_deref(), resource, agent)? {
                     println!(
                         "Added '{widened}' to task {}'s scope_allowed (so the commit gate accepts it).",
                         task.as_deref().unwrap_or("-")

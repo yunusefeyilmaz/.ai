@@ -19,6 +19,21 @@ pub fn load(ws: &Workspace) -> Result<Value> {
     }
 }
 
+/// Read the config for a writer: `Ok(None)` when the file is absent (create a
+/// default), `Err` when it exists but is unreadable. Writers must never replace a
+/// corrupt config with a default and silently discard the user's settings.
+pub fn load_for_update(ws: &Workspace) -> Result<Option<Value>> {
+    if !ws.config_path().exists() {
+        return Ok(None);
+    }
+    match read_json(&ws.config_path()) {
+        Ok(Some(value @ Value::Object(_))) => Ok(Some(value)),
+        Ok(Some(_)) => fail("config/workspace.json is unreadable: it must be a JSON object"),
+        Ok(None) => Ok(None),
+        Err(error) => fail(format!("config/workspace.json is unreadable: {error}")),
+    }
+}
+
 pub fn load_or_default(ws: &Workspace) -> Value {
     load(ws).unwrap_or_else(|_| default_config(ws))
 }
@@ -67,7 +82,13 @@ pub fn default_config(ws: &Workspace) -> Value {
             "requireCheck": "strict",
             "autoContinue": false,
             "chiefOnlyTasks": true,
-            "requireSpec": true
+            "requireSpec": true,
+            "playbook": "pair"
+        },
+        "blueprint": {
+            "status": "missing",
+            "path": "config/blueprint.json",
+            "required": false
         },
         "team": {},
         "orchestration": {"maxParallel": 3},

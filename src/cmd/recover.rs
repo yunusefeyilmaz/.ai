@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use crate::config::settings as config;
-use crate::core::error::Result;
+use crate::core::error::{fail, Result};
 use crate::core::fsio::lock_path;
 use crate::core::time::iso;
 use crate::core::workspace::Workspace;
@@ -61,7 +61,15 @@ fn apply_fix(ws: &Workspace, fix: &Fix) -> Result<()> {
         }
         Fix::RemoveLock(resource) => {
             let path = lock_path(&ws.locks_dir(), resource);
-            let _ = fs::remove_file(path);
+            match fs::remove_file(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return fail(format!(
+                        "could not remove the stale lock for '{resource}': {error}"
+                    ))
+                }
+            }
         }
         Fix::RebuildSidecar(task_id) => {
             let _ = checkpoints::rebuild_sidecar(ws, task_id)?;

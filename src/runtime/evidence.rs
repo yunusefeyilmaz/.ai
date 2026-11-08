@@ -48,6 +48,9 @@ pub fn record_task_check(
         "checks": checks,
     });
     fs::create_dir_all(ws.evidence_dir())?;
+    // One writer at a time: two agents checking at once must not interleave
+    // partial JSON lines in the ledger every gate reads.
+    let _guard = crate::runtime::mutex::workspace_state_guard(ws)?;
     let mut handle = OpenOptions::new()
         .create(true)
         .append(true)
@@ -58,6 +61,7 @@ pub fn record_task_check(
 
 pub fn invalidate(ws: &Workspace, task_id: &str, reason: &str) -> Result<()> {
     fs::create_dir_all(ws.evidence_dir())?;
+    let _guard = crate::runtime::mutex::workspace_state_guard(ws)?;
     let mut handle = OpenOptions::new()
         .create(true)
         .append(true)
@@ -82,6 +86,20 @@ pub fn task_records(ws: &Workspace, task_id: &str) -> Vec<Value> {
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .filter(Value::is_object)
         .collect()
+}
+
+/// True when the newest record (if any) was taken on `head`. One definition, so
+/// the review package, the gates and the status views cannot disagree.
+pub fn recorded_on(ws: &Workspace, task_id: &str, head: Option<&str>) -> bool {
+    let recorded = task_records(ws, task_id)
+        .last()
+        .and_then(|record| record.get("head"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    match (recorded, head) {
+        (Some(recorded), Some(head)) => recorded == head,
+        _ => false,
+    }
 }
 
 pub fn summary(record: &Value) -> String {

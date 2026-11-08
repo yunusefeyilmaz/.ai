@@ -199,5 +199,44 @@ fn stored_answers_unblock_creation() {
         "git=no",
         "tests=yes",
     ]);
+    // Creation also needs the user-approved architecture proposal.
+    let refused = ws.fails(&["task", "new", "Needs a blueprint", "--role", "chief"]);
+    assert!(
+        refused.all().contains("architecture proposal exists"),
+        "{}",
+        refused.all()
+    );
+    ws.blueprint();
     ws.ok(&["task", "new", "Now allowed", "--role", "chief"]);
+}
+
+#[test]
+fn check_timeout_is_stored_on_the_named_check() {
+    let ws = Ws::new("ai-setup-check-timeout-");
+    ws.ok(&[
+        "setup",
+        "--check",
+        "unit=echo ok",
+        "--check-timeout",
+        "unit=300",
+    ]);
+    assert_eq!(
+        ws.config()["checks"][0]["timeoutSeconds"],
+        serde_json::json!(300)
+    );
+
+    let unknown = ws.fails(&["setup", "--check-timeout", "nope=5"]);
+    assert!(
+        unknown.all().contains("no configured check named 'nope'"),
+        "{}",
+        unknown.all()
+    );
+    let invalid = ws.fails(&["setup", "--check-timeout", "unit=soon"]);
+    assert!(
+        invalid
+            .all()
+            .contains("--check-timeout expects NAME=SECONDS"),
+        "{}",
+        invalid.all()
+    );
 }

@@ -1,5 +1,7 @@
 //! `ai doctor` and `ai check`: workspace health and the verification contract.
 
+use std::path::PathBuf;
+
 use serde_json::{json, Value};
 
 use crate::config::settings as config;
@@ -8,7 +10,7 @@ use crate::core::workspace::{Workspace, VERSION};
 use crate::git::repo as git;
 use crate::runtime::evidence;
 use crate::runtime::health::{self, Finding};
-use crate::tasks::store::{self, Task};
+use crate::tasks::store;
 
 use crate::{CheckArgs, DoctorArgs};
 
@@ -18,7 +20,9 @@ pub fn doctor(ws: &Workspace, args: &DoctorArgs) -> Result<i32> {
     } else {
         Vec::new()
     };
-    let problems = health::collect_checks(ws);
+    let mut problems = health::collect_checks(ws);
+    problems.extend(health::collect_git_invariants(ws));
+    problems.extend(health::collect_blueprint_check(ws));
     let mut code = if problems.iter().any(|finding| finding.level == "error") {
         1
     } else {
@@ -73,16 +77,10 @@ pub fn doctor(ws: &Workspace, args: &DoctorArgs) -> Result<i32> {
 
 fn evidence_task(ws: &Workspace, args: &CheckArgs) -> Option<String> {
     if let Some(task_id) = &args.task {
-        return store::find_task(ws, task_id)
-            .and_then(|path| store::parse_task(&path).ok())
-            .and_then(|(meta, _, _)| {
-                meta.get("id")
-                    .and_then(Value::as_str)
-                    .map(ToString::to_string)
-            });
+        return store::task_of(ws, task_id).map(|task| task.id());
     }
     let agent = args.agent.as_deref()?;
-    let mine: Vec<Task> = store::load_tasks(ws)
+    let mine: Vec<store::Task> = store::load_tasks(ws)
         .into_iter()
         .filter(|task| {
             task.is_active()
@@ -94,6 +92,45 @@ fn evidence_task(ws: &Workspace, args: &CheckArgs) -> Option<String> {
         Some(mine[0].id())
     } else {
         None
+    }
+}
+
+/// The checkout whose product files the checks and evidence describe.
+fn checkout_for(ws: &Workspace, task_id: Option<&str>) -> PathBuf {
+    task_id
+        .and_then(|task_id| store::task_of(ws, task_id))
+        .map(|task| git::task_checkout(ws, &task))
+        .unwrap_or_else(|| ws.project.clone())
+}
+
+/// Evidence is proof of the claimant's work, not a lever any agent may pull on
+/// somebody else's task. Only a task being worked on (by the caller) or one that
+/// is already in review may gain a record.
+fn may_record_evidence(ws: &Workspace, task_id: &str, agent: Option<&str>) -> bool {
+    let task = match store::task_of(ws, task_id) {
+        Some(task) => task,
+        None => return false,
+    };
+    let status = task.status();
+    let owner = task.owner();
+    match status.as_str() {
+        "review" => true,
+        "in_progress" => match (owner, agent) {
+            (Some(owner), Some(agent)) => owner == agent,
+            (Some(owner), None) => {
+                eprintln!(
+                    "NOTE  task {task_id} is owned by {owner}; pass --agent {owner} to record evidence."
+                );
+                false
+            }
+            (None, _) => true,
+        },
+        other => {
+            eprintln!(
+                "NOTE  no evidence recorded for task {task_id}: it is '{other}', not claimed by a worker."
+            );
+            false
+        }
     }
 }
 
@@ -111,6 +148,11 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
             args.agent.as_deref().unwrap_or("-")
         );
     }
+    let attach = task_id
+        .as_deref()
+        .map(|task_id| may_record_evidence(ws, task_id, args.agent.as_deref()))
+        .unwrap_or(false);
+    let checkout = checkout_for(ws, task_id.as_deref());
     let mut problems: Vec<Finding> = health::collect_checks(ws);
     let mut results: Vec<Value> = Vec::new();
     let allow_empty = args.allow_empty;
@@ -140,6 +182,7 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
     } else if !args.no_commands {
         problems.extend(health::run_commands(
             ws,
+            &checkout,
             args.fast,
             &mut results,
             Some(args.json),
@@ -154,30 +197,32 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
         code = 1;
     }
     if let Some(task_id) = &task_id {
-        let head = git::state(ws)
-            .get("head")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        match evidence::record_task_check(
-            ws,
-            task_id,
-            args.agent.as_deref(),
-            code == 0,
-            head.as_deref(),
-            &results,
-            args.strict,
-            !checks.is_empty() && !args.no_commands,
-            args.fast,
-        ) {
-            Ok(record) => {
-                if !args.json {
-                    eprintln!(
-                        "Evidence recorded for task {task_id}: {}",
-                        evidence::summary(&record)
-                    );
+        if attach {
+            let head = git::state_at(&checkout)
+                .get("head")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+            match evidence::record_task_check(
+                ws,
+                task_id,
+                args.agent.as_deref(),
+                code == 0,
+                head.as_deref(),
+                &results,
+                args.strict,
+                !checks.is_empty() && !args.no_commands,
+                args.fast,
+            ) {
+                Ok(record) => {
+                    if !args.json {
+                        eprintln!(
+                            "Evidence recorded for task {task_id}: {}",
+                            evidence::summary(&record)
+                        );
+                    }
                 }
+                Err(error) => eprintln!("WARN  could not record the check result: {error}"),
             }
-            Err(error) => eprintln!("WARN  could not record the check result: {error}"),
         }
     }
     if args.json {
@@ -187,7 +232,8 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
             object.insert("allow_empty".into(), json!(allow_empty));
             if let Some(task_id) = &task_id {
                 object.insert("task".into(), json!(task_id));
-                let head = git::state(ws)
+                object.insert("evidence_attached".into(), json!(attach));
+                let head = git::state_at(&checkout)
                     .get("head")
                     .and_then(Value::as_str)
                     .map(ToString::to_string);

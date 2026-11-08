@@ -25,8 +25,10 @@ pub const DEFAULT_CONFIG: &str = r#"{
     "requireCheck": "strict",
     "autoContinue": false,
     "chiefOnlyTasks": false,
-    "requireSpec": false
+    "requireSpec": false,
+    "playbook": "pair"
   },
+  "blueprint": { "status": "missing", "path": "config/blueprint.json", "required": false },
   "team": {},
   "policy": { "unknownAgent": "allow" },
   "git": {
@@ -281,6 +283,39 @@ impl Ws {
         self.run(&["task", "new", title])
     }
 
+    /// A minimal chief-authored blueprint, approved by the user. Tests that only
+    /// need the planning gate open use this; the blueprint's own behaviour lives
+    /// in `tests/blueprint.rs`.
+    pub fn blueprint(&self) {
+        let analysis = serde_json::json!({
+            "languages": ["Rust"],
+            "architecture": "layered: domain -> application -> adapters",
+            "layout": ["src/", "tests/"],
+            "naming": {
+                "files": "snake_case",
+                "functions": "snake_case",
+                "types": "PascalCase",
+                "json": "snake_case"
+            },
+            "testing": {"framework": "cargo test"},
+            "checks": [],
+            "guidelines": ["one behavior per task with testable criteria"],
+            "workflow": {"workers": 1},
+            "git": {
+                "integrationBranch": "develop",
+                "productionBranch": "master",
+                "merge": "no-ff",
+                "isolation": "branch"
+            }
+        });
+        self.write(
+            "blueprint-analysis.json",
+            &serde_json::to_string_pretty(&analysis).expect("analysis json"),
+        );
+        self.ok(&["blueprint", "propose", "--from", "blueprint-analysis.json"]);
+        self.ok(&["blueprint", "approve", "--agent", "user"]);
+    }
+
     pub fn git(&self, args: &[&str]) -> Out {
         self.git_in(&self.root, args)
     }
@@ -332,6 +367,22 @@ pub fn run_in(root: &Path, args: &[&str]) -> Out {
         .args(args)
         .current_dir(root)
         .env("AI_WORKSPACE", root)
+        .env("AI_HOST", "test-host")
+        .output()
+        .expect("run ai");
+    Out {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
+/// Run the binary in `cwd` without `AI_WORKSPACE`, exercising path discovery.
+pub fn discover_in(cwd: &Path, args: &[&str]) -> Out {
+    let output = Command::new(env!("CARGO_BIN_EXE_ai"))
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("AI_WORKSPACE")
         .env("AI_HOST", "test-host")
         .output()
         .expect("run ai");

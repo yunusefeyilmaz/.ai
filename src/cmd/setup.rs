@@ -32,7 +32,7 @@ fn report(result: &PreferenceStatus) {
     }
     if result.confirmed {
         println!(
-            "Preferences confirmed. Next: plan the work (`ai plan example`, then `ai plan apply plan.json --role chief`)."
+            "Preferences confirmed. Next: record the facts (`ai blueprint propose`), have the chief author the design (`ai blueprint propose --from <analysis.json>`), ask the user to approve or change it, then plan the work (`ai plan example`, then `ai plan apply plan.json --role chief`)."
         );
     } else {
         let missing: Vec<&str> = result
@@ -60,7 +60,11 @@ pub fn run(ws: &Workspace, args: &SetupArgs) -> Result<i32> {
         );
         return Ok(1);
     }
-    if args.defaults || !args.set.is_empty() || !args.checks.is_empty() {
+    if args.defaults
+        || !args.set.is_empty()
+        || !args.checks.is_empty()
+        || !args.check_timeout.is_empty()
+    {
         let mut answers = if args.defaults {
             preferences::defaults()
         } else {
@@ -75,7 +79,13 @@ pub fn run(ws: &Workspace, args: &SetupArgs) -> Result<i32> {
                 }
             }
         }
-        let result = match preferences::apply(ws, &answers, &args.checks, args.agent.as_deref()) {
+        let result = match preferences::apply(
+            ws,
+            &answers,
+            &args.checks,
+            &args.check_timeout,
+            args.agent.as_deref(),
+        ) {
             Ok(result) => result,
             Err(error) => {
                 eprintln!("Cannot store the answers: {error}");
@@ -136,7 +146,7 @@ pub fn run(ws: &Workspace, args: &SetupArgs) -> Result<i32> {
         );
     } else {
         println!(
-            "Store answers: ai setup --set review=yes checks=yes git=yes tests=yes continue=no workers=2 \
+            "Store answers: ai setup --set review=yes checks=yes git=yes tests=yes continue=no workers=2 mode=lite playbook=pair \
              --check \"tests=<your test command>\"   (or `ai setup --defaults`)"
         );
     }

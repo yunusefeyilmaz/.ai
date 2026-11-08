@@ -28,6 +28,8 @@ pub enum Command {
     Start(StartArgs),
     /// Chief: ask the user which workflow features to use.
     Setup(SetupArgs),
+    /// Chief: propose or approve the project architecture and conventions.
+    Blueprint(BlueprintArgs),
     /// Create the workspace state in a fresh checkout.
     Init(InitArgs),
     /// Check workspace health; --fix repairs safe issues.
@@ -138,6 +140,47 @@ pub struct SetupArgs {
 }
 
 #[derive(Args, Debug, Clone, Default)]
+pub struct BlueprintArgs {
+    #[command(subcommand)]
+    pub action: Option<BlueprintAction>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum BlueprintAction {
+    /// Scan the machine and record the proposal (the chief may supply one).
+    Propose {
+        /// Analysis JSON authored by the chief (`-` reads stdin).
+        #[arg(long)]
+        from: Option<String>,
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the proposal (human summary or JSON).
+    Show {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Change the proposal before approval.
+    Revise {
+        #[arg(long = "set", num_args = 1.., value_delimiter = ' ')]
+        set: Vec<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Apply the proposal to config/workspace.json (the user's approval).
+    Approve {
+        #[arg(long = "set", num_args = 1.., value_delimiter = ' ')]
+        set: Vec<String>,
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Args, Debug, Clone, Default)]
 pub struct InitArgs {
     #[arg(long)]
     pub wire: bool,
@@ -209,6 +252,8 @@ pub enum PlanAction {
         role: Option<String>,
         #[arg(long)]
         agent: Option<String>,
+        #[arg(long = "approved-by")]
+        approved_by: Option<String>,
         #[arg(long = "dry-run")]
         dry_run: bool,
         #[arg(long)]

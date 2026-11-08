@@ -1,6 +1,8 @@
 //! `ai git`: Gitflow branches, guarded commits and merges.
 
-use serde_json::{json, Value};
+use std::path::PathBuf;
+
+use serde_json::{json, Map, Value};
 
 use crate::core::error::Result;
 use crate::core::workspace::Workspace;
@@ -11,6 +13,48 @@ use crate::tasks::scope;
 use crate::tasks::store;
 
 use crate::{GitAction, GitArgs};
+
+/// The checkout a `git verify` run should inspect, plus the task metadata that
+/// defines its scope: an explicit `--task`, the task whose worktree contains the
+/// current directory, the active task on the current branch, or the main
+/// checkout.
+fn verify_checkout(
+    ws: &Workspace,
+    task: Option<&str>,
+) -> Option<(PathBuf, Map<String, Value>, bool)> {
+    if let Some(task_id) = task {
+        let task = store::task_of(ws, task_id)?;
+        let root = git::task_checkout(ws, &task);
+        return Some((root, task.meta, true));
+    }
+    // Inside a task worktree the workspace resolves to the main checkout, so the
+    // checkout comes from the current directory.
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.starts_with(ws.worktrees_dir()) {
+            if let Some(task) = store::load_tasks(ws).into_iter().find(|task| {
+                git::task_root(ws, task)
+                    .map(|root| cwd.starts_with(&root))
+                    .unwrap_or(false)
+            }) {
+                return Some((cwd, task.meta, true));
+            }
+        }
+    }
+    let branch = git::state(ws)
+        .get("branch")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if let Some(task) = store::load_tasks(ws)
+        .into_iter()
+        .find(|task| task.is_active() && task.get_str("branch").as_deref() == Some(branch.as_str()))
+    {
+        if let Some(root) = git::task_root(ws, &task) {
+            return Some((root, task.meta, true));
+        }
+    }
+    Some((ws.project.clone(), Map::new(), false))
+}
 
 pub fn run(ws: &Workspace, args: &GitArgs) -> Result<i32> {
     let action = match &args.action {
@@ -114,31 +158,17 @@ pub fn run(ws: &Workspace, args: &GitArgs) -> Result<i32> {
                 println!("Not a git repository; nothing to verify.");
                 return Ok(0);
             }
-            let mut meta = serde_json::Map::new();
-            let mut state = state;
-            if let Some(task_id) = task {
-                let path = match store::find_task(ws, task_id) {
-                    Some(path) => path,
-                    None => {
-                        eprintln!("No task with id {task_id}.");
-                        return Ok(1);
-                    }
-                };
-                let (parsed, _, _) = store::parse_task(&path)?;
-                let task_struct = store::Task {
-                    meta: parsed.clone(),
-                    body: String::new(),
-                    path: path.clone(),
-                    folder: "active".into(),
-                };
-                if let Some(root) = git::task_root(ws, &task_struct) {
-                    state = git::state_at(&root);
+            let (checkout, meta, scoped) = match verify_checkout(ws, task.as_deref()) {
+                Some(found) => found,
+                None => {
+                    eprintln!("No task with id {}.", task.as_deref().unwrap_or("-"));
+                    return Ok(1);
                 }
-                meta = parsed;
-            }
+            };
+            let state = git::state_at(&checkout);
             let (uncovered, locks) = gitflow::uncovered_staged(ws, &state);
             let mut out_of_scope = Vec::new();
-            if task.is_some() {
+            if scoped {
                 let staged: Vec<String> = state
                     .get("staged")
                     .and_then(Value::as_array)
@@ -171,19 +201,19 @@ pub fn run(ws: &Workspace, args: &GitArgs) -> Result<i32> {
                         println!("  {path}");
                     }
                 }
+                let label = meta
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+                    .or_else(|| task.clone())
+                    .unwrap_or_else(|| "-".to_string());
                 if !out_of_scope.is_empty() {
-                    println!(
-                        "Staged paths outside the scope of task {}:",
-                        task.as_deref().unwrap_or("-")
-                    );
+                    println!("Staged paths outside the scope of task {label}:");
                     for item in &out_of_scope {
                         println!("  {item}");
                     }
-                } else if task.is_some() {
-                    println!(
-                        "All staged paths are inside the scope of task {}.",
-                        task.as_deref().unwrap_or("-")
-                    );
+                } else if scoped {
+                    println!("All staged paths are inside the scope of task {label}.");
                 }
             }
             Ok(

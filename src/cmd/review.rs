@@ -306,10 +306,7 @@ pub fn run(ws: &Workspace, args: &ReviewArgs) -> Result<i32> {
     let head = state.get("head").and_then(Value::as_str);
     let verdict = evidence::task_status(ws, &task_id, head, None);
     let record = verdict.get("record").cloned().unwrap_or_else(|| json!({}));
-    let on_this_head = match (head, record.get("head").and_then(Value::as_str)) {
-        (Some(head), Some(record_head)) => head == record_head,
-        _ => false,
-    };
+    let on_this_head = evidence::recorded_on(ws, &task_id, head);
     let spec = spec_payload(ws, &meta);
     let mut evidence_value = json!({
         "state": verdict.get("state").cloned().unwrap_or(Value::Null),

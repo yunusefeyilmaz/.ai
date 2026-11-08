@@ -179,6 +179,32 @@ fn human_output_prints_the_hint() {
 }
 
 #[test]
+fn doctor_flags_production_head_and_untracked_planning() {
+    let ws = Ws::new("ai-doctor-invariants-");
+    ws.git_init();
+    ws.git(&["checkout", "-q", "master"]).ok("checkout master");
+    ws.new_task("Uncommitted plan").ok("task new");
+
+    let payload = ws.run(&["doctor", "--json"]).json();
+    let production = finding_with(&payload, "production branch 'master'");
+    assert!(
+        production["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("git checkout develop"),
+        "{production}"
+    );
+    let ledger = finding_with(
+        &payload,
+        "planning file(s) under tasks/specs/config are untracked",
+    );
+    assert!(
+        ledger["hint"].as_str().unwrap_or("").contains("plan apply"),
+        "{ledger}"
+    );
+}
+
+#[test]
 fn missing_adapters_in_a_subfolder_install_are_wired_by_fix() {
     let ws = Ws::subfolder("ai-doctor-subfolder-");
     std::fs::write(ws.host().join("package.json"), "{}\n").expect("host package.json");

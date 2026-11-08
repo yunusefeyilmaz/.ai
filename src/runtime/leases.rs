@@ -512,7 +512,16 @@ pub fn release_lock(
             _ => {}
         }
     }
-    let _ = fs::remove_file(&path);
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return fail(format!(
+                "Could not remove the lock file for '{resource}' ({}): {error}. The lease is still live; fix permissions or the read-only attribute and retry.",
+                path.display()
+            ))
+        }
+    }
     if !quiet {
         println!("Released '{resource}'.");
     }

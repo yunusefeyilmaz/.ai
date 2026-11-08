@@ -70,6 +70,82 @@ fn empty_check_records_no_green_evidence() {
 }
 
 #[test]
+fn a_check_that_hangs_is_killed_and_reported() {
+    let ws = Ws::new("ai-check-gate-timeout-");
+    #[cfg(windows)]
+    let command = "ping -n 6 127.0.0.1 >nul";
+    #[cfg(not(windows))]
+    let command = "sleep 5";
+    ws.set_config(|config| {
+        config["mode"] = serde_json::json!("strict");
+        config["workflow"]["requireCheck"] = serde_json::json!(true);
+        config["checks"] = serde_json::json!([{
+            "name": "slow",
+            "command": command,
+            "timeoutSeconds": 1
+        }]);
+    });
+
+    let started = std::time::Instant::now();
+    let out = ws.fails(&["check", "--allow-empty"]);
+    assert!(out.all().contains("timed out after 1s"), "{}", out.all());
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(4),
+        "the check must be killed"
+    );
+}
+
+#[test]
+fn an_unclaimed_task_never_gains_evidence() {
+    let ws = Ws::new("ai-check-gate-unclaimed-");
+    ws.new_task("Not mine yet").ok("task new");
+
+    let out = ws.ok(&["check", "--task", "0001", "--allow-empty"]);
+    assert!(!out.all().contains("Evidence recorded"), "{}", out.all());
+    assert!(
+        !ws.path("runtime/state/evidence/0001.jsonl").exists(),
+        "a task nobody claimed must not acquire evidence"
+    );
+
+    // After claiming, the same command records evidence normally.
+    ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
+    let claimed = ws.ok(&[
+        "check",
+        "--task",
+        "0001",
+        "--agent",
+        "alice",
+        "--allow-empty",
+    ]);
+    assert!(
+        claimed.stderr.contains("Evidence recorded"),
+        "{}",
+        claimed.stderr
+    );
+}
+
+#[test]
+fn another_agent_cannot_write_evidence_for_a_claimed_task() {
+    let ws = Ws::new("ai-check-gate-alien-");
+    ws.new_task("Owned by alice").ok("task new");
+    ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
+
+    let out = ws.ok(&[
+        "check",
+        "--task",
+        "0001",
+        "--agent",
+        "mallory",
+        "--allow-empty",
+    ]);
+    assert!(!out.all().contains("Evidence recorded"), "{}", out.all());
+    assert!(
+        !ws.path("runtime/state/evidence/0001.jsonl").exists(),
+        "only the claimant may attach evidence"
+    );
+}
+
+#[test]
 fn strict_review_cannot_pass_on_empty_verification() {
     let ws = Ws::with_mode("ai-check-gate-strict-", "strict");
     ws.new_task("Strict").ok("task new");

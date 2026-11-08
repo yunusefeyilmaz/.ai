@@ -837,6 +837,91 @@ fn confirm_initial_baseline(
     Ok(true)
 }
 
+/// Commit planning artifacts (task files, specs, board) to the integration
+/// branch so every task worktree starts with the current ledger.
+///
+/// Only coordination paths are staged: a moved (deleted) task is committed as a
+/// deletion when Git already tracks it, untracked files are skipped, and a
+/// nothing-to-commit run is a silent no-op.
+pub fn commit_ledger(ws: &Workspace, paths: &[PathBuf], message: &str) -> Option<String> {
+    if !git::config(ws).enabled {
+        return None;
+    }
+    let state = git::state(ws);
+    if !state.get("repo").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    let mut rels: Vec<String> = Vec::new();
+    for path in paths {
+        let relative = match path.strip_prefix(&ws.project) {
+            Ok(rest) => rest.to_string_lossy().replace('\\', "/"),
+            Err(_) => continue,
+        };
+        if !git::is_workspace_ledger_path(ws, &relative) || rels.contains(&relative) {
+            continue;
+        }
+        if !path.exists() {
+            let tracked = git::run_git(
+                &ws.project,
+                &["ls-files", "--error-unmatch", "--", &relative],
+            );
+            if tracked.code != 0 {
+                continue;
+            }
+        }
+        rels.push(relative);
+    }
+    if rels.is_empty() {
+        return None;
+    }
+    let integration = git::config(ws).integration;
+    let current = state.get("branch").and_then(Value::as_str).unwrap_or("");
+    if !integration.is_empty()
+        && current != integration
+        && git::branch_exists(&ws.project, &integration)
+        && git_clean(ws, &ws.project, true)
+    {
+        let output = git::run_git(&ws.project, &["checkout", &integration]);
+        if output.code != 0 {
+            eprintln!(
+                "WARN  the ledger was committed on '{current}', not '{integration}': {}",
+                last_line(&output.stderr)
+            );
+        }
+    }
+    let mut add = vec!["add", "--"];
+    add.extend(rels.iter().map(String::as_str));
+    let output = git::run_git(&ws.project, &add);
+    if output.code != 0 {
+        eprintln!(
+            "WARN  the ledger was not staged: {}",
+            last_line(&output.stderr)
+        );
+        return None;
+    }
+    let mut diff = vec!["diff", "--cached", "--quiet", "--"];
+    diff.extend(rels.iter().map(String::as_str));
+    if git::run_git(&ws.project, &diff).code == 0 {
+        return None;
+    }
+    let mut commit = vec!["commit", "-m", message, "--"];
+    commit.extend(rels.iter().map(String::as_str));
+    let output = git::run_git(&ws.project, &commit);
+    if output.code != 0 {
+        eprintln!(
+            "WARN  the task ledger was written but not committed: {}. Commit tasks/, specs/ and tasks/BOARD.md manually.",
+            last_line(&output.stderr)
+        );
+        return None;
+    }
+    let short = git::run_git(&ws.project, &["rev-parse", "--short", "HEAD"]);
+    if short.code == 0 && !short.stdout.is_empty() {
+        Some(short.stdout)
+    } else {
+        None
+    }
+}
+
 pub fn commit_task_metadata(
     ws: &Workspace,
     cwd: &Path,
@@ -970,15 +1055,30 @@ pub fn commit_flow(
         );
         return Ok(1);
     }
-    let cwd = git::task_root(ws, &task).unwrap_or_else(|| ws.project.clone());
+    let cwd = git::task_checkout(ws, &task);
     let current = git::state_at(&cwd)
         .get("branch")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
     if current != branch {
-        eprintln!("Current branch is {current}, but task {task_id} uses {branch}.");
-        return Ok(1);
+        // A harness or a manual step can move the main checkout back to the
+        // integration branch between turns. Recover when that is safe instead
+        // of stranding the worker with a commit it cannot make.
+        if git::task_root(ws, &task).is_none()
+            && git::branch_exists(&ws.project, &branch)
+            && git_clean(ws, &ws.project, true)
+        {
+            let output = git::run_git(&ws.project, &["checkout", &branch]);
+            if output.code != 0 {
+                eprintln!("Could not switch back to {branch}: {}", output.stderr);
+                return Ok(1);
+            }
+            println!("Recovered the task checkout: switched {current} -> {branch}.");
+        } else {
+            eprintln!("Current branch is {current}, but task {task_id} uses {branch}.");
+            return Ok(1);
+        }
     }
     if !crate::cmd::capabilities::COMMIT_TYPES.contains(&commit_type) {
         eprintln!(
@@ -1130,20 +1230,21 @@ pub fn finish_flow(
         .and_then(Value::as_str)
         .unwrap_or(task_id)
         .to_string();
-    if !force {
+    let submitter = meta
+        .get("submitted_by")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let solo_self = gates::allows_self_review(ws) && !submitter.is_empty() && submitter == agent;
+    if !force && !solo_self {
         if let Err(denied) = roles::authorize(ws, Some(agent), "git.finish") {
             eprintln!("{denied}");
             return Ok(1);
         }
     }
-    let submitter = meta
-        .get("submitted_by")
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    if !force && !submitter.is_empty() && submitter == agent {
+    if !force && !gates::allows_self_review(ws) && !submitter.is_empty() && submitter == agent {
         eprintln!(
             "Task {task_id} was submitted by {submitter}; the producer never merges its own work. \
-             A different agent must run `ai git finish`."
+             A different agent must run `ai git finish` (or choose the solo playbook)."
         );
         return Ok(1);
     }
@@ -1169,7 +1270,7 @@ pub fn finish_flow(
         return Ok(1);
     }
     let task = task_from(&meta, &body, &path);
-    let cwd = git::task_root(ws, &task).unwrap_or_else(|| ws.project.clone());
+    let cwd = git::task_checkout(ws, &task);
     let leftover: Vec<Value> = git::state_at(&cwd)
         .get("dirty")
         .and_then(Value::as_array)

@@ -119,6 +119,12 @@ fn check(ws: &Workspace, task_id: &str, number: usize) -> Result<i32> {
         }
     };
     let (meta, _, _) = store::parse_task(&path)?;
+    if path.parent() != Some(ws.active_dir().as_path()) {
+        eprintln!(
+            "Task {task_id} is archived in done/ and its spec is immutable. Bring it back with `ai task reopen {task_id} --agent <name>` first."
+        );
+        return Ok(1);
+    }
     let (spec_path, error) = linked_spec(ws, &meta);
     let spec_path = match (spec_path, error) {
         (Some(path), _) => path,

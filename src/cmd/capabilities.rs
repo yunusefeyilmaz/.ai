@@ -29,6 +29,7 @@ fn descriptions() -> BTreeMap<String, &'static str> {
     for (name, text) in [
         ("init", "create the workspace state in a fresh checkout; --wire adds the root adapters"),
         ("setup", "chief: the questions for the user and where answers are stored"),
+        ("blueprint", "propose | show | revise --set KEY=VALUE | approve --agent <name>: the user-approved architecture and conventions"),
         ("plan", "chief: apply <plan.json> creates linked tasks; example prints a skeleton"),
         ("version", "print the workspace version"),
         ("now", "10-line state + the single next required command"),
@@ -121,6 +122,19 @@ pub fn build(ws: &Workspace) -> Value {
     );
     payload.insert("commit_types".into(), json!(COMMIT_TYPES));
     payload.insert(
+        "playbooks".into(),
+        json!(crate::config::blueprint::PLAYBOOKS),
+    );
+    payload.insert("modes".into(), json!(crate::config::blueprint::MODES));
+    payload.insert(
+        "blueprint".into(),
+        json!({
+            "path": crate::config::blueprint::FILE,
+            "statuses": ["missing", "pending", "approved"],
+            "naming_keys": ["default", "files", "functions", "types", "constants", "json", "branches", "commits", "env"],
+        }),
+    );
+    payload.insert(
         "state".into(),
         json!({
             "tasks": "tasks/active, tasks/done",
@@ -137,10 +151,12 @@ pub fn build(ws: &Workspace) -> Value {
             "one task per agent session",
             "claim before editing",
             "live lock is a refusal",
-            "producer never verifies its own work",
+            "producer never verifies its own work (except the solo playbook)",
             "checkpoint before the context window fills",
             "done requires ai check",
-            "done requires review by a different agent than the producer",
+            "done requires review by a different agent than the producer unless workflow.playbook is solo",
+            "chief proposes the architecture blueprint and the user approves it before planning",
+            "strict mode (or workflow.requirePlanApproval) needs the user's --approved-by on ai plan apply",
         ]),
     );
     payload.insert("commands".into(), json!(commands));

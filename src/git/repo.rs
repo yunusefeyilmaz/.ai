@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::{json, Value};
+use sha1::{Digest, Sha1};
 
 use crate::config::settings::load;
 use crate::core::fsio::normalize_id;
@@ -31,7 +32,9 @@ pub fn run_git(cwd: &Path, args: &[&str]) -> GitOutput {
     }
 }
 
-fn run_git_raw(cwd: &Path, args: &[&str]) -> String {
+/// Raw stdout for parsers: `--porcelain -z` entries start with a status column
+/// that may be a space, so trimming would corrupt the first entry.
+pub fn run_git_raw(cwd: &Path, args: &[&str]) -> String {
     match Command::new("git").args(args).current_dir(cwd).output() {
         Ok(output) if output.status.success() => {
             String::from_utf8_lossy(&output.stdout).to_string()
@@ -214,6 +217,11 @@ pub fn task_root(ws: &Workspace, task: &Task) -> Option<PathBuf> {
     }
 }
 
+/// The checkout a task's product files, checks and evidence belong to.
+pub fn task_checkout(ws: &Workspace, task: &Task) -> PathBuf {
+    task_root(ws, task).unwrap_or_else(|| ws.project.clone())
+}
+
 pub fn is_workspace_ledger_path(ws: &Workspace, path: &str) -> bool {
     let absolute = if Path::new(path).is_absolute() {
         PathBuf::from(path)
@@ -248,12 +256,86 @@ pub fn is_workspace_ledger_path(ws: &Workspace, path: &str) -> bool {
 }
 
 pub fn task_branch_name(task: &Task, branch_type: &str) -> String {
-    let slug = crate::core::fsio::slugify(&task.title());
-    let slug = slug.trim_matches('-');
-    let slug = if slug.len() > 40 { &slug[..40] } else { slug };
+    let full = crate::core::fsio::slugify(&task.title());
+    let full = full.trim_matches('-');
+    let slug = if full.len() > 40 {
+        let cut = &full[..40];
+        // Cut on a word boundary when there is one near the end; append a short
+        // digest of the full title so two tasks with the same prefix stay
+        // distinguishable to humans as well as to Git.
+        let base = match cut.rfind('-') {
+            Some(index) if index >= 24 => &cut[..index],
+            _ => cut,
+        };
+        let mut hasher = Sha1::new();
+        hasher.update(full.as_bytes());
+        let digest = format!("{:x}", hasher.finalize());
+        format!("{}-{}", base.trim_matches('-'), &digest[..6])
+    } else {
+        full.to_string()
+    };
     format!(
         "{branch_type}/{}-{}",
         normalize_id(&task.id()).unwrap_or_else(|_| "0000".to_string()),
-        if slug.is_empty() { "task" } else { slug }
+        if slug.is_empty() {
+            "task"
+        } else {
+            slug.as_str()
+        }
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task(id: &str, title: &str) -> Task {
+        let mut meta = serde_json::Map::new();
+        meta.insert("id".into(), json!(id));
+        meta.insert("title".into(), json!(title));
+        Task {
+            meta,
+            body: String::new(),
+            path: PathBuf::from("tasks/active/0001-x.md"),
+            folder: "active".into(),
+        }
+    }
+
+    #[test]
+    fn short_titles_keep_a_readable_branch() {
+        assert_eq!(
+            task_branch_name(&task("0007", "CSV export"), "feature"),
+            "feature/0007-csv-export"
+        );
+    }
+
+    #[test]
+    fn long_titles_cut_on_a_word_boundary_and_stay_unique() {
+        let first = task_branch_name(
+            &task(
+                "0001",
+                "Monorepo foundation for backend and frontend scaffolding",
+            ),
+            "feature",
+        );
+        let second = task_branch_name(
+            &task(
+                "0002",
+                "Monorepo foundation for backend and frontend services",
+            ),
+            "feature",
+        );
+        assert!(
+            first.starts_with("feature/0001-monorepo-foundation"),
+            "{first}"
+        );
+        assert!(!first.ends_with('-'), "{first}");
+        assert_ne!(first, second);
+        // No trailing partial word: the digest follows a dash-separated base.
+        let rest = first.split("feature/0001-").nth(1).unwrap_or("");
+        let (base, digest) = rest.rsplit_once('-').expect("digest suffix");
+        assert!(!base.ends_with('-'), "{base}");
+        assert_eq!(digest.len(), 6);
+        assert!(digest.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
 }

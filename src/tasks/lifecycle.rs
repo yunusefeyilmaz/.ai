@@ -121,6 +121,21 @@ pub fn create_task(ws: &Workspace, new: NewTask) -> Result<Value> {
     let slug = slugify(&title);
     let path = ws.active_dir().join(format!("{task_id}-{slug}.md"));
     let mut spec_ref = new.spec.clone();
+    // An explicit `--spec` only links a file that exists; a typo must fail here,
+    // not days later at claim time.
+    if let Some(reference) = &spec_ref {
+        let candidate = if std::path::Path::new(reference).is_absolute() {
+            std::path::PathBuf::from(reference)
+        } else {
+            ws.root.join(reference)
+        };
+        if !candidate.is_file() {
+            return fail(format!(
+                "the spec '{reference}' does not exist (looked at {}); create it first or omit --spec to generate one",
+                candidate.display()
+            ));
+        }
+    }
     if spec_ref.is_none() && new.make_spec {
         let spec_path = ws.specs_active_dir().join(format!("{task_id}-{slug}.md"));
         let text = spec::spec_from_template(
@@ -442,6 +457,24 @@ pub fn rollback_claim(
         ],
     );
     Ok(Some(task_id))
+}
+
+/// A review task is claimable unless a **live** claim holds it. A reviewer that
+/// crashed leaves `owner` set but its lease stale, and that must not hide the
+/// task from every review queue (matches how the ready queue treats leases).
+pub fn review_is_claimable(ws: &Workspace, task: &Task) -> bool {
+    if task.status() != "review" {
+        return false;
+    }
+    let (_, stale_after) = lock_settings(ws);
+    let resource = format!("task-{}", task.id());
+    match list_locks(ws, false)
+        .into_iter()
+        .find(|lock| lock.get("resource").and_then(Value::as_str) == Some(resource.as_str()))
+    {
+        Some(lock) => lock_is_stale(Some(&lock), stale_after),
+        None => true,
+    }
 }
 
 pub fn ready_and_waiting(ws: &Workspace) -> (Vec<Task>, Vec<(Task, Vec<String>)>) {

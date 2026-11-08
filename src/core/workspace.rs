@@ -260,6 +260,17 @@ fn looks_like_workspace(dir: &Path) -> bool {
 
 fn find_workspace(start: &Path) -> Option<PathBuf> {
     let start = absolute(start.to_path_buf());
+    // A task worktree is a full checkout living under `<workspace>/worktrees/`.
+    // It may contain a committed copy of the ledger (and, for a subfolder
+    // install, a nested `.ai/`). Resolve it to the workspace that owns it
+    // before looking at the copy, otherwise the worker sees an empty, private
+    // workspace instead of the shared tasks/locks.
+    for ancestor in start.ancestors() {
+        let worktrees = ancestor.join("worktrees");
+        if worktrees.is_dir() && start.starts_with(&worktrees) && looks_like_workspace(ancestor) {
+            return Some(ancestor.to_path_buf());
+        }
+    }
     // A project root that contains an installed `.ai/` child.
     for ancestor in start.ancestors() {
         let child = ancestor.join(".ai");
@@ -345,5 +356,45 @@ mod tests {
         let workspace = Workspace::at(&ws);
         assert_eq!(workspace.project, base);
         assert_eq!(workspace.ws_prefix(), ".ai/");
+    }
+
+    fn workspace_fixture(root: &Path) {
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(root.join("config").join("workspace.json"), "{}").unwrap();
+        std::fs::create_dir_all(root.join("tasks")).unwrap();
+    }
+
+    #[test]
+    fn worktree_resolves_to_the_workspace_that_owns_it() {
+        let base = std::env::temp_dir().join(format!(
+            "ai-ws-worktree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or(0)
+        ));
+        let root = base.join(".ai");
+        workspace_fixture(&root);
+        let worktree = root.join("worktrees").join("feature-0001");
+        // A committed `.ai/` is checked out into the worktree too.
+        workspace_fixture(&worktree);
+        std::fs::create_dir_all(worktree.join(".ai").join("config")).unwrap();
+        std::fs::write(
+            worktree.join(".ai").join("config").join("workspace.json"),
+            "{}",
+        )
+        .unwrap();
+
+        assert_eq!(find_workspace(&worktree), Some(root));
+
+        // Root-shape workspace: the project root is the workspace itself.
+        let root_shape = base.join("project");
+        workspace_fixture(&root_shape);
+        let nested = root_shape.join("worktrees").join("feature-0002");
+        workspace_fixture(&nested);
+        assert_eq!(find_workspace(&nested), Some(root_shape));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

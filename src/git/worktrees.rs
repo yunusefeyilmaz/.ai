@@ -79,7 +79,7 @@ fn briefing(ws: &Workspace, meta: &Map<String, Value>, branch: &str) -> String {
         .unwrap_or("-");
     let title = meta.get("title").and_then(Value::as_str).unwrap_or("");
     format!(
-        "# Task worktree (managed by the .ai workspace)\n\nYou are inside an isolated checkout for task {id} ({title}),\nbranch `{branch}`. Edit product files **only here**; never touch the main checkout.\n\nThe coordination state (tasks, locks, runtime, config) lives in the main\nworkspace. Run its CLI by absolute path from this directory:\n\n    {cli} now --agent <name>\n    {cli} task show {id}\n    {cli} git commit --task {id} --agent <name> --type feat --message \"<subject>\"\n    {cli} task review {id} --agent <name>\n\nRead the workspace rules in `{}`.\n",
+        "# Task worktree (managed by the .ai workspace)\n\nYou are inside an isolated checkout for task {id} ({title}),\nbranch `{branch}`. Edit product files **only here**; never touch the main checkout.\n\nThe coordination state (tasks, locks, runtime, config) lives in the main\nworkspace. This directory is a Git worktree, so the CLI resolves it back to that\nshared workspace even though a copy of the ledger may exist here. Run the shared\nCLI by absolute path from this directory:\n\n    {cli} now --agent <name>\n    {cli} task show {id}\n    {cli} git commit --task {id} --agent <name> --type feat --message \"<subject>\"\n    {cli} task review {id} --agent <name>\n\nRead the workspace rules in `{}`.\n",
         ws.root.join("AGENTS.md").to_string_lossy().replace('\\', "/")
     )
 }

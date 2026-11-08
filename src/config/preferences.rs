@@ -19,18 +19,22 @@ pub struct Question {
     pub kind: &'static str,
     pub recommended: Value,
     pub ask: &'static str,
+    /// Allowed values for `kind == "enum"`.
+    pub values: &'static [&'static str],
 }
 
 pub const REQUIRED_KEYS: &[&str] = &["review", "checks", "git", "tests"];
 
 pub fn questions() -> Vec<Question> {
+    const NO_VALUES: &[&str] = &[];
     vec![
         Question {
             key: "review",
             dotted: "workflow.requireReview",
             kind: "bool",
             recommended: Value::Bool(true),
-            ask: "Should finished work be reviewed by a second agent, who approves and merges it?",
+            ask: "Should finished work be reviewed before it ships? (in solo playbook you review your own work)",
+            values: NO_VALUES,
         },
         Question {
             key: "checks",
@@ -38,6 +42,7 @@ pub fn questions() -> Vec<Question> {
             kind: "bool",
             recommended: Value::Bool(true),
             ask: "Must the project's checks (tests, lint, build) pass before work goes to review? If yes, which commands? (add them with --check NAME=COMMAND)",
+            values: NO_VALUES,
         },
         Question {
             key: "git",
@@ -45,6 +50,7 @@ pub fn questions() -> Vec<Question> {
             kind: "bool",
             recommended: Value::Bool(true),
             ask: "Use Git: a branch per task, standard commits, and merging into develop?",
+            values: NO_VALUES,
         },
         Question {
             key: "tests",
@@ -52,6 +58,7 @@ pub fn questions() -> Vec<Question> {
             kind: "bool",
             recommended: Value::Bool(true),
             ask: "Should workers write tests for the behavior they add?",
+            values: NO_VALUES,
         },
         Question {
             key: "continue",
@@ -59,6 +66,7 @@ pub fn questions() -> Vec<Question> {
             kind: "bool",
             recommended: Value::Bool(false),
             ask: "After delivering a task, may a worker start the next one without asking you?",
+            values: NO_VALUES,
         },
         Question {
             key: "workers",
@@ -66,6 +74,31 @@ pub fn questions() -> Vec<Question> {
             kind: "int",
             recommended: json!(1),
             ask: "How many workers may run at the same time? (more than 1 gives every task its own Git worktree)",
+            values: NO_VALUES,
+        },
+        Question {
+            key: "mode",
+            dotted: "mode",
+            kind: "enum",
+            recommended: json!("lite"),
+            ask: "How much process: lite (fast, fewer approvals) or strict (plan/spec/ship gates, and the user approves the plan)?",
+            values: crate::config::blueprint::MODES,
+        },
+        Question {
+            key: "plan",
+            dotted: "workflow.requirePlanApproval",
+            kind: "bool",
+            recommended: Value::Bool(false),
+            ask: "Must the user approve the plan (`ai plan apply ... --approved-by <user>`) before tasks are created?",
+            values: NO_VALUES,
+        },
+        Question {
+            key: "playbook",
+            dotted: "workflow.playbook",
+            kind: "enum",
+            recommended: json!("pair"),
+            ask: "Who does the work: solo (one agent designs, implements and reviews), pair (one implements, another reviews) or team (chief plans, workers implement, reviewers approve)?",
+            values: crate::config::blueprint::PLAYBOOKS,
         },
     ]
 }
@@ -181,16 +214,27 @@ pub fn status_of(config: &Value) -> Result<PreferenceStatus> {
     })
 }
 
-pub fn parse_value(kind: &str, raw: &str) -> Result<Value> {
-    let text = raw.trim().to_lowercase();
+pub fn parse_value(kind: &str, raw: &str, values: &[&str]) -> Result<Value> {
+    let text = raw.trim();
     if kind == "bool" {
-        if ["yes", "y", "true", "1", "on"].contains(&text.as_str()) {
+        let lowered = text.to_lowercase();
+        if ["yes", "y", "true", "1", "on"].contains(&lowered.as_str()) {
             return Ok(Value::Bool(true));
         }
-        if ["no", "n", "false", "0", "off"].contains(&text.as_str()) {
+        if ["no", "n", "false", "0", "off"].contains(&lowered.as_str()) {
             return Ok(Value::Bool(false));
         }
         return fail(format!("expected yes/no, got '{raw}'"));
+    }
+    if kind == "enum" {
+        let lowered = text.to_lowercase();
+        if let Some(canonical) = values.iter().find(|value| **value == lowered.as_str()) {
+            return Ok(Value::String((*canonical).to_string()));
+        }
+        return fail(format!(
+            "expected one of {}; got '{raw}'",
+            values.join(", ")
+        ));
     }
     let number: i64 = text
         .parse()
@@ -206,12 +250,13 @@ pub fn apply(
     ws: &Workspace,
     answers: &[(String, String)],
     checks: &[String],
+    check_timeouts: &[String],
     agent: Option<&str>,
 ) -> Result<PreferenceStatus> {
     let mut config = load(ws)?;
     let known: Map<String, Value> = questions()
         .into_iter()
-        .map(|q| (q.key.to_string(), json!([q.dotted, q.kind])))
+        .map(|q| (q.key.to_string(), json!([q.dotted, q.kind, q.values])))
         .collect();
     let mut unknown: Vec<String> = Vec::new();
     for (key, _) in answers {
@@ -244,14 +289,25 @@ pub fn apply(
         })
         .unwrap_or_default();
     for (key, raw) in answers {
-        let (dotted, kind) = {
+        let (dotted, kind, values) = {
             let entry = known.get(key).expect("checked above");
             (
                 entry[0].as_str().unwrap_or("").to_string(),
                 entry[1].as_str().unwrap_or("bool").to_string(),
+                entry[2]
+                    .as_array()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
             )
         };
-        let value = parse_value(&kind, raw)?;
+        let allowed: Vec<&str> = values.iter().map(String::as_str).collect();
+        let value = parse_value(&kind, raw, &allowed)?;
         set_dotted(&mut config, &dotted, value);
         answered.insert(key.clone());
         let prefs = config
@@ -268,7 +324,7 @@ pub fn apply(
         }
     }
     if let Some((_, workers)) = answers.iter().find(|(key, _)| key == "workers") {
-        let count = parse_value("int", workers)?.as_i64().unwrap_or(1);
+        let count = parse_value("int", workers, &[])?.as_i64().unwrap_or(1);
         set_dotted(
             &mut config,
             "git.isolation",
@@ -294,6 +350,45 @@ pub fn apply(
             "addedBy": who,
             "addedAt": iso(None),
         }));
+        set_dotted(&mut config, "checks", Value::Array(entries));
+    }
+    for item in check_timeouts {
+        let (name, seconds) = match item.split_once('=') {
+            Some((name, seconds)) if !name.trim().is_empty() => {
+                let seconds: u64 = seconds.trim().parse().map_err(|_| {
+                    crate::core::error::AiError::msg(format!(
+                        "--check-timeout expects NAME=SECONDS with a positive number, got '{item}'"
+                    ))
+                })?;
+                if seconds == 0 {
+                    return fail("--check-timeout expects a positive number of seconds");
+                }
+                (name.trim().to_string(), seconds)
+            }
+            _ => {
+                return fail(format!(
+                    "--check-timeout expects NAME=SECONDS, got '{item}'"
+                ))
+            }
+        };
+        let mut entries: Vec<Value> = config
+            .get("checks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let found = entries
+            .iter_mut()
+            .find(|entry| entry.get("name").and_then(Value::as_str) == Some(name.as_str()));
+        match found {
+            Some(entry) => {
+                entry["timeoutSeconds"] = json!(seconds);
+            }
+            None => {
+                return fail(format!(
+                    "--check-timeout: no configured check named '{name}'; add it first with --check {name}=<command>"
+                ));
+            }
+        }
         set_dotted(&mut config, "checks", Value::Array(entries));
     }
     {

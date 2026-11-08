@@ -194,7 +194,7 @@ your-project/
     ├── specs/           acceptance criteria per behavior change
     ├── runtime/         leases, checkpoints, handoffs, artifacts, logs
     ├── templates/git/   commit and PR templates
-    ├── docs/            architecture, flow, concurrency, recovery, decisions/
+    ├── docs/            architecture, blueprint, flow, concurrency, recovery, decisions/
     ├── agents/          role cards
     ├── prompts/         reusable prompt bodies
     ├── adapters/        per-tool pointers
@@ -244,6 +244,12 @@ Claiming creates ownership; `done` (by a different agent than the producer)
 archives the task and its spec and frees every lock. `depends_on` keeps a task from
 starting before its predecessor is finished. The exact transitions are in
 `docs/task-flow.md`.
+
+Who may approve is set by `workflow.playbook`: `solo` (one agent designs,
+implements and reviews), `pair` (a second agent), or `team` (workers plus
+reviewers/QA). Before planning, the chief proposes the architecture and the user
+approves or changes it: `ai blueprint propose` -> `ai blueprint approve`. See
+`docs/blueprint.md`.
 
 ## Running more than one agent
 

@@ -9,10 +9,98 @@ same behaviour; the Python CLI (`ai.py` + `lib/`) is replaced by a single
 statically-typed binary that runs on Windows, macOS and Linux with no runtime
 dependency.
 
+### Fixed
+
+- **A task worktree resolves to the workspace that owns it.** When the workspace
+  is committed, `git worktree add` checks out a second copy of `.ai/`; discovery
+  now recognises paths under `<workspace>/worktrees/*` and maps them to the main
+  workspace, so a worker inside its checkout sees the real tasks, locks and
+  evidence instead of an empty, private ledger.
+- **Checks and evidence run in the task checkout.** `ai check --task` and the
+  `ai git finish` gate execute the project's checks in the task's worktree and
+  record that checkout's HEAD, so green evidence matches the branch being
+  reviewed and worktree isolation can complete a task.
+- **`ai check --task` only records evidence for a task that is being worked on.**
+  An unclaimed task, or one owned by another agent, no longer gains a record;
+  this stops a stray check from changing somebody else's `ai now` next step.
+- **`ai check` enforces each check's `timeoutSeconds`** through one shared
+  process runner (`src/core/process.rs`) that kills the whole process tree and
+  reports exit `124`; a hanging test can no longer stall a review forever.
+- **Concurrent evidence writes are serialized** by the workspace state guard, so
+  two agents checking at once cannot interleave partial JSON in the ledger.
+- **`ai setup --check-timeout NAME=SECONDS` is honoured** and stored as the
+  check's `timeoutSeconds`, so the `ai git finish` guard budget warning can
+  actually be resolved with the command its hint suggests.
+- **`ai plan apply` commits the task ledger** (tasks, specs, board) so the plan
+  survives `git clean`, and worktrees created from `develop` contain the current
+  tasks.
+- **`ai git commit` recovers a task branch** when the main checkout was moved
+  back to the integration branch between turns, instead of refusing the commit.
+- **`ai doctor` checks the checkout itself**: it warns when the main checkout is
+  on the production branch and when planning files under `tasks/`, `specs/` or
+  `config/` are untracked.
+- **Task branch names cut on a word boundary** and carry a short title digest, so
+  long titles stay readable and distinct.
+- **`ai reset --hard` clears the whole derived state tree.** It used to keep
+  `runtime/state/evidence`, the event ledger and the plan approval; because ids
+  restart at `0001`, a fresh task could inherit an old green record.
+- **Archived tasks are immutable.** `task link`, `task block`, `task unblock` and
+  `spec check` refuse a task in `done/` until `task reopen`; `reopen --status`
+  only accepts real states, so a task can no longer vanish from every reader.
+- **`ai git verify` inspects the caller's checkout** (explicit `--task`, the
+  worktree containing the current directory, or the active task on the current
+  branch), so the documented worktree loop verifies real staged work.
+- **`ai task block` frees the task's file leases**, and **a stale review claim no
+  longer hides a task** from the review queue.
+- **Removal failures are reported**: `ai lock release` and `ai recover --apply`
+  no longer print success while a phantom lease survives.
+- **`ai lock acquire --task` widens scope atomically** (guarded, error checked,
+  success only printed after the write).
+- **`ai status --board` creates no state**, so missing-path findings stay visible
+  to `ai doctor`.
+- **`ai task new --spec <path>` requires an existing file**, failing at creation
+  instead of at claim time.
+- **`--porcelain -z` output is parsed untrimmed**, so a first entry with a leading
+  space no longer yields a corrupted path.
+- **`ai task review` regenerates the board inside the state guard**, so a
+  concurrent claim cannot produce a stale board.
+- **One evidence verdict.** `ai review`, the review gate and the status views
+  share `evidence::recorded_on`/`evaluate`, so they cannot disagree about whether
+  a proof belongs to the current commit.
+- **`src/core/process.rs` is the single shell runner**: checks and toolchain
+  probes share timeout semantics, process-tree killing and exit-code handling
+  instead of each rolling their own `Command`.
+
 An existing `.ai` directory keeps working unchanged: task/spec front matter, JSON
 leases, the event ledger, checkpoints, handoffs, the board and ADRs are written
 byte-for-byte the same way. Both implementations can operate on one workspace,
 which is what made a verified port possible.
+
+### Added
+
+- **`ai blueprint propose|show|revise|approve`**: the chief **authors** the
+  project design and the user approves it. `propose` alone records only
+  mechanical facts (OS, shell, Git, top-level tree, installed toolchains); the
+  analysis is supplied with `--from <file|->`, so **any language, framework,
+  folder layout or extra convention is accepted** — there is no stack allowlist
+  in the binary. `revise --set path.to.key=value` edits any path, and
+  `approve` copies the operational fields into `config/workspace.json` while
+  preserving the whole proposal under `config.blueprint.approved`. A draft with
+  no analysis cannot be approved; planning, `ai doctor` and `ai now` point at the
+  missing/pending proposal first.
+- **Playbooks (`workflow.playbook`)**: `solo` lets one agent design, implement
+  and review (evidence still required); `pair` requires a second agent; `team`
+  is the chief/workers/reviewers layout. `ai setup` asks for the playbook and the
+  `lite`/`strict` mode, and `ai now --json` publishes the active playbook.
+- **Plan approval as a user gate**: in `strict` mode, or when
+  `workflow.requirePlanApproval` is true, `ai plan apply` refuses until the user
+  agrees. Review with `--dry-run`, then apply with `--approved-by <user>`; the
+  approval is recorded in `runtime/state/plan-approval.json`.
+- **Token-lean context**: `ai now` prints one compact `ASK` line instead of one
+  per question, `ai brief` carries the approved naming/layout/guidelines and the
+  active playbook, a truncated brief (`--max-chars`) keeps the rules and the
+  commands while cutting the middle, and the capabilities contract publishes
+  `playbooks`, `modes` and the blueprint statuses.
 
 ### Changed
 

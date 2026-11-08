@@ -22,8 +22,8 @@ project/                  <- product territory (the real repo)
     ├── specs/            one spec per behavior change
     ├── runtime/          locks/, state/, artifacts/, logs/ (never committed)
     ├── templates/git/    commit and PR templates
-    ├── docs/             durable memory: architecture, flow, locks, orchestration,
-    │                     recovery, hygiene, decisions/
+    ├── docs/             durable memory: architecture, blueprint, flow, locks,
+    │                     orchestration, recovery, hygiene, decisions/
     ├── agents/           role cards (responsibility, not technology)
     ├── prompts/          reusable prompt bodies
     ├── adapters/         per-tool pointers (never duplicate rules)
@@ -50,7 +50,7 @@ Instructions in prose are weak. Three mechanisms carry the design:
 ## Ceremony levels
 
 - **lite** — solo work and low-risk changes. The artifacts exist; they rarely
-  block.
+  block. Choose it when a single agent may run the whole loop quickly.
 - **strict** — teams and critical systems. Spec, plan and triage need a human
   decision; roles do not share a session.
 

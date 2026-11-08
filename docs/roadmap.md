@@ -4,12 +4,12 @@ The workspace is judged by how little it asks of a person before useful work.
 The order below follows that rule: adoption first, proof second, measurement
 third, extras last. Every item names the observable result, not the feature.
 
-| Order | Task | Priority | Status | Success signal |
-|-------|------|----------|--------|----------------|
-| 1 | `0003` reliability suite | P0 | shipped 0.6.0 | Concurrency, expiry and recovery are proven by automated tests. |
-| 2 | `0004` metrics ledger | P1 | shipped 0.5.2 | Workflow claims are backed by numbers from real tasks. |
-| 3 | `0005` adapter contract | P1 | shipped 0.6.0 | A new agent or CI provider plugs in without touching the core. |
-| 4 | `0006` visibility board | P2 | shipped 0.6.0 | A blocked session explains itself without reading logs. |
+| Order | Task                     | Priority | Status        | Success signal                                                  |
+| ----- | ------------------------ | -------- | ------------- | --------------------------------------------------------------- |
+| 1     | `0003` reliability suite | P0       | shipped 0.6.0 | Concurrency, expiry and recovery are proven by automated tests. |
+| 2     | `0004` metrics ledger    | P1       | shipped 0.5.2 | Workflow claims are backed by numbers from real tasks.          |
+| 3     | `0005` adapter contract  | P1       | shipped 0.6.0 | A new agent or CI provider plugs in without touching the core.  |
+| 4     | `0006` visibility board  | P2       | shipped 0.6.0 | A blocked session explains itself without reading logs.         |
 
 Since 0.7.0 the work is tracked in `CHANGELOG.md`: the module split, the chief /
 implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
@@ -34,7 +34,7 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
 - A server, database, daemon or web dashboard.
 - A hosted service or telemetry.
 - A second task ledger or a second definition of done.
-- Automatic merges without an independent reviewer.
+- Automatic merges without the approval the chosen playbook requires.
 
 ## Known limitations
 

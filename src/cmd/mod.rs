@@ -2,6 +2,7 @@
 
 pub mod adopt;
 pub mod artifact;
+pub mod blueprint;
 pub mod brief;
 pub mod capabilities;
 pub mod checkpoint;

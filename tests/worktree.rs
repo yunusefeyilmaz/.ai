@@ -229,6 +229,94 @@ fn finish_refuses_uncommitted_work_in_the_worktree() {
 }
 
 #[test]
+fn worktree_resolves_to_the_shared_workspace() {
+    let ws = Ws::new("ai-worktree-discovery-");
+    ws.git_init();
+    parallel_workspace(&ws, &["Alpha"]);
+    ws.ok(&["task", "claim", "0001", "--agent", "w1"]);
+    let root = worktree_of(&ws, "0001");
+
+    // The fixture commits the whole workspace, so the worktree is a full copy of
+    // the ledger too. Discovery must still point at the shared one.
+    let now = support::discover_in(&root, &["now", "--agent", "w1"]);
+    assert_eq!(now.code, 0, "{}", now.all());
+    assert!(now.stdout.contains("1 active"), "{}", now.stdout);
+    assert!(now.stdout.contains("0001"), "{}", now.stdout);
+
+    let doctor = support::discover_in(&root, &["doctor"]);
+    assert!(
+        !doctor.all().contains("missing required path: runtime"),
+        "{}",
+        doctor.all()
+    );
+
+    // Evidence recorded from inside the worktree is visible to the main workspace.
+    let check = support::discover_in(
+        &root,
+        &["check", "--task", "0001", "--agent", "w1", "--allow-empty"],
+    );
+    assert_eq!(check.code, 0, "{}", check.all());
+    assert!(ws.path("runtime/state/evidence/0001.jsonl").is_file());
+}
+
+#[test]
+fn checks_and_evidence_follow_the_worktree_checkout() {
+    let ws = Ws::new("ai-worktree-evidence-");
+    ws.git_init();
+    parallel_workspace(&ws, &["Alpha"]);
+    ws.set_config(|config| {
+        config["mode"] = serde_json::json!("strict");
+        config["workflow"]["requireCheck"] = serde_json::json!(true);
+        config["checks"] = serde_json::json!([{ "name": "ok", "command": "echo ok" }]);
+    });
+    let claimed = ws.ok(&["task", "claim", "0001", "--agent", "w1"]);
+    let root = worktree_of(&ws, "0001");
+    assert!(claimed.stdout.contains("worktree:"), "{}", claimed.stdout);
+
+    commit_file(&ws, "0001", "w1", "src/alpha/MARKER");
+
+    // `ai check` runs in the task checkout and records that checkout's HEAD.
+    let checked = ws.ok(&["check", "--task", "0001", "--agent", "w1"]);
+    assert!(
+        checked.all().contains("Evidence recorded"),
+        "{}",
+        checked.all()
+    );
+    let worktree_head = ws.git_in(&root, &["rev-parse", "HEAD"]).stdout;
+    let main_head = ws.git(&["rev-parse", "HEAD"]).stdout;
+    assert_ne!(worktree_head.trim(), main_head.trim());
+    let evidence = std::fs::read_to_string(ws.path("runtime/state/evidence/0001.jsonl"))
+        .expect("evidence file");
+    assert!(evidence.contains(worktree_head.trim()), "{evidence}");
+
+    ws.ok(&["task", "review", "0001", "--agent", "w1"]);
+    ws.ok(&["task", "release", "0001", "--agent", "w1"]);
+    ws.ok(&["git", "finish", "--task", "0001", "--agent", "r1"]);
+    assert!(ws.path("src/alpha/MARKER").exists());
+}
+
+#[test]
+fn finish_merges_the_worktree_branch_not_the_integration_tree() {
+    let ws = Ws::new("ai-worktree-gate-");
+    ws.git_init();
+    parallel_workspace(&ws, &["Alpha"]);
+    ws.set_config(|config| {
+        config["mode"] = serde_json::json!("strict");
+        config["workflow"]["requireCheck"] = serde_json::json!(true);
+        // The check only passes where HEAD contains the task's marker file, so a
+        // gate that ran on develop (before the merge) would fail.
+        config["checks"] = serde_json::json!([{ "name": "marker", "command": "git cat-file -e HEAD:src/alpha/MARKER" }]);
+    });
+    ws.ok(&["task", "claim", "0001", "--agent", "w1"]);
+    commit_file(&ws, "0001", "w1", "src/alpha/MARKER");
+    ws.ok(&["task", "review", "0001", "--agent", "w1"]);
+    ws.ok(&["task", "release", "0001", "--agent", "w1"]);
+
+    ws.ok(&["git", "finish", "--task", "0001", "--agent", "r1"]);
+    assert!(ws.path("src/alpha/MARKER").exists());
+}
+
+#[test]
 fn orphan_worktrees_are_reported_and_pruned() {
     let ws = Ws::new("ai-worktree-prune-");
     ws.git_init();

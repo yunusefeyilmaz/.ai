@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::config::adopt;
+use crate::config::blueprint;
 use crate::config::preferences;
 use crate::config::settings as config;
 use crate::core::error::Result;
@@ -15,57 +16,10 @@ use crate::tasks::store::{self, Task};
 
 use crate::StartArgs;
 
+/// `ai start` claims through the same pipeline as `ai task claim`, so the two
+/// entry points cannot drift (branch creation, rollback, git diagnostics).
 fn claim_for_start(ws: &Workspace, path: &std::path::Path, agent: &str) -> Result<(bool, String)> {
-    let (meta, _, _) = store::parse_task(path)?;
-    let previous = meta
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or("todo")
-        .to_string();
-    if previous != "review" {
-        let task = Task {
-            meta: meta.clone(),
-            body: String::new(),
-            path: path.to_path_buf(),
-            folder: "active".into(),
-        };
-        let (ok, message) = lifecycle::acquire_task_locks(ws, &task, agent)?;
-        if !ok {
-            return Ok((false, message));
-        }
-    }
-    let (ok, message) = lifecycle::claim_task(ws, path, agent, false)?;
-    if !ok {
-        if previous != "review" {
-            lifecycle::release_task_locks(ws, &meta, Some(agent))?;
-        }
-        return Ok((false, message));
-    }
-    if previous != "review" && config::git_enabled(ws) {
-        let state = git::state(ws);
-        let cfg = git::config(ws);
-        let git_ready = state.get("repo").and_then(Value::as_bool).unwrap_or(false)
-            && state.get("head").and_then(Value::as_str).is_some()
-            && git::branch_exists(&ws.project, &cfg.integration);
-        if git_ready
-            && gitflow::start_branch(ws, &message, agent, "feature", None, false, false)? != 0
-        {
-            lifecycle::rollback_claim(
-                ws,
-                path,
-                agent,
-                Some(&previous),
-                "the task branch could not start",
-            )?;
-            return Ok((
-                false,
-                format!(
-                    "Claim of {message} was rolled back: the task branch could not start. Fix the Git problem, then reclaim with `ai task claim {message} --agent {agent}`."
-                ),
-            ));
-        }
-    }
-    Ok((true, message))
+    crate::cmd::task::claim_one(ws, path, agent, false)
 }
 
 pub fn run(ws: &Workspace, args: &StartArgs) -> Result<i32> {
@@ -193,14 +147,33 @@ pub fn run(ws: &Workspace, args: &StartArgs) -> Result<i32> {
             "ai setup   # you are the chief: ask the user which workflow features they want"
                 .to_string(),
         );
+    } else if blueprint::status(ws) == blueprint::State::Missing {
+        next_steps.push(
+            "ai blueprint propose   # record the facts, then the chief authors it with --from <analysis.json> and the user approves"
+                .to_string(),
+        );
+    } else if blueprint::status(ws) == blueprint::State::Pending {
+        next_steps.push(
+            "ai blueprint show   # the user approves or changes the proposal before planning"
+                .to_string(),
+        );
     } else {
         next_steps.push(
             "ai plan apply plan.json --role chief   # split the request into linked tasks (`ai plan example`)"
                 .to_string(),
         );
     }
-    if target.is_some() {
-        next_steps.push("ai check --fast".to_string());
+    if let Some(task) = &target {
+        let checkout = git::task_checkout(ws, task);
+        let ahead = git::commits_ahead(&checkout, &branches.integration).unwrap_or(0);
+        if ahead > 0 {
+            next_steps.push(format!("ai check --task {} --agent <name>", task.id()));
+        } else if task.owner().is_some() {
+            next_steps.push(format!(
+                "ai task show {}   # read the spec, do the work, then `ai git commit` (checks come at the end)",
+                task.id()
+            ));
+        }
     }
     if let Some(error) = &claim_error {
         eprintln!("{error}");

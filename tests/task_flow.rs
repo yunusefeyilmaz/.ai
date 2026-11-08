@@ -100,6 +100,85 @@ fn ready_task_recommends_next() {
 }
 
 #[test]
+fn a_fresh_claim_points_at_the_work_before_the_checks() {
+    let ws = Ws::with_mode("ai-flow-fresh-claim-", "strict");
+    ws.git_init();
+    ws.set_config(|config| {
+        config["checks"] = serde_json::json!([{ "name": "ok", "command": "echo ok" }]);
+    });
+    new_claimed(&ws, "alice");
+
+    let out = ws.ok(&["now", "--agent", "alice"]).stdout;
+    assert!(out.contains("NEXT  ai task show 0001"), "{out}");
+    assert!(!out.contains("ai check --task"), "{out}");
+}
+
+#[test]
+fn plan_apply_commits_the_task_ledger() {
+    let ws = Ws::new("ai-flow-plan-commit-");
+    ws.git_init();
+    ws.chief_ready();
+    ws.ok(&[
+        "setup",
+        "--set",
+        "review=yes",
+        "checks=no",
+        "git=yes",
+        "tests=no",
+    ]);
+    ws.write(
+        "plan.json",
+        r#"{"tasks":[{"key":"api","title":"Build the API","priority":"high","acceptance":["It responds"]}]}"#,
+    );
+    ws.blueprint();
+
+    ws.ok(&["plan", "apply", "plan.json", "--role", "chief"]);
+
+    let tracked = ws.git(&["ls-files", "tasks/active"]).stdout;
+    assert!(
+        tracked.contains("0001-"),
+        "the task must be committed: {tracked}"
+    );
+    let specs = ws.git(&["ls-files", "specs/active"]).stdout;
+    assert!(
+        specs.contains("0001-"),
+        "the spec must be committed: {specs}"
+    );
+    let status = ws.git(&["status", "--porcelain"]).stdout;
+    assert!(
+        !status.contains("tasks/") && !status.contains("specs/"),
+        "the ledger must start clean: {status}"
+    );
+}
+
+#[test]
+fn strict_mode_requires_the_users_plan_approval() {
+    let ws = Ws::with_mode("ai-flow-plan-approval-", "strict");
+    ws.git_init();
+    ws.chief_ready();
+    ws.write(
+        "plan.json",
+        r#"{"tasks":[{"key":"api","title":"Build the API","priority":"high","acceptance":["It responds"]}]}"#,
+    );
+    ws.blueprint();
+
+    let refused = ws.fails(&["plan", "apply", "plan.json", "--role", "chief"]);
+    assert!(refused.all().contains("--approved-by"), "{}", refused.all());
+    assert!(ws.glob("tasks/active", "0001-").is_empty());
+
+    ws.ok(&[
+        "plan",
+        "apply",
+        "plan.json",
+        "--role",
+        "chief",
+        "--approved-by",
+        "user",
+    ]);
+    assert!(ws.path("runtime/state/plan-approval.json").is_file());
+}
+
+#[test]
 fn context_lists_open_and_decisions() {
     let ws = Ws::new("ai-flow-context-");
     ws.new_task("Open work").ok("task new");

@@ -109,6 +109,24 @@ pub fn parse_task(path: &Path) -> Result<(Map<String, Value>, String, Vec<String
     Ok((document.meta, document.body, document.problems))
 }
 
+/// A task plus its current file location, from any accepted id form.
+pub fn task_of(ws: &Workspace, task_id: &str) -> Option<Task> {
+    let path = find_task(ws, task_id)?;
+    let (meta, body, _) = parse_task(&path).ok()?;
+    let folder = path
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("active")
+        .to_string();
+    Some(Task {
+        meta,
+        body,
+        path,
+        folder,
+    })
+}
+
 pub fn validate_meta(meta: &Map<String, Value>) -> Vec<String> {
     validate_task_meta(meta)
 }

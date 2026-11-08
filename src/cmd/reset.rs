@@ -33,6 +33,12 @@ fn reset_lock_files(ws: &Workspace) -> Vec<PathBuf> {
     files
 }
 
+/// The files `ai reset --hard` would remove. Public so tests (and a future
+/// `--dry-run`) can prove the scope without driving an interactive prompt.
+pub fn targets(ws: &Workspace) -> Vec<PathBuf> {
+    reset_targets(ws)
+}
+
 fn reset_targets(ws: &Workspace) -> Vec<PathBuf> {
     let mut targets: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
     let preserved = [".gitkeep", "TEMPLATE.md", "README.md"];
@@ -73,15 +79,15 @@ fn reset_targets(ws: &Workspace) -> Vec<PathBuf> {
         }
     }
     for root in [
-        ws.checkpoint_dir(),
-        ws.handoff_dir(),
         ws.artifacts_dir(),
         ws.logs_dir(),
+        // The whole state tree is derived: checkpoints, handoffs, evidence,
+        // events, the plan approval and the task counter. Ids restart after a
+        // reset, so leaving evidence behind would let an old green record
+        // authorise a brand-new task with the same id.
+        ws.state_dir(),
     ] {
         collect_files(&root, &mut targets);
-    }
-    if ws.counter_path().is_file() {
-        targets.insert(ws.counter_path());
     }
     targets.into_iter().collect()
 }
@@ -118,10 +124,9 @@ fn reset_target_error(ws: &Workspace, targets: &[PathBuf]) -> Option<String> {
         ws.specs_active_dir(),
         ws.specs_done_dir(),
         ws.decisions_dir(),
-        ws.checkpoint_dir(),
-        ws.handoff_dir(),
         ws.artifacts_dir(),
         ws.logs_dir(),
+        ws.state_dir(),
     ];
     for target in targets {
         let resolved = fs::canonicalize(target).unwrap_or_else(|_| target.clone());
@@ -135,7 +140,7 @@ fn reset_target_error(ws: &Workspace, targets: &[PathBuf]) -> Option<String> {
             let root = fs::canonicalize(root).unwrap_or_else(|_| root.clone());
             resolved.starts_with(&root)
         });
-        if !in_scope && resolved != ws.counter_path() {
+        if !in_scope {
             return Some(format!(
                 "Refusing to reset a path outside the approved state folders: {}",
                 target.display()

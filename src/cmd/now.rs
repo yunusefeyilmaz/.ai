@@ -113,8 +113,17 @@ pub fn now(ws: &Workspace, args: &NowArgs) -> Result<i32> {
     }
     if command == "ai setup" {
         if let Ok(state) = crate::config::preferences::status(ws) {
-            for row in state.questions.iter().filter(|row| !row.answered) {
-                lines.push(format!("ASK   {}: {}", row.key, row.ask));
+            let pending: Vec<&str> = state
+                .questions
+                .iter()
+                .filter(|row| !row.answered)
+                .map(|row| row.key.as_str())
+                .collect();
+            if !pending.is_empty() {
+                lines.push(format!(
+                    "ASK   {} (details: ai setup; recommended answers in the ALSO line)",
+                    pending.join(", ")
+                ));
             }
         }
     }
