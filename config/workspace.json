@@ -21,7 +21,13 @@
         "requireCheck": "strict",
         "autoContinue": false,
         "chiefOnlyTasks": true,
-        "requireSpec": true
+        "requireSpec": true,
+        "playbook": "pair"
+    },
+    "blueprint": {
+        "status": "missing",
+        "path": "config/blueprint.json",
+        "required": false
     },
     "team": {},
     "policy": {

@@ -144,7 +144,9 @@ fix/0012-empty-vat-id
 hotfix/0015-login-500
 ```
 
-The slug is derived from the task title. Branch names are local to the clone.
+The slug is derived from the task title. Titles longer than 40 characters are cut
+on a word boundary and get a short digest of the full title, so two similar long
+titles keep distinct branch names. Branch names are local to the clone.
 
 ## Worktrees (parallel workers)
 
@@ -155,7 +157,7 @@ both. With `git.isolation = worktree` (set automatically by
 ```
 project/
 ├── .ai/                      <- the single shared workspace (tasks, locks, runtime, config)
-│   ├── ai.py
+│   ├── target/release/ai     <- the CLI the worktree runs by absolute path
 │   └── worktrees/
 │       ├── feature-0001-login/      <- task 0001, branch feature/0001-login
 │       └── feature-0002-payment/    <- task 0002, branch feature/0002-payment
@@ -175,9 +177,12 @@ How it works:
   touched, so it does not need to be clean.
 - A worktree has no separate workspace state: the `.ai/` ledger, leases and runtime
   live in the main checkout (adopt ignores only `.ai/runtime/`, `.ai/worktrees/` and
-  the generated pointer files). The worker runs the shared CLI by absolute path
-  (printed at claim time, also in the `AGENTS.md`/`CLAUDE.md` briefing the
-  workspace drops into the worktree).
+  the generated pointer files). Because a committed workspace is checked out into
+  the worktree too, the CLI recognises paths under `<workspace>/worktrees/*` and
+  resolves them back to the shared workspace, so tasks, locks and evidence never
+  fork. The worker runs the shared CLI by absolute path (printed at claim time,
+  also in the `AGENTS.md`/`CLAUDE.md` briefing the workspace drops into the
+  worktree).
   `ai git commit|verify`, `ai check --task`, `ai checkpoint|resume` and
   `ai task review` find the task's worktree themselves, whatever the caller's
   directory.

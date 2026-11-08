@@ -22,8 +22,11 @@ todo ──claim──> in_progress ──review──> review ──done (other
 | `blocked` | Waiting on a human or another task; reason in the log. | owner |
 | `done` | Archived to `tasks/done/`; lock released. | `ai task done` |
 
-`done` tasks are immutable. If behavior must change after `done`, create a new
-task and link the old one under `## Notes`.
+`done` tasks are immutable. `task link`, `task block`, `task unblock` and
+`spec check` refuse them; `ai task reopen <id>` is the only way back, and it only
+accepts a real state (`review`, `todo`, `in_progress`, `changes_requested`). If
+behavior must change after `done`, reopen it or create a new task and link the old
+one under `## Notes`.
 
 An operator can permanently remove an unwanted task with `ai task discard
 <id>`. This requires an interactive terminal, an exact typed confirmation, and
@@ -36,8 +39,11 @@ To clear the whole workspace ledger and runtime state, an operator can run
 interactive phrase `reset .ai hard`. It preserves the framework, configuration,
 host Git history and branches. It removes project task/spec records and numbered
 ADRs (`NNNN-*.md`) while preserving `docs/decisions/README.md`, `TEMPLATE.md`,
-`.gitkeep` and unrelated files. State-changing CLI commands serialize against
-the reset. Agents must not run it without an explicit user request.
+`.gitkeep` and unrelated files. It also clears the whole derived state tree —
+checkpoints, handoffs, evidence, the event ledger, the plan approval and the task
+counter — so a new task cannot inherit an old id's green proof. State-changing CLI
+commands serialize against the reset. Agents must not run it without an explicit
+user request.
 
 ## Front matter
 
@@ -86,7 +92,8 @@ The id is allocated under the `tasks.index` lock, so two agents cannot receive
 the same id. The file is created in `tasks/active/` and `tasks/BOARD.md` is
 refreshed. Unless `--no-spec` is given, a spec skeleton is written from
 `specs/TEMPLATE.md` to `specs/active/<id>-<slug>.md` and linked from the task.
-An explicit `--spec` only links an existing file; it is never rewritten.
+An explicit `--spec` only links an existing file; it is never rewritten, and a
+missing path is refused at creation time.
 
 `depends_on` prevents parallel agents from starting work that needs unmerged
 predecessors. Ids are allocated in dependency order, so the printed
@@ -248,6 +255,10 @@ Copy `specs/TEMPLATE.md`. When the work is shipped, move the spec to
 - **lite** — spec approval is a quick yes/no; plan approval is required.
 - **strict** — spec approval, plan approval, finding triage and ship decision
   are all human gates.
+
+Orthogonally, the **playbook** decides who may approve the delivered work:
+`solo` (the same agent), `pair` (a different agent) or `team` (reviewers/QA).
+See `docs/blueprint.md`; the user picks both with `ai setup`.
 
 A gate is recorded in the task or spec (`Approved by / on`) so the next role can
 check it without asking.

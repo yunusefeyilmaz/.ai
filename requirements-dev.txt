@@ -1,5 +1,0 @@
-# Development tools only: the CLI itself is stdlib-only and imports none of these.
-# CI installs this file, then runs `python -m ruff check .` and `python -m mypy`.
-# Local check: python -m pip install -r requirements-dev.txt
-ruff>=0.6
-mypy>=1.11

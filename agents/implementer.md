@@ -60,7 +60,8 @@ ai task review <id> --agent <n>           # ONE command: runs the project checks
 ```
 
 If `claim` printed a `worktree:` path, work **only** inside it and call the CLI by the absolute path it
-printed (the worktree has no `.ai/`).
+printed. The worktree is a Git checkout and may contain a copy of the ledger; the CLI
+resolves it back to the shared workspace, so tasks, locks and evidence stay in one place.
 
 After delivering, **stop**: report what you did and wait for the user, unless the
 project allows `continue` (see `ai setup`). If a reviewer sends the task back,

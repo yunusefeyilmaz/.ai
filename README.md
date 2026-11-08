@@ -1,41 +1,46 @@
-# .ai
+<pre>
+           _
+    ____ _(_)
+   / __ `/ /
+ _/ /_/ / /
+(_)__,_/_/
+</pre>
 
 A small, self-contained workspace that lets AI coding agents work on a project like
 a professional team: a **chief** plans, **implementers** build, **reviewers**
 approve. It adds one task ledger, file locks, standard Git handling and one
-definition of "finished" — with no server, no database and no package install.
+definition of "finished" — with no server, no database and no network access.
 
 You give your AI one short request. The chief asks you how much process you want
 (review? Git? tests?), splits the work into linked tasks, and the workers pick them
 up. The `ai` command does the bookkeeping, so the agents spend their effort on the
 code.
 
-## 1. Install (copy and paste)
+## 1. Install
 
-Run these in your **project folder**. You need Git and Python 3.8+ (nothing else).
+You need [Rust](https://rustup.rs) (1.85 or newer) and `git`. Nothing else — no
+package registry credentials, no Python, no service.
+
+```sh
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+cd .ai
+cargo build --release
+```
+
+Then adopt and verify the workspace from your **project folder**:
 
 **macOS / Linux**
 
 ```sh
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-python3 .ai/ai.py adopt
-python3 .ai/ai.py doctor
+.ai/target/release/ai adopt
+.ai/target/release/ai doctor
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-.\.ai\ai.cmd adopt
-.\.ai\ai.cmd doctor
-```
-
-**Windows (Command Prompt)**
-
-```bat
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-.ai\ai.cmd adopt
-.ai\ai.cmd doctor
+.\.ai\target\release\ai.exe adopt
+.\.ai\target\release\ai.exe doctor
 ```
 
 `adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
@@ -44,10 +49,29 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 (`tasks/`, `specs/`, `config/`, `docs/`) stays committed. Run it once per clone.
 `doctor` should end with `0 error(s)`.
 
+### Launchers
+
+`ai.cmd` (Windows) and `ai` (POSIX) find the release binary, then the debug
+binary, then fall back to `cargo run`. On macOS/Linux mark the shell launcher
+executable once:
+
+```sh
+chmod +x .ai/ai
+```
+
+| System             | Launcher                 | Shortcut                                                                         |
+| ------------------ | ------------------------ | -------------------------------------------------------------------------------- |
+| macOS / Linux      | `.ai/ai`                 | add `<project>/.ai` to `PATH`, or `alias ai=<project>/.ai/ai`                    |
+| Windows PowerShell | `.\<project>\.ai\ai.cmd` | add `<project>\.ai` to `PATH`, or `Set-Alias ai <project>\.ai\ai.cmd` (absolute) |
+| Windows cmd        | `.ai\ai.cmd`             | add `<project>\.ai` to `PATH`                                                    |
+
+A PATH entry is more durable than a shell alias: aliases are session-scoped and
+relative paths break after `cd`. In the examples below, `ai` means this launcher.
+
 ### First verified change (90 seconds)
 
 ```sh
-.ai/ai start --agent implementer            # wire the workspace, claim the demo task
+.ai/ai start --agent implementer             # wire the workspace, claim the demo task
 .ai/ai check --task 0001 --agent implementer # record evidence
 ```
 
@@ -55,16 +79,6 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai
 something to claim. It is the single documented demo/task-creation exception to
 "only the chief creates tasks"; use `--no-demo` to skip it. For real work, answer
 `ai setup` and let the chief plan (section 2).
-
-Optional: type `ai ...` instead of the long path. In the examples below, `ai` means
-this launcher. A PATH entry is more durable than a shell alias (aliases are
-session-scoped and relative paths break after `cd`):
-
-| System | Launcher | Shortcut |
-| ------ | -------- | -------- |
-| macOS / Linux | `.ai/ai` | add `<project>/.ai` to `PATH`, or `alias ai=<project>/.ai/ai` |
-| Windows PowerShell | `.\<project>\.ai\ai.cmd` | add `<project>\.ai` to `PATH`, or `Set-Alias ai <project>\.ai\ai.cmd` (absolute) |
-| Windows cmd | `.ai\ai.cmd` | add `<project>\.ai` to `PATH` |
 
 ## 2. Give your AI a job
 
@@ -123,7 +137,7 @@ Use the launcher for your system from the table above (`.ai/ai` on macOS/Linux,
   `continue` in the setup).
 - **One worker or many.** With one worker, every task gets its own Git branch. With
   several (`workers` greater than 1) every task also gets its own checkout under
-  `.ai/worktrees/`, so workers never step on each other. Worktrees are *not*
+  `.ai/worktrees/`, so workers never step on each other. Worktrees are _not_
   required for a single worker.
 - **Git is your choice.** If you say no to Git in the setup, the Git steps are
   skipped. If yes, the agent sets up Gitflow (`ai git setup --yes` for an agent with
@@ -132,16 +146,17 @@ Use the launcher for your system from the table above (`.ai/ai` on macOS/Linux,
 
 ## 4. Commands you will actually use
 
-| You want to | Run |
-| ----------- | --- |
-| see what is going on | `ai status --board` or `ai context` |
-| see why a task is where it is | `ai history <task>` |
-| change a workflow answer | `ai setup --set review=no` (keys: review, checks, git, tests, continue, workers) |
-| add your test command | `ai setup --check "tests=npm test"` |
-| fix a broken workspace | `ai doctor --fix` |
-| clean up finished worktrees | `ai worktree prune` |
+| You want to                   | Run                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| see what is going on          | `ai status --board` or `ai context`                                              |
+| see why a task is where it is | `ai history <task>`                                                              |
+| change a workflow answer      | `ai setup --set review=no` (keys: review, checks, git, tests, continue, workers) |
+| add your test command         | `ai setup --check "tests=cargo test"`                                            |
+| fix a broken workspace        | `ai doctor --fix`                                                                |
+| clean up finished worktrees   | `ai worktree prune`                                                              |
 
-The full list is in `GUIDE.md`. Rules for agents are in `AGENTS.md`.
+The full list is in `GUIDE.md`. Rules for agents are in `AGENTS.md`. The
+machine-readable contract is `ai capabilities --json`.
 
 ## The guarantees
 
@@ -165,27 +180,45 @@ The full list is in `GUIDE.md`. Rules for agents are in `AGENTS.md`.
 your-project/
 ├── <product code>
 └── .ai/
-    ├── ai.py            the only entry point (thin); launchers: ai, ai.cmd
+    ├── Cargo.toml       Rust package: one binary, `ai`
+    ├── src/
+    │   ├── main.rs      CLI parser + dispatch
+    │   ├── lib.rs       library surface (so tests and tools can embed it)
+    │   ├── cli.rs       every command, argument and flag (clap)
+    │   └── core/ config/ tasks/ specs/ runtime/ git/ decisions/ ui/ cmd/
+    ├── ai, ai.cmd       launchers (release → debug → cargo run)
     ├── AGENTS.md        entry contract for every agent
     ├── GUIDE.md         operator's handbook
-    ├── lib/             scripts only: core, config, runtime, tasks, specs, git,
-    │                    decisions, cmd (one file per command), tests
     ├── config/          mode, TTLs, budgets, workflow rules, project checks
     ├── tasks/           task ledger: active/, done/, generated BOARD.md
     ├── specs/           acceptance criteria per behavior change
     ├── runtime/         leases, checkpoints, handoffs, artifacts, logs
     ├── templates/git/   commit and PR templates
-    ├── docs/            architecture, flow, concurrency, recovery, decisions/
+    ├── docs/            architecture, blueprint, flow, concurrency, recovery, decisions/
     ├── agents/          role cards
     ├── prompts/         reusable prompt bodies
     ├── adapters/        per-tool pointers
-    └── skills/          optional extensions (loaded automatically)
+    ├── skills/          optional extensions
+    └── tests/           end-to-end CLI tests (cargo test)
 ```
 
 The split matters: `.ai/` is agent territory, the rest is product territory.
 `ai adopt` is the explicit operator action that creates local pointers and the
 narrow ignore rules (`.ai/runtime/`, `.ai/worktrees/`); the workspace ledger stays
 in version control.
+
+### Building and testing
+
+```sh
+cargo build --release     # the binary at target/release/ai (ai.exe on Windows)
+cargo test                # unit tests + end-to-end CLI tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+Each integration test builds a throwaway workspace under the OS temp directory, so
+`cargo test` never touches this checkout. The suite is identical on Windows, macOS
+and Linux; CI runs all three plus a 1.85 MSRV check.
 
 ## When something breaks
 
@@ -212,13 +245,19 @@ archives the task and its spec and frees every lock. `depends_on` keeps a task f
 starting before its predecessor is finished. The exact transitions are in
 `docs/task-flow.md`.
 
+Who may approve is set by `workflow.playbook`: `solo` (one agent designs,
+implements and reviews), `pair` (a second agent), or `team` (workers plus
+reviewers/QA). Before planning, the chief proposes the architecture and the user
+approves or changes it: `ai blueprint propose` -> `ai blueprint approve`. See
+`docs/blueprint.md`.
+
 ## Running more than one agent
 
 - One task per session. Claim it before editing.
 - Workers take work from `ai task ready` or `ai task next --agent <name>`; a
   task whose dependency is not done never appears there.
 - Lock the paths you will touch. Paths and globs overlap, so `src/billing` and
-  `src/billing/invoice.py` conflict.
+  `src/billing/invoice.rs` conflict.
 - Acquire in a fixed order: task lease, file leases, then the git index.
 - Review in a separate session; the producer does not sign off on its own work.
 - Parallel workers get one `git worktree` each, created by `ai task claim`
@@ -232,7 +271,7 @@ refuses to call a staged set safe when a path has no held lease. Details:
 
 ```sh
 # one line works in every shell (PowerShell, cmd, bash, zsh)
-ai checkpoint 0007 --agent codex --percent 85 --status "writer fails on empty rows" --next "handle missing vat_id, add the empty-row test" --files src/export/writer.py --verification "npm test: 12 passed, 1 failing"
+ai checkpoint 0007 --agent codex --percent 85 --status "writer fails on empty rows" --next "handle missing vat_id, add the empty-row test" --files src/export/writer.rs --verification "cargo test: 12 passed, 1 failing"
 
 ai handoff 0007 --agent codex --reason "context limit"
 ai resume 0007
@@ -292,9 +331,20 @@ It is read-only and never changes the workspace.
 
 ## Requirements
 
-- Git, if you plan to clone and commit.
-- Python 3.8+ for the CLI. The launchers discover `python3`, `python` or `py -3`.
-- Nothing else: no packages, no build step, no background service.
+| Need       | Why                                                                     |
+| ---------- | ----------------------------------------------------------------------- |
+| Rust 1.85+ | Building the binary (`cargo build --release`).                          |
+| Git        | Cloning, and every Gitflow command. Read-only commands work without it. |
+| A terminal | Only `ai reset --hard` and `ai task discard` require one.               |
+
+No runtime dependency: after `cargo build --release`, `target/release/ai` is a
+single self-contained executable you can copy anywhere.
+
+## Platform support
+
+Windows, macOS and Linux, all tested by CI. The binary uses no platform-specific
+crates; project checks run through `cmd /C` on Windows and `sh -c` elsewhere, and
+lock files use `LockFileEx`/`flock` through `fs2`.
 
 ## License
 

@@ -2,6 +2,191 @@
 
 All notable changes to this workspace are documented here.
 
+## [1.1.0] - 2026-11-07
+
+The workspace is now a **Rust program**. Same commands, same on-disk contract,
+same behaviour; the Python CLI (`ai.py` + `lib/`) is replaced by a single
+statically-typed binary that runs on Windows, macOS and Linux with no runtime
+dependency.
+
+### Fixed
+
+- **A task worktree resolves to the workspace that owns it.** When the workspace
+  is committed, `git worktree add` checks out a second copy of `.ai/`; discovery
+  now recognises paths under `<workspace>/worktrees/*` and maps them to the main
+  workspace, so a worker inside its checkout sees the real tasks, locks and
+  evidence instead of an empty, private ledger.
+- **Checks and evidence run in the task checkout.** `ai check --task` and the
+  `ai git finish` gate execute the project's checks in the task's worktree and
+  record that checkout's HEAD, so green evidence matches the branch being
+  reviewed and worktree isolation can complete a task.
+- **`ai check --task` only records evidence for a task that is being worked on.**
+  An unclaimed task, or one owned by another agent, no longer gains a record;
+  this stops a stray check from changing somebody else's `ai now` next step.
+- **`ai check` enforces each check's `timeoutSeconds`** through one shared
+  process runner (`src/core/process.rs`) that kills the whole process tree and
+  reports exit `124`; a hanging test can no longer stall a review forever.
+- **Concurrent evidence writes are serialized** by the workspace state guard, so
+  two agents checking at once cannot interleave partial JSON in the ledger.
+- **`ai setup --check-timeout NAME=SECONDS` is honoured** and stored as the
+  check's `timeoutSeconds`, so the `ai git finish` guard budget warning can
+  actually be resolved with the command its hint suggests.
+- **`ai plan apply` commits the task ledger** (tasks, specs, board) so the plan
+  survives `git clean`, and worktrees created from `develop` contain the current
+  tasks.
+- **`ai git commit` recovers a task branch** when the main checkout was moved
+  back to the integration branch between turns, instead of refusing the commit.
+- **`ai doctor` checks the checkout itself**: it warns when the main checkout is
+  on the production branch and when planning files under `tasks/`, `specs/` or
+  `config/` are untracked.
+- **Task branch names cut on a word boundary** and carry a short title digest, so
+  long titles stay readable and distinct.
+- **`ai reset --hard` clears the whole derived state tree.** It used to keep
+  `runtime/state/evidence`, the event ledger and the plan approval; because ids
+  restart at `0001`, a fresh task could inherit an old green record.
+- **Archived tasks are immutable.** `task link`, `task block`, `task unblock` and
+  `spec check` refuse a task in `done/` until `task reopen`; `reopen --status`
+  only accepts real states, so a task can no longer vanish from every reader.
+- **`ai git verify` inspects the caller's checkout** (explicit `--task`, the
+  worktree containing the current directory, or the active task on the current
+  branch), so the documented worktree loop verifies real staged work.
+- **`ai task block` frees the task's file leases**, and **a stale review claim no
+  longer hides a task** from the review queue.
+- **Removal failures are reported**: `ai lock release` and `ai recover --apply`
+  no longer print success while a phantom lease survives.
+- **`ai lock acquire --task` widens scope atomically** (guarded, error checked,
+  success only printed after the write).
+- **`ai status --board` creates no state**, so missing-path findings stay visible
+  to `ai doctor`.
+- **`ai task new --spec <path>` requires an existing file**, failing at creation
+  instead of at claim time.
+- **`--porcelain -z` output is parsed untrimmed**, so a first entry with a leading
+  space no longer yields a corrupted path.
+- **`ai task review` regenerates the board inside the state guard**, so a
+  concurrent claim cannot produce a stale board.
+- **One evidence verdict.** `ai review`, the review gate and the status views
+  share `evidence::recorded_on`/`evaluate`, so they cannot disagree about whether
+  a proof belongs to the current commit.
+- **`src/core/process.rs` is the single shell runner**: checks and toolchain
+  probes share timeout semantics, process-tree killing and exit-code handling
+  instead of each rolling their own `Command`.
+
+An existing `.ai` directory keeps working unchanged: task/spec front matter, JSON
+leases, the event ledger, checkpoints, handoffs, the board and ADRs are written
+byte-for-byte the same way. Both implementations can operate on one workspace,
+which is what made a verified port possible.
+
+### Added
+
+- **`ai blueprint propose|show|revise|approve`**: the chief **authors** the
+  project design and the user approves it. `propose` alone records only
+  mechanical facts (OS, shell, Git, top-level tree, installed toolchains); the
+  analysis is supplied with `--from <file|->`, so **any language, framework,
+  folder layout or extra convention is accepted** — there is no stack allowlist
+  in the binary. `revise --set path.to.key=value` edits any path, and
+  `approve` copies the operational fields into `config/workspace.json` while
+  preserving the whole proposal under `config.blueprint.approved`. A draft with
+  no analysis cannot be approved; planning, `ai doctor` and `ai now` point at the
+  missing/pending proposal first.
+- **Playbooks (`workflow.playbook`)**: `solo` lets one agent design, implement
+  and review (evidence still required); `pair` requires a second agent; `team`
+  is the chief/workers/reviewers layout. `ai setup` asks for the playbook and the
+  `lite`/`strict` mode, and `ai now --json` publishes the active playbook.
+- **Plan approval as a user gate**: in `strict` mode, or when
+  `workflow.requirePlanApproval` is true, `ai plan apply` refuses until the user
+  agrees. Review with `--dry-run`, then apply with `--approved-by <user>`; the
+  approval is recorded in `runtime/state/plan-approval.json`.
+- **Token-lean context**: `ai now` prints one compact `ASK` line instead of one
+  per question, `ai brief` carries the approved naming/layout/guidelines and the
+  active playbook, a truncated brief (`--max-chars`) keeps the rules and the
+  commands while cutting the middle, and the capabilities contract publishes
+  `playbooks`, `modes` and the blueprint statuses.
+
+### Changed
+
+- **Language and runtime.** Python 3.8+ and `lib/` are gone; the CLI is Rust
+  (`src/`, edition 2021, MSRV 1.85). `cargo build --release` produces one
+  self-contained `ai` / `ai.exe`; no interpreter, no `pip install`, no
+  `sys.executable` subprocesses.
+- **Source layout mirrors the old package tree**, so the two implementations read
+  side by side: `src/core/` (error, fsio, time, workspace), `src/config/`
+  (settings, preferences, roles, adopt), `src/tasks/` (store, frontmatter,
+  lifecycle, history, board, plan, scope, gates), `src/specs/`, `src/runtime/`
+  (leases, checkpoints, evidence, events, metrics, health, mutex, overview,
+  dirs), `src/git/` (repo, flow, worktrees), `src/decisions/`, `src/ui/` and
+  `src/cmd/` (one file per command).
+- **Library + binary split.** `src/lib.rs` exposes the modules and `src/cli.rs`
+  holds the clap surface, so `capabilities` derives its contract from the real
+  parser and tests can call internals directly instead of shelling out.
+- **Launchers try the binary first.** `ai.cmd` and `ai` run the release build,
+  then the debug build, then fall back to `cargo run`.
+- **Exit codes.** `0` success, `1` refusal or a failed check. The Python-only
+  `127` ("no Python 3 found") is gone; a missing `git` binary now exits `127`
+  from the Git layer with `git is not available`.
+
+### Added
+
+- **`cargo test` suite: 183 tests** (10 unit + 173 end-to-end), ported from the
+  Python suites: acceptance criteria, board snapshots, lock ownership, workflow
+  and request-changes gates, front-matter lists, task ids, check gate,
+  `now --json`, setup gate, review gate, checkpoint gate, claim rollback, stale
+  locks on `done`, worktrees, events/metrics, the evidence state machine,
+  metadata commits, doctor repairs, command smoke tests, adopt ignore rules,
+  capabilities contract, platform regressions and documentation drift.
+- **Cross-platform CI** (`.github/workflows/ci.yml`): build + test + `doctor` +
+  both launchers on Ubuntu, macOS and Windows; `cargo fmt --check` and
+  `clippy -D warnings`; an MSRV job pinned to 1.85; and a release job that
+  packages a binary per OS only after the matrix is green.
+- **`tests/support/mod.rs`**, the Rust port of `lib/tests/_workspace.py`: every
+  test gets a private, normalised workspace copied from this checkout, with
+  colliding names impossible under parallel execution.
+- **`PORTING.md`**: the Python→Rust file mapping, the test matrix, the platform
+  notes and an explicit list of suites that are not ported and why.
+
+### Fixed
+
+Behaviour that only the ported tests exposed, all of which existed in the Python
+version too:
+
+- **`ai task done` left the ledger dirty.** The archived task, the shipped spec
+  and `BOARD.md` were written but never committed, so the next agent inherited a
+  dirty tree. `done` now stages exactly those coordination paths, including the
+  deletion of the old `specs/active/` file, and commits them as
+  `chore(task): record done <id>`.
+- **Ledger detection failed for moved files on Windows.** `is_workspace_ledger_path`
+  canonicalised the file itself, which fails once a rename removes it and which
+  returns a `\\?\`-prefixed path on Windows. It now canonicalises the parent when
+  the file is gone, so a deletion is correctly recognised as coordination state
+  and product paths are never mistaken for it.
+- **CRLF task files were not normalised.** A file written by another tool on
+  Windows parsed with trailing `\r` and round-tripped as CRLF. `read_text` now
+  converts line endings the way Python's text mode did, so the CLI always writes
+  LF.
+- **`ai task review` ignored an isolated worktree.** With
+  `git.isolation=worktree` the branch/tree/evidence gate read the main checkout,
+  which sits on the integration branch by design, and refused every review with
+  "belongs to branch …". The gate now inspects the task's own worktree.
+- **`ai task show` printed `-` for empty fields.** Python printed `None`; the
+  Rust port normalised it and broke scripts that matched on it. `task show` now
+  renders `None`/`True`/`False` again.
+- **`ai now --json` reported a blocker when work was actionable.** `blocker` was
+  stuck at `"nothing to do"` instead of `null`, so a harness that keys on the
+  field would always ask a human.
+- **`ai doctor` checked too few required files.** `docs/*.md`, `agents/*.md`,
+  the spec template and the PR template were missing from the invariant list, so
+  a half-copied workspace passed. The corrupt-config message also now names the
+  file the way the Python version did.
+- **`ai task discard` used a private wording** ("is leased by …") that no guidance
+  or test referred to; it now names the holder as `lock held by <agent>`.
+
+### Not ported
+
+- `ai ui` prints one static read-only frame instead of animating the Python TUI.
+- The Python-only test harnesses that drive the interactive `ai reset --hard`
+  in-process (`test_reset_mutex.py`) and the TUI (`test_ui.py`) are not ported;
+  their safety rules are enforced in `src/cmd/reset.rs` and covered by the
+  commands that call it.
+
 ## [1.0.1] - 2026-11-06
 
 Bug-fix release from a real end-to-end run (setup → plan → spec → claim → commit →

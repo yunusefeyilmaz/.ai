@@ -11,6 +11,9 @@ desktop.ini
 __pycache__/
 *.pyc
 
+# Rust build output
+/target/
+
 # Runtime state is transient (see runtime/.gitignore)
 
 # Task worktrees (git.isolation=worktree) are local checkouts

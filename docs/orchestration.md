@@ -23,6 +23,13 @@ identity. One tool can play different roles in different sessions.
 In `strict` mode, humans gate spec, plan and triage. In `lite` mode the same
 artifacts exist but are not blocking. The mode does not change the file format.
 
+Who may approve is a separate axis: the **playbook**. `solo` lets one agent
+design, implement and review (it still records evidence); `pair` requires a
+second agent; `team` adds QA and parallel workers. The user picks the mode and
+the playbook together with `ai setup`, and the chief plans only after the user
+approves the architecture proposal (`ai blueprint propose` -> `ai blueprint
+approve`). See `docs/blueprint.md`.
+
 ## Topologies
 
 ### 1. Single agent
@@ -30,11 +37,15 @@ artifacts exist but are not blocking. The mode does not change the file format.
 One session does everything, checkpointing at milestones. Best default. Add
 review only when the change is risky.
 
-The shipped default is `workflow.requireReview: true`, so a single agent cannot
-run `ai task done` on its own work: after `ai task review` the producer's only
-next step is "wait". A solo user must either answer `review=no` during `ai setup`
-(`ai setup --set review=no`) or start a second session as the reviewer. `ai now`
-prints that instruction when the producer is the only agent.
+The shipped default playbook is `pair` with `workflow.requireReview: true`, so a
+single agent cannot run `ai task done` on its own work: after `ai task review`
+the producer's only next step is "wait". A solo user has two options:
+
+- `ai setup --set playbook=solo` — one agent designs, implements **and reviews**;
+  the review step and its evidence stay, but the same agent may approve;
+- `ai setup --set review=no` — skip the review step entirely (low-risk work).
+
+`ai now` prints that instruction when the producer is the only agent.
 
 ### 2. Planner + implementer + reviewer
 

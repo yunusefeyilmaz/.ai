@@ -1,31 +1,33 @@
 # Architecture
 
 `.ai` is a folder, not a framework. It has no runtime service, no database and
-no generated code. Everything is files: Markdown for humans and agents, JSON for
-configuration, and a small stdlib-only Python CLI for the operations that need to
-be atomic.
+no code generation. Everything is files: Markdown for humans and agents, JSON for
+configuration, and a single Rust binary for the operations that need to be atomic.
 
 ## Layers
 
 ```
 project/                  <- product territory (the real repo)
 └── .ai/                  <- AI territory (this workspace)
-    ├── ai.py             thin entry point (+ launchers ai, ai.cmd)
+    ├── Cargo.toml        the `ai` binary (edition 2021, MSRV 1.85)
+    ├── src/              main.rs dispatches; cli.rs defines every flag; then
+    │                     core, config, tasks, specs, runtime, git, decisions,
+    │                     ui and cmd (one file per command) — one folder per domain
+    ├── ai, ai.cmd        launchers: release binary, debug binary, `cargo run`
     ├── AGENTS.md         signpost: session loop, required order, invariants
     ├── GUIDE.md          practical manual: install, loop, prompts, recovery
-    ├── lib/              scripts only (see lib/README.md): core, config,
-    │                     runtime, tasks, specs, git, decisions, cmd, tests
+    ├── tests/            end-to-end CLI tests (`cargo test`)
     ├── config/           one JSON file: mode, languages, ttl, workflow, checks
     ├── tasks/            local task store: active/, done/, BOARD.md
     ├── specs/            one spec per behavior change
     ├── runtime/          locks/, state/, artifacts/, logs/ (never committed)
     ├── templates/git/    commit and PR templates
-    ├── docs/             durable memory: architecture, flow, locks, orchestration,
-    │                     recovery, hygiene, decisions/
+    ├── docs/             durable memory: architecture, blueprint, flow, locks,
+    │                     orchestration, recovery, hygiene, decisions/
     ├── agents/           role cards (responsibility, not technology)
     ├── prompts/          reusable prompt bodies
     ├── adapters/         per-tool pointers (never duplicate rules)
-    └── skills/           optional extensions (loaded automatically)
+    └── skills/           optional extensions (prompts and templates)
 ```
 
 The boundary is the point: anything an agent generates that is not product code
@@ -48,7 +50,7 @@ Instructions in prose are weak. Three mechanisms carry the design:
 ## Ceremony levels
 
 - **lite** — solo work and low-risk changes. The artifacts exist; they rarely
-  block.
+  block. Choose it when a single agent may run the whole loop quickly.
 - **strict** — teams and critical systems. Spec, plan and triage need a human
   decision; roles do not share a session.
 
@@ -94,6 +96,7 @@ four.
 - **One contract.** Humans, agents, hooks and CI all run `ai check`.
 - **Evidence over claims.** Attach the command and result to the task.
 - **Small signpost.** A long `AGENTS.md` gets ignored in the middle; keep it short.
-- **Boring runtime.** Python 3 stdlib, atomic file operations, no daemon.
+- **Boring runtime.** One Rust binary, atomic file operations, no daemon, no
+  network, no garbage collector.
 - **Escape hatches.** Any runtime that can read and write files can follow the
   protocol when the CLI is unavailable.

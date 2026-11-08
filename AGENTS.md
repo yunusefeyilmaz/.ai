@@ -1,6 +1,7 @@
 # AGENTS.md — read this first
 
-`.ai` is the workspace: `ai.py` is the entry point, scripts are in `lib/`, state in
+`.ai` is the workspace: the `ai` binary is the entry point (built from `src/`;
+launchers `ai` and `ai.cmd`), state lives in
 `tasks/`, `specs/`, `runtime/`, `config/`. AI output stays under `.ai/`; the rest is
 product territory.
 
@@ -18,9 +19,10 @@ ai context                                               # only when new: open w
 ```
 Run the command after `NEXT`, then `ai now` again; read task/spec files only when asked.
 
-- **chief**: `ai setup` (ask) -> `ai plan apply plan.json --role chief` -> fill specs -> `ai status`.
+- **chief**: `ai now --role chief` -> `ai setup` (ask review/checks/git/tests/workers/mode/playbook) -> `ai blueprint propose` (facts) -> `ai blueprint propose --from analysis.json` (the AI's design) -> the user approves or changes it (`ai blueprint approve` / `ai blueprint revise --set path.to.key=value`) -> `ai plan apply plan.json --role chief` -> fill specs -> `ai status`.
 - **implementer**: `ai task next` (claim + locks + branch) -> work -> `ai task review`, then stop.
 - **reviewer**: `ai task next --review` -> `ai git finish` + `ai task done`, or `ai task request-changes`.
+- **solo playbook**: one agent designs, implements and reviews; `ai task done` accepts the same agent only when `workflow.playbook` is `solo`.
 
 ## Required order (enforced)
 1. **Spec first.** Edit the linked file in `specs/active/` before any claim.
@@ -48,10 +50,26 @@ lock file.
 
 ## Workers and continuation
 If `ai task claim|next` prints `worktree: <path>`, that directory is **your** checkout:
-`cd` there and edit only there; it has no `.ai/`, so run the shared CLI by the absolute
-path it printed. `ai git commit`, `ai check --task` and `ai task review` find your
-worktree themselves; never edit the main checkout. At ~70% context stop opening work;
-at ~85% `ai checkpoint`; before the window closes run `ai handoff` and stop.
+`cd` there and edit only there; a worktree may contain a copy of the ledger, but the
+CLI resolves it back to the main workspace. Run the shared CLI by the absolute path
+it printed. `ai git commit`, `ai check --task` and `ai task review` find your
+worktree themselves and run checks there; never edit the main checkout. At ~70%
+context stop opening work; at ~85% `ai checkpoint`; before the window closes run
+`ai handoff` and stop.
+
+## Playbooks, modes and tokens
+`workflow.playbook` decides who may approve: `solo` (one agent designs, implements,
+reviews), `pair` (producer + separate reviewer) or `team` (chief, workers, reviewers).
+`mode` (`lite`/`strict`) decides how much process runs. The user picks both with
+`ai setup`; the chief must not pick for them.
+
+Spend tokens on work, not on rediscovery:
+- read `ai now` and run its ONE `NEXT` command; read task/spec files only when asked;
+- `ai brief --max-chars N` is the paste-ready extern model brief; the approved
+  `config/blueprint.json` carries naming/architecture/checks;
+- `ai review <id> --stat` before opening a full diff;
+- never re-read the whole repository or all docs for context that `ai now`,
+  `ai brief` or the task already provides.
 
 ## Invariants
 1. Nothing AI-generated escapes `.ai/`; claim before you work, one task per session.

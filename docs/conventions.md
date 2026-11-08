@@ -8,7 +8,12 @@ Keep these stable so the CLI, the agents and CI agree.
 - Project documents may use another language. `config/workspace.json` records it
   under `language.documents` and `language.interviews`.
 - Protocol values stay English: `todo`, `in_progress`, `review`,
-  `changes_requested`, `blocked`, `done`, `lite`, `strict`, `null`.
+  `changes_requested`, `blocked`, `done`, `lite`, `strict`, `solo`, `pair`,
+  `team`, `null`.
+- Project naming is a decision, not a habit: the approved `config/blueprint.json`
+  records `files`, `functions`, `types`, `json`, `branches`, `commits` and `env`
+  naming under `naming`. New code follows it; changing it is a deliberate
+  `ai blueprint revise` + `ai blueprint approve`, not a per-task choice.
 
 ## Identifiers
 

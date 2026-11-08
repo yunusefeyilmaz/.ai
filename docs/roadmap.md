@@ -4,14 +4,14 @@ The workspace is judged by how little it asks of a person before useful work.
 The order below follows that rule: adoption first, proof second, measurement
 third, extras last. Every item names the observable result, not the feature.
 
-| Order | Task | Priority | Status | Success signal |
-|-------|------|----------|--------|----------------|
-| 1 | `0003` reliability suite | P0 | shipped 0.6.0 | Concurrency, expiry and recovery are proven by automated tests. |
-| 2 | `0004` metrics ledger | P1 | shipped 0.5.2 | Workflow claims are backed by numbers from real tasks. |
-| 3 | `0005` adapter contract | P1 | shipped 0.6.0 | A new agent or CI provider plugs in without touching the core. |
-| 4 | `0006` visibility board | P2 | shipped 0.6.0 | A blocked session explains itself without reading logs. |
+| Order | Task                     | Priority | Status        | Success signal                                                  |
+| ----- | ------------------------ | -------- | ------------- | --------------------------------------------------------------- |
+| 1     | `0003` reliability suite | P0       | shipped 0.6.0 | Concurrency, expiry and recovery are proven by automated tests. |
+| 2     | `0004` metrics ledger    | P1       | shipped 0.5.2 | Workflow claims are backed by numbers from real tasks.          |
+| 3     | `0005` adapter contract  | P1       | shipped 0.6.0 | A new agent or CI provider plugs in without touching the core.  |
+| 4     | `0006` visibility board  | P2       | shipped 0.6.0 | A blocked session explains itself without reading logs.         |
 
-Since 0.7.0 the work is tracked in `CHANGELOG.md`: the `lib/` split, the chief /
+Since 0.7.0 the work is tracked in `CHANGELOG.md`: the module split, the chief /
 implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
 
 ## Guardrails
@@ -20,7 +20,10 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
   verification. Extra ceremony is opt-in or belongs to `strict`.
 - **No new state without a reader.** Every file the CLI writes must be consumed
   by a command or a check.
-- **No new dependency.** Python standard library and Git only.
+- **No new dependency without a reason.** The Rust binary uses a handful of small
+  crates (clap, serde/serde_json, chrono, regex, sha1/sha2, fs2); Git is the only
+  external program. Adding a dependency means the three-OS matrix and the MSRV
+  check must still pass.
 - **One command per common path.** Setup, resume and verification each get a
   single entry point; flags refine, they do not replace it.
 - **Delete before adding.** If a step is not load-bearing, removing it beats
@@ -31,7 +34,7 @@ implementer / reviewer flow, evidence, scope, roles and per-task worktrees.
 - A server, database, daemon or web dashboard.
 - A hosted service or telemetry.
 - A second task ledger or a second definition of done.
-- Automatic merges without an independent reviewer.
+- Automatic merges without the approval the chosen playbook requires.
 
 ## Known limitations
 

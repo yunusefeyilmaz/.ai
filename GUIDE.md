@@ -5,7 +5,9 @@ the human supervising a session or the agent doing the work.
 
 The handbook assumes the CLI is available as `ai`. In a subfolder install that
 means `.ai/ai` (`.ai\ai.cmd` on Windows); you can add
-`.ai` to `PATH`. Without Python, every step still works by editing files.
+`.ai` to `PATH`. The CLI is a Rust binary built once with
+`cargo build --release`; if it is missing entirely, every step still works by
+editing files.
 
 ## Three concepts
 
@@ -30,16 +32,24 @@ Two rules follow from this:
 
 ### Root template
 
-Copy the repository contents into the project root. `AGENTS.md` at the root is
-already the entry point, so nothing needs to run. The CLI notices that the
-workspace is the project root.
+Copy the repository contents into the project root and build the CLI once:
+
+```sh
+cargo build --release
+```
+
+`AGENTS.md` at the root is already the entry point, so no adapters are needed.
+The CLI notices that the workspace is the project root.
 
 ### Subfolder
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai
+cargo build --release --manifest-path .ai/Cargo.toml
 .ai/ai adopt
 ```
+
+On macOS/Linux, `chmod +x .ai/ai` once so the shell launcher runs directly.
 
 `ai start` performs the same wiring automatically, so a first clone can go
 straight to the first pass below.
@@ -116,13 +126,18 @@ the ones below.
 ### Chief: workflow choices and planning
 
 ```sh
-ai setup [--set review=yes checks=yes git=yes tests=yes continue=no workers=2] [--check "tests=<cmd>"] [--defaults] [--json]
+ai setup [--set review=yes checks=yes git=yes tests=yes continue=no workers=2 mode=lite playbook=pair] [--check "tests=<cmd>"] [--check-timeout "tests=300"] [--defaults] [--json]
+ai blueprint propose                    # facts only: OS, tree, installed toolchains
+ai blueprint propose --from analysis.json   # the chief's design (any language/stack)
+ai blueprint show | revise --set PATH=VALUE | approve --agent <name>
 ai plan example                         # print a plan skeleton
-ai plan apply <plan.json> --role chief [--agent <name>] [--dry-run] [--json]
+ai plan apply <plan.json> --role chief [--agent <name>] [--approved-by <user>] [--dry-run] [--json]
 ai task new "<title>" --role chief [--allow GLOB] [--forbid GLOB] [--lock GLOB]
 ```
 
-Only the chief creates tasks, and only after the user's answers are stored.
+Only the chief creates tasks, and only after the user's answers are stored **and**
+the architecture blueprint is approved. `mode` is `lite`/`strict`; `playbook` is
+`solo`/`pair`/`team` and decides who may approve. See `docs/blueprint.md`.
 
 ### Where am I / what happened
 
@@ -180,8 +195,8 @@ evidence the review gate reads, and `--strict --task` records that same
 evidence with warnings promoted, so CI and the reviewer read one record.
 `ai check` runs only the
 *project's* commands from `checks` in `config/workspace.json` (empty by default:
-add your test/lint commands). It never runs the workspace's own tests in
-`lib/tests/`. `--fast` runs only checks marked fast in
+add your test/lint commands). It never runs the workspace's own test suite in
+`tests/`. `--fast` runs only checks marked fast in
 `config/workspace.json`; `--no-commands` skips configured shell commands.
 
 `ai status --board` is the read-only one-screen view: active tasks in
@@ -407,6 +422,26 @@ ai resume 0007
 files changed since the snapshot), and a ready prompt. Treat drift as a warning,
 not a failure: re-read the changed files before following the old plan.
 
+## Playbooks: who approves
+
+`workflow.playbook` decides who may approve delivered work, independently of the
+`lite`/`strict` process mode:
+
+| Playbook | Design | Implement | Review / approve |
+|----------|--------|-----------|------------------|
+| `solo` | one agent | same agent | same agent, with evidence |
+| `pair` | chief or user | one worker | a different agent |
+| `team` | chief | several workers | reviewers / QA |
+
+```sh
+ai setup --set playbook=solo      # one agent runs the whole loop
+ai setup --set playbook=pair mode=strict   # plan approval + separate reviewer
+```
+
+`solo` still records `ai check` evidence and still needs the task to be in
+`review`; it only removes the "different agent" requirement. `ai now` adapts its
+single next command to the playbook.
+
 ## Parallel work
 
 The safe default is one agent, one task. When that is too slow:
@@ -460,6 +495,7 @@ own. Two options:
 ```sh
 ai brief                  # latest active task
 ai brief 0007             # a specific task
+ai brief 0007 --max-chars 4000   # keep the rules + commands, cut the middle
 ai brief 0007 --json      # structured form
 ```
 
@@ -467,6 +503,20 @@ The brief explicitly says the model may not have shell access and must not claim
 it ran tests. It should answer with a plan, diffs and commands for a human to
 execute. Regenerate the brief after the task or checkpoint changes; do not keep
 pasting an old one.
+
+### Spend tokens on the work, not on rediscovery
+
+- `ai now` is the primitive: one screen, one `NEXT` command, one `WHY`. Run it
+  instead of re-reading the board, tasks and docs.
+- `ai now --json` is the compact machine contract; task bodies and paths are
+  omitted on purpose.
+- The approved `config/blueprint.json` carries the naming, layout, checks and
+  use/avoid rules; `ai brief` inlines them so a model does not need the docs.
+- `ai review <id> --stat` before opening a full diff; `--max-lines N` bounds it.
+- Read only the task (`ai task show`), its spec (`ai spec show`) and the files
+  you will edit. Do not load the whole repository or every document.
+- `--max-chars` keeps the head (rules) and the tail (commands) and cuts the
+  middle, so a truncated brief is still actionable.
 
 ## Failure recovery
 
@@ -551,6 +601,10 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | Key | Purpose |
 |-----|---------|
 | `mode` | `lite` or `strict` gates |
+| `workflow.playbook` | `solo`, `pair` or `team`: who may approve the work |
+| `workflow.requirePlanApproval` | Require `ai plan apply --approved-by <user>` |
+| `naming` / `architecture` | Conventions approved from the blueprint |
+| `blueprint.required` | Require a user-approved proposal before planning |
 | `locks.defaultTtlSeconds` | Initial lease duration |
 | `locks.staleAfterSeconds` | When a lease may be reclaimed |
 | `locks.maxTtlSeconds` | Upper bound for `--ttl` |
@@ -566,15 +620,17 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 |------|---------|
 | `0` | Success |
 | `1` | Verification failed or an operation was refused |
-| `127` | No Python 3 found; use the file protocol |
+| `2` | Invalid `--since` value for `ai metrics` |
+| `127` | `git` is not installed (Git commands only) |
 
 ### File map
 
 | Path | Purpose |
 |------|---------|
 | `AGENTS.md` | Invariants every session accepts |
-| `ai.py`, `ai`, `ai.cmd` | Entry point and launchers |
-| `lib/` | Scripts only, one folder per domain (see `lib/README.md`) |
+| `Cargo.toml`, `src/` | The Rust CLI: `main.rs` dispatches, `cli.rs` defines the flags, one folder per domain |
+| `ai`, `ai.cmd` | Launchers (release binary → debug binary → `cargo run`) |
+| `tests/` | End-to-end CLI tests (`cargo test`) |
 | `config/workspace.json` | Mode, leases, budget, workflow rules, checks |
 | `tasks/` | Ledger (active/done), template, generated board |
 | `specs/` | Acceptance criteria, active and shipped |
@@ -582,13 +638,14 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | `templates/git/` | Commit and PR templates |
 | `docs/` | Flow, concurrency, orchestration, recovery, hygiene, `decisions/` |
 | `agents/`, `prompts/`, `adapters/` | Role cards, prompt bodies, per-tool wiring |
-| `skills/` | Optional extensions (loaded automatically) |
+| `skills/` | Optional extensions (see `skills/README.md`) |
 
 ## If something looks wrong
 
 - **`ai` missing:** call the launcher path directly or add `.ai` to
-  `PATH`.
-- **No Python:** follow `docs/task-flow.md`; keep the JSON lease shape if you
+  `PATH`. If the launcher says `cargo: command not found`, build once with
+  `cargo build --release`.
+- **No CLI at all:** follow `docs/task-flow.md`; keep the JSON lease shape if you
   must edit one by hand.
 - **A warning in `ai check`:** warnings are signals. `--strict` turns them into
   failures, which is what CI does.
@@ -600,6 +657,7 @@ wait for the TTL rather than deleting a live lease. Re-run `ai check`.
 | Question | Document |
 |----------|----------|
 | How do tasks change state? | `docs/task-flow.md` |
+| How does the chief propose the architecture? | `docs/blueprint.md` |
 | How do leases and TTLs work? | `docs/multi-agent.md` |
 | How do I run several agents? | `docs/orchestration.md` |
 | How do I recover interrupted work? | `docs/recovery.md` |
