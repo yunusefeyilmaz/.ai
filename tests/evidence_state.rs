@@ -172,7 +172,7 @@ fn resume_calls_a_partial_check_insufficient_for_review() {
     let ws = Ws::new("ai-evidence-resume-");
     ws.set_config(|config| {
         config["mode"] = json!("strict");
-        config["checks"] = json!([{ "name": "unit", "command": "cmd /C echo ok" }]);
+        config["checks"] = json!([{ "name": "unit", "command": "echo ok" }]);
     });
     ws.new_task("Partial proof").ok("task new");
     ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
@@ -200,7 +200,7 @@ fn resume_still_says_valid_after_a_full_check() {
     let ws = Ws::new("ai-evidence-full-");
     ws.set_config(|config| {
         config["mode"] = json!("strict");
-        config["checks"] = json!([{ "name": "unit", "command": "cmd /C echo ok" }]);
+        config["checks"] = json!([{ "name": "unit", "command": "echo ok" }]);
     });
     ws.new_task("Full proof").ok("task new");
     ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
