@@ -47,6 +47,25 @@ impl Workspace {
         }
     }
 
+    /// Resolve a workspace found from `cwd`.
+    ///
+    /// `project_root_for` cannot tell `project/.ai` apart from a standalone
+    /// workspace named `.ai` when the workspace carries its own `.git` and the
+    /// parent has no project markers (the layout produced by cloning this
+    /// repository into a fresh project). The invocation directory settles it:
+    /// running from outside `.ai` means the parent is the host project, while
+    /// running from inside `.ai` means the workspace itself is the project.
+    fn discovered(root: PathBuf, cwd: &Path) -> Self {
+        let mut workspace = Workspace::at(root);
+        let named_ai = workspace.root.file_name().and_then(|name| name.to_str()) == Some(".ai");
+        if named_ai && !cwd.starts_with(&workspace.root) {
+            if let Some(parent) = workspace.root.parent() {
+                workspace.project = absolute(parent.to_path_buf());
+            }
+        }
+        workspace
+    }
+
     /// Discover the workspace from the environment / current directory.
     pub fn discover() -> Result<Self> {
         if let Ok(explicit) = env::var("AI_WORKSPACE") {
@@ -61,12 +80,12 @@ impl Workspace {
         }
         let cwd = env::current_dir()?;
         if let Some(found) = find_workspace(&cwd) {
-            return Ok(Workspace::at(found));
+            return Ok(Workspace::discovered(found, &cwd));
         }
         if let Ok(exe) = env::current_exe() {
             if let Some(dir) = exe.parent() {
                 if let Some(found) = find_workspace(dir) {
-                    return Ok(Workspace::at(found));
+                    return Ok(Workspace::discovered(found, &cwd));
                 }
             }
         }

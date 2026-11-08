@@ -7,6 +7,7 @@ use crate::config::adopt;
 use crate::config::settings as config;
 use crate::core::error::Result;
 use crate::core::workspace::{relative_to, Workspace};
+use crate::git::flow as gitflow;
 use crate::git::repo as git;
 use crate::runtime::dirs;
 
@@ -22,6 +23,11 @@ pub fn run(ws: &Workspace, args: &AdoptArgs) -> Result<i32> {
         println!("{}", adopt::ROOT_BLOCK);
         return Ok(0);
     }
+    if !args.check {
+        if let Some(path) = adopt::detach_template_git(ws)? {
+            println!("MOVED      .ai/.git -> {path}");
+        }
+    }
     if ws.root.file_name().and_then(|name| name.to_str()) != Some(".ai") || ws.project == ws.root {
         println!("Template install detected: the workspace is the project root.");
         println!("Root AGENTS.md already acts as the signpost; no wiring needed.");
@@ -30,6 +36,11 @@ pub fn run(ws: &Workspace, args: &AdoptArgs) -> Result<i32> {
         }
         return Ok(0);
     }
+    // A newly cloned workspace is often the only entry in an empty project.
+    // In that case adopt can establish the host repository too, so the first
+    // command leaves Gitflow ready instead of asking for a second step. An
+    // existing product tree keeps the deliberate `ai git setup` confirmation.
+    let bootstrap_git = !args.check && host_has_no_product_files(ws) && config::git_enabled(ws);
     let results = adopt::adopt_root(ws, args.force, args.check)?;
     for (path, state) in &results {
         println!("{:<10} {path}", state.to_uppercase());
@@ -50,10 +61,40 @@ pub fn run(ws: &Workspace, args: &AdoptArgs) -> Result<i32> {
     if args.ci {
         let _ = adopt::write_ci(ws)?;
     }
+    if bootstrap_git
+        && !git::state(ws)
+            .get("repo")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        match gitflow::setup(ws, true, false) {
+            Ok(0) => {}
+            Ok(_) => eprintln!("WARN  Git baseline needs attention; run `ai git setup` after fixing the message above."),
+            Err(error) => eprintln!("WARN  Git setup failed: {error}"),
+        }
+    }
     let baseline = commit_workspace_baseline(ws)?;
     println!("\nLocal adapters are in place. Each clone runs `ai adopt` to create its own copies.");
     println!("Next: ai doctor");
     Ok(baseline)
+}
+
+fn host_has_no_product_files(ws: &Workspace) -> bool {
+    let Ok(entries) = std::fs::read_dir(&ws.project) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if matches!(
+            name.as_ref(),
+            ".ai" | ".gitignore" | ".gitattributes" | ".DS_Store" | "Thumbs.db"
+        ) {
+            continue;
+        }
+        return false;
+    }
+    true
 }
 
 fn commit_workspace_baseline(ws: &Workspace) -> Result<i32> {

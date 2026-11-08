@@ -44,12 +44,19 @@ The CLI notices that the workspace is the project root.
 ### Subfolder
 
 ```sh
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-cargo build --release --manifest-path .ai/Cargo.toml
-.ai/ai adopt
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai && .ai/ai adopt
 ```
 
-On macOS/Linux, `chmod +x .ai/ai` once so the shell launcher runs directly.
+On Windows PowerShell:
+
+```powershell
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .\.ai\ai.cmd adopt
+```
+
+The launcher builds the CLI on first use. `adopt` also moves a cloned
+`.ai/.git` to `.ai/runtime/state/template-git/` so the host repository owns the
+workspace. The POSIX launcher is committed executable; if an old clone lost that
+bit, restore it once with `chmod +x .ai/ai`.
 
 `ai start` performs the same wiring automatically, so a first clone can go
 straight to the first pass below.

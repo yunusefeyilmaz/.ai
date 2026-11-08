@@ -162,6 +162,31 @@ fn normalized_ignore_entry(line: &str) -> Option<String> {
     Some(value)
 }
 
+/// Move a cloned template's own `.git` out of the way in a subfolder install.
+///
+/// Cloning this repository into an otherwise empty host project leaves a nested
+/// `.ai/.git`. The host repository must own the workspace files, otherwise Git
+/// records `.ai` as an embedded repository instead of committing the ledger.
+/// The move is reversible and the destination is printed to the user.
+pub fn detach_template_git(ws: &Workspace) -> Result<Option<String>> {
+    if ws.workspace_shape() != "subfolder" {
+        return Ok(None);
+    }
+    let nested = ws.root.join(".git");
+    if !nested.is_dir() {
+        return Ok(None);
+    }
+    let state = ws.state_dir().join("template-git");
+    fs::create_dir_all(&state)?;
+    let mut target = state.join("git");
+    if target.exists() {
+        let stamp = crate::core::time::compact_stamp(crate::core::time::now());
+        target = state.join(format!("git-{stamp}"));
+    }
+    fs::rename(&nested, &target)?;
+    Ok(Some(relative_to(&ws.project, &target)))
+}
+
 pub fn adopt_gitattributes(ws: &Workspace, check: bool) -> Result<(String, bool)> {
     let path = ws.project.join(".gitattributes");
     if path.exists() {
