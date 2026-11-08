@@ -21,43 +21,39 @@ code.
 You need [Rust](https://rustup.rs) (1.85 or newer) and `git`. Nothing else — no
 package registry credentials, no Python, no service.
 
-```sh
-git clone https://github.com/yunusefeyilmaz/.ai.git .ai
-cd .ai
-cargo build --release
-```
-
-Then adopt and verify the workspace from your **project folder**:
+Install the workspace in **one command** from your project folder:
 
 **macOS / Linux**
 
 ```sh
-.ai/target/release/ai adopt
-.ai/target/release/ai doctor
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai && .ai/ai adopt
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-.\.ai\target\release\ai.exe adopt
-.\.ai\target\release\ai.exe doctor
+git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .\.ai\ai.cmd adopt
 ```
 
-`adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
-`CLAUDE.md`, Cursor and Copilot rules). It adds those pointers, `.ai/runtime/`,
-`.ai/worktrees/` and `.github/workflows/ai-check.yml` to `.gitignore`; the ledger
-(`tasks/`, `specs/`, `config/`, `docs/`) stays committed. Run it once per clone.
+The launcher builds the CLI on first use, so no separate `cargo build` step is
+needed. `adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
+`CLAUDE.md`, Cursor and Copilot rules), adds those pointers, `.ai/runtime/`,
+`.ai/worktrees/` and `.github/workflows/ai-check.yml` to `.gitignore`, and keeps
+the ledger (`tasks/`, `specs/`, `config/`, `docs/`) committed. A cloned `.ai/.git`
+is moved to `.ai/runtime/state/template-git/` so the host repository owns the
+workspace. Run it once per clone. Verify with:
+
+```sh
+.ai/ai doctor
+```
+
 `doctor` should end with `0 error(s)`.
 
 ### Launchers
 
 `ai.cmd` (Windows) and `ai` (POSIX) find the release binary, then the debug
-binary, then fall back to `cargo run`. On macOS/Linux mark the shell launcher
-executable once:
-
-```sh
-chmod +x .ai/ai
-```
+binary, then fall back to `cargo run`. The POSIX launcher is committed
+executable; if an old clone lost that bit, restore it once with `chmod +x .ai/ai`.
 
 | System             | Launcher                 | Shortcut                                                                         |
 | ------------------ | ------------------------ | -------------------------------------------------------------------------------- |

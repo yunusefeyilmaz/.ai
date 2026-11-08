@@ -5,7 +5,7 @@
 
 mod support;
 
-use support::Ws;
+use support::{discover_in, Ws};
 
 fn ignore_lines(ws: &Ws) -> Vec<String> {
     std::fs::read_to_string(ws.host().join(".gitignore"))
@@ -89,4 +89,43 @@ fn adopt_creates_the_managed_block_and_reports_template_installs() {
         );
         assert!(text.contains("<!-- ai-workspace:end -->"), "{file}: {text}");
     }
+}
+
+#[test]
+fn a_cloned_template_git_is_moved_out_of_a_subfolder_workspace() {
+    let ws = Ws::subfolder("ai-adopt-nested-git-");
+    std::fs::create_dir_all(ws.path(".git")).expect("nested git dir");
+    std::fs::write(ws.path(".git/HEAD"), "ref: refs/heads/main\n").expect("nested HEAD");
+
+    ws.ok(&["adopt"]);
+
+    assert!(!ws.exists(".git"), "nested .ai/.git must be detached");
+    assert!(
+        ws.exists("runtime/state/template-git/git/HEAD"),
+        "the cloned template metadata must be preserved"
+    );
+    assert!(std::fs::read_to_string(ws.host().join("AGENTS.md"))
+        .expect("host AGENTS.md")
+        .contains("ai-workspace:start"));
+}
+
+#[test]
+fn running_from_an_empty_host_treats_a_cloned_ai_folder_as_a_subfolder() {
+    let ws = Ws::subfolder("ai-adopt-fresh-host-");
+    std::fs::remove_file(ws.host().join(".gitignore")).expect("remove host marker");
+    std::fs::create_dir_all(ws.path(".git")).expect("nested git dir");
+    std::fs::write(ws.path(".git/HEAD"), "ref: refs/heads/main\n").expect("nested HEAD");
+
+    // No AI_WORKSPACE and the host has no marker of its own: only the clone's
+    // nested .git is present, exactly like `git clone <template> .ai` in a new
+    // project.
+    discover_in(&ws.host(), &["adopt"]).ok("adopt from host root");
+
+    assert!(std::fs::read_to_string(ws.host().join("AGENTS.md"))
+        .expect("host AGENTS.md")
+        .contains("ai-workspace:start"));
+    assert!(std::fs::read_to_string(ws.host().join(".gitignore"))
+        .expect("host .gitignore")
+        .contains(".ai/runtime/"));
+    assert!(!ws.exists(".git"), "nested .ai/.git must be detached");
 }
