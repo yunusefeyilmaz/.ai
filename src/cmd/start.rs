@@ -27,9 +27,6 @@ pub fn run(ws: &Workspace, args: &StartArgs) -> Result<i32> {
     if !ws.config_path().exists() {
         config::save(ws, &config::default_config(ws))?;
     }
-    if let Some(path) = adopt::detach_template_git(ws)? {
-        println!("Moved nested .ai/.git -> {path}");
-    }
     let shape = ws.workspace_shape();
     let mut adapter_report: Vec<(String, String)> = Vec::new();
     let mut ignore_report = json!({"state": "not-needed", "missing": []});

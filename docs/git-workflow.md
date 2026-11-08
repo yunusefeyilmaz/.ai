@@ -176,13 +176,12 @@ How it works:
   records `worktree:` in the task and prints the path. The main checkout is not
   touched, so it does not need to be clean.
 - A worktree has no separate workspace state: the `.ai/` ledger, leases and runtime
-  live in the main checkout (adopt ignores only `.ai/runtime/`, `.ai/worktrees/` and
-  the generated pointer files). Because a committed workspace is checked out into
-  the worktree too, the CLI recognises paths under `<workspace>/worktrees/*` and
-  resolves them back to the shared workspace, so tasks, locks and evidence never
-  fork. The worker runs the shared CLI by absolute path (printed at claim time,
-  also in the `AGENTS.md`/`CLAUDE.md` briefing the workspace drops into the
-  worktree).
+  live in the main checkout (adopt ignores the whole `.ai/` folder plus the
+  generated pointer files). Worktrees are created under `<workspace>/worktrees/`,
+  so the CLI recognises paths under that folder and resolves them back to the
+  shared workspace; tasks, locks and evidence never fork. The worker runs the
+  shared CLI by absolute path (printed at claim time, also in the
+  `AGENTS.md`/`CLAUDE.md` briefing the workspace drops into the worktree).
   `ai git commit|verify`, `ai check --task`, `ai checkpoint|resume` and
   `ai task review` find the task's worktree themselves, whatever the caller's
   directory.

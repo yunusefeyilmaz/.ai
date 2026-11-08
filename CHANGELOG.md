@@ -2,6 +2,28 @@
 
 All notable changes to this workspace are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- **The `.ai/` workspace is private to its checkout.** `ai adopt` now adds the
+  whole `.ai/` folder to the host `.gitignore` instead of narrowing the rule to
+  `.ai/runtime/` and `.ai/worktrees/`, and a rerun removes those superseded
+  entries. The ledger (`tasks/`, `specs/`, `config/`, `docs/`) is therefore local
+  rather than committed to the product repository.
+- **One command installs a cloned workspace.** When `.ai` is found from the host
+  project directory it is treated as a subfolder install even if it still carries
+  the template's own `.git`; `adopt` also bootstraps Gitflow (init, `master`,
+  `develop`, baseline commit) when the host has no product files yet.
+
+### Fixed
+
+- **A cloned template `.git` no longer breaks `adopt`.** Ignoring `.ai/` keeps the
+  nested metadata invisible to the host repository, so adopt neither rejects the
+  workspace as the project root nor needs to relocate the clone.
+- **The host baseline commit no longer stages `.ai/`.** `ai adopt --yes` commits
+  the project files only, so a blanket workspace ignore does not abort staging.
+
 ## [1.1.0] - 2026-11-07
 
 The workspace is now a **Rust program**. Same commands, same on-disk contract,

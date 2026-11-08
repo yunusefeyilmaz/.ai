@@ -1,7 +1,8 @@
-//! Ported from `lib/tests/test_adopt_ignore.py`.
+//! `ai adopt` must hide the whole `.ai/` folder from the host repository.
 //!
-//! `ai adopt` must keep the ledger committable in a subfolder install: only
-//! ephemeral state may stay local.
+//! The workspace is private tooling that lives inside the project, so nothing
+//! under `.ai/` may be committed by the host: not the ledger, not runtime state
+//! and not a cloned template `.git`.
 
 mod support;
 
@@ -15,32 +16,43 @@ fn ignore_lines(ws: &Ws) -> Vec<String> {
         .collect()
 }
 
-fn host_with_blanket_rule() -> Ws {
-    let ws = Ws::subfolder("ai-adopt-ledger-");
+fn is_workspace_rule(line: &str) -> bool {
+    matches!(line, ".ai" | ".ai/")
+}
+
+fn host_with_legacy_rules() -> Ws {
+    let ws = Ws::subfolder("ai-adopt-hide-");
     std::fs::write(
         ws.host().join(".gitignore"),
-        "# existing\n.ai/\nnode_modules/\n",
+        "# existing\n.ai/runtime/\n.ai/worktrees/\nnode_modules/\n",
     )
     .expect("seed gitignore");
     ws
 }
 
 #[test]
-fn the_ledger_is_not_ignored_and_the_blanket_rule_is_migrated() {
-    let ws = host_with_blanket_rule();
+fn adopt_hides_the_whole_workspace_folder() {
+    let ws = host_with_legacy_rules();
     ws.ok(&["adopt"]);
 
     let lines = ignore_lines(&ws);
     assert!(
-        !lines.contains(&".ai".to_string()),
-        "blanket .ai rule: {lines:?}"
+        lines.iter().any(|line| is_workspace_rule(line)),
+        "the workspace folder must be ignored: {lines:?}"
+    );
+    assert_eq!(
+        lines.iter().filter(|line| is_workspace_rule(line)).count(),
+        1,
+        "exactly one workspace rule: {lines:?}"
     );
     assert!(
-        !lines.contains(&".ai/".to_string()),
-        "blanket .ai/ rule: {lines:?}"
+        !lines.contains(&".ai/runtime/".to_string()),
+        "the superseded runtime rule must be dropped: {lines:?}"
     );
-    assert!(lines.contains(&".ai/runtime/".to_string()), "{lines:?}");
-    assert!(lines.contains(&".ai/worktrees/".to_string()), "{lines:?}");
+    assert!(
+        !lines.contains(&".ai/worktrees/".to_string()),
+        "the superseded worktree rule must be dropped: {lines:?}"
+    );
     assert!(
         lines.contains(&"node_modules/".to_string()),
         "unrelated ignore rules must survive: {lines:?}"
@@ -49,7 +61,7 @@ fn the_ledger_is_not_ignored_and_the_blanket_rule_is_migrated() {
 
 #[test]
 fn check_accepts_the_migrated_file_and_a_second_run_is_idempotent() {
-    let ws = host_with_blanket_rule();
+    let ws = host_with_legacy_rules();
     ws.ok(&["adopt"]);
     let first = std::fs::read_to_string(ws.host().join(".gitignore")).expect("read");
 
@@ -61,19 +73,18 @@ fn check_accepts_the_migrated_file_and_a_second_run_is_idempotent() {
 
 #[test]
 fn adopt_ignore_entries_are_the_documented_ones() {
-    for entry in [
-        ".ai/runtime/",
-        ".ai/worktrees/",
-        ".github/workflows/ai-check.yml",
-    ] {
-        assert!(
-            ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&entry),
-            "missing {entry}"
-        );
-    }
     assert!(
-        !ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&".ai"),
-        "a blanket .ai entry would hide the ledger"
+        ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&".ai/"),
+        "the whole workspace folder must be ignored"
+    );
+    assert!(ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&".github/workflows/ai-check.yml"));
+    assert!(
+        !ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&".ai/runtime/"),
+        "the blanket rule replaces the narrow runtime entry"
+    );
+    assert!(
+        !ai::config::adopt::ADOPT_IGNORE_ENTRIES.contains(&".ai/worktrees/"),
+        "the blanket rule replaces the narrow worktree entry"
     );
 }
 
@@ -92,21 +103,28 @@ fn adopt_creates_the_managed_block_and_reports_template_installs() {
 }
 
 #[test]
-fn a_cloned_template_git_is_moved_out_of_a_subfolder_workspace() {
+fn a_cloned_template_git_stays_untouched_and_ignored() {
     let ws = Ws::subfolder("ai-adopt-nested-git-");
     std::fs::create_dir_all(ws.path(".git")).expect("nested git dir");
     std::fs::write(ws.path(".git/HEAD"), "ref: refs/heads/main\n").expect("nested HEAD");
 
     ws.ok(&["adopt"]);
 
-    assert!(!ws.exists(".git"), "nested .ai/.git must be detached");
+    // The clone's metadata is never moved or deleted: ignoring `.ai/` makes it
+    // invisible to the host repository without risking the user's checkout.
     assert!(
-        ws.exists("runtime/state/template-git/git/HEAD"),
-        "the cloned template metadata must be preserved"
+        ws.exists(".git/HEAD"),
+        "nested .ai/.git must be left in place"
     );
-    assert!(std::fs::read_to_string(ws.host().join("AGENTS.md"))
-        .expect("host AGENTS.md")
-        .contains("ai-workspace:start"));
+    assert!(
+        !ws.exists("runtime/state/template-git/git"),
+        "adopt must not relocate the clone metadata"
+    );
+    let lines = ignore_lines(&ws);
+    assert!(
+        lines.iter().any(|line| is_workspace_rule(line)),
+        "{lines:?}"
+    );
 }
 
 #[test]
@@ -124,8 +142,6 @@ fn running_from_an_empty_host_treats_a_cloned_ai_folder_as_a_subfolder() {
     assert!(std::fs::read_to_string(ws.host().join("AGENTS.md"))
         .expect("host AGENTS.md")
         .contains("ai-workspace:start"));
-    assert!(std::fs::read_to_string(ws.host().join(".gitignore"))
-        .expect("host .gitignore")
-        .contains(".ai/runtime/"));
-    assert!(!ws.exists(".git"), "nested .ai/.git must be detached");
+    assert!(ignore_lines(&ws).iter().any(|line| is_workspace_rule(line)));
+    assert!(ws.exists(".git/HEAD"), "nested .ai/.git must be left alone");
 }

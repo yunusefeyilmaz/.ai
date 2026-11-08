@@ -23,11 +23,6 @@ pub fn run(ws: &Workspace, args: &AdoptArgs) -> Result<i32> {
         println!("{}", adopt::ROOT_BLOCK);
         return Ok(0);
     }
-    if !args.check {
-        if let Some(path) = adopt::detach_template_git(ws)? {
-            println!("MOVED      .ai/.git -> {path}");
-        }
-    }
     if ws.root.file_name().and_then(|name| name.to_str()) != Some(".ai") || ws.project == ws.root {
         println!("Template install detected: the workspace is the project root.");
         println!("Root AGENTS.md already acts as the signpost; no wiring needed.");
@@ -101,19 +96,22 @@ fn commit_workspace_baseline(ws: &Workspace) -> Result<i32> {
     let state = git::state(ws);
     if !state.get("repo").and_then(Value::as_bool).unwrap_or(false) {
         println!(
-            "Git: no repository yet. `ai git setup` initializes it and commits the baseline (including .ai/ and .gitignore)."
+            "Git: no repository yet. `ai git setup` initializes it and commits the project baseline (the workspace stays ignored)."
         );
         return Ok(0);
     }
     if state.get("head").and_then(Value::as_str).is_none() {
         println!(
-            "Git: the repository has no commit yet. Run `ai git setup`; its initial baseline commit includes .ai/ and .gitignore."
+            "Git: the repository has no commit yet. Run `ai git setup`; its initial baseline commit covers the project files, not `.ai/`."
         );
         return Ok(0);
     }
     let cfg = git::config(ws);
     let integration = cfg.integration.clone();
-    let mut paths = vec![ws.root.clone()];
+    // `.ai/` is ignored in a subfolder install, so the host baseline is just the
+    // project-level files adopt manages. Adding the workspace folder would make
+    // Git reject the whole stage step.
+    let mut paths = Vec::new();
     for extra in [
         ws.project.join(".gitignore"),
         ws.project.join(".gitattributes"),
