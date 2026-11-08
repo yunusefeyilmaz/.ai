@@ -37,17 +37,18 @@ git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .\.ai\ai.cmd adopt
 
 The launcher builds the CLI on first use, so no separate `cargo build` step is
 needed. `adopt` creates the small pointer files your AI tool reads (`AGENTS.md`,
-`CLAUDE.md`, Cursor and Copilot rules), adds those pointers, `.ai/runtime/`,
-`.ai/worktrees/` and `.github/workflows/ai-check.yml` to `.gitignore`, and keeps
-the ledger (`tasks/`, `specs/`, `config/`, `docs/`) committed. A cloned `.ai/.git`
-is moved to `.ai/runtime/state/template-git/` so the host repository owns the
-workspace. Run it once per clone. Verify with:
+`CLAUDE.md`, Cursor and Copilot rules) and adds `.ai/` plus those generated
+pointers to `.gitignore`, so the workspace stays private: it never appears in the
+host repository, and a cloned template `.git` is harmless. Run it once per clone.
+Verify with:
 
 ```sh
 .ai/ai doctor
 ```
 
-`doctor` should end with `0 error(s)`.
+`doctor` should end with `0 error(s)`. Because `.ai/` is ignored, the ledger
+(`tasks/`, `specs/`, `config/`, `docs/`) is local to this checkout; commit
+durable decisions in the host project's own docs when they must be shared.
 
 ### Launchers
 
@@ -199,9 +200,9 @@ your-project/
 ```
 
 The split matters: `.ai/` is agent territory, the rest is product territory.
-`ai adopt` is the explicit operator action that creates local pointers and the
-narrow ignore rules (`.ai/runtime/`, `.ai/worktrees/`); the workspace ledger stays
-in version control.
+`ai adopt` is the explicit operator action that creates local pointers and adds
+`.ai/` to the host `.gitignore`, so the whole workspace folder is private and
+never enters the product repository.
 
 ### Building and testing
 

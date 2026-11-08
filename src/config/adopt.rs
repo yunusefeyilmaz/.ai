@@ -30,15 +30,21 @@ Never create task notes, scratch files or generated logs outside `.ai/`.
 <!-- ai-workspace:end -->
 "#;
 
+/// The workspace is private tooling that lives inside the host project, so the
+/// whole `.ai/` folder stays out of the host repository. That also keeps a
+/// cloned template `.git` from turning `.ai/` into an embedded repository.
 pub const ADOPT_IGNORE_ENTRIES: &[&str] = &[
-    ".ai/runtime/",
-    ".ai/worktrees/",
+    ".ai/",
     "/AGENTS.md",
     "/CLAUDE.md",
     ".cursor/rules/ai-workspace.mdc",
     ".github/copilot-instructions.md",
     ".github/workflows/ai-check.yml",
 ];
+
+/// Narrow rules written by older releases; `.ai/` now covers all of them, so a
+/// rerun removes them instead of leaving a redundant list behind.
+const SUPERSEDED_IGNORE_ENTRIES: &[&str] = &[".ai/runtime", ".ai/worktrees"];
 
 pub const CI_WORKFLOW: &str = r#"name: ai-workspace
 
@@ -162,31 +168,6 @@ fn normalized_ignore_entry(line: &str) -> Option<String> {
     Some(value)
 }
 
-/// Move a cloned template's own `.git` out of the way in a subfolder install.
-///
-/// Cloning this repository into an otherwise empty host project leaves a nested
-/// `.ai/.git`. The host repository must own the workspace files, otherwise Git
-/// records `.ai` as an embedded repository instead of committing the ledger.
-/// The move is reversible and the destination is printed to the user.
-pub fn detach_template_git(ws: &Workspace) -> Result<Option<String>> {
-    if ws.workspace_shape() != "subfolder" {
-        return Ok(None);
-    }
-    let nested = ws.root.join(".git");
-    if !nested.is_dir() {
-        return Ok(None);
-    }
-    let state = ws.state_dir().join("template-git");
-    fs::create_dir_all(&state)?;
-    let mut target = state.join("git");
-    if target.exists() {
-        let stamp = crate::core::time::compact_stamp(crate::core::time::now());
-        target = state.join(format!("git-{stamp}"));
-    }
-    fs::rename(&nested, &target)?;
-    Ok(Some(relative_to(&ws.project, &target)))
-}
-
 pub fn adopt_gitattributes(ws: &Workspace, check: bool) -> Result<(String, bool)> {
     let path = ws.project.join(".gitattributes");
     if path.exists() {
@@ -220,19 +201,21 @@ pub fn adopt_gitignore(ws: &Workspace, check: bool) -> Result<(String, Vec<Strin
         })
         .map(|entry| (*entry).to_string())
         .collect();
-    let blanket: Vec<&&str> = lines
-        .iter()
-        .filter(|line| normalized_ignore_entry(line).as_deref() == Some(".ai"))
-        .collect();
+    let stale = |line: &&str| {
+        normalized_ignore_entry(line)
+            .map(|value| SUPERSEDED_IGNORE_ENTRIES.contains(&value.as_str()))
+            .unwrap_or(false)
+    };
+    let has_stale = lines.iter().any(stale);
     if check {
-        let state = if missing.is_empty() && blanket.is_empty() {
+        let state = if missing.is_empty() && !has_stale {
             "ok"
         } else {
             "missing"
         };
         return Ok((state.to_string(), missing));
     }
-    if missing.is_empty() && blanket.is_empty() {
+    if missing.is_empty() && !has_stale {
         return Ok(("unchanged".to_string(), Vec::new()));
     }
     let newline = if existing.contains("\r\n") {
@@ -240,14 +223,18 @@ pub fn adopt_gitignore(ws: &Workspace, check: bool) -> Result<(String, Vec<Strin
     } else {
         "\n"
     };
+    let has_header = lines.iter().any(|line| line.contains("Added by ai adopt"));
     let kept: String = lines
         .iter()
-        .filter(|line| normalized_ignore_entry(line).as_deref() != Some(".ai"))
+        .filter(|line| !stale(line))
         .map(|line| format!("{line}{newline}"))
         .collect();
-    let mut addition = format!(
-        "# Added by ai adopt: only ephemeral workspace state and generated adapters stay local.{newline}"
-    );
+    let mut addition = String::new();
+    if !has_header {
+        addition
+            .push_str("# Added by ai adopt: the workspace stays local and out of version control.");
+        addition.push_str(newline);
+    }
     for entry in &missing {
         addition.push_str(entry);
         addition.push_str(newline);

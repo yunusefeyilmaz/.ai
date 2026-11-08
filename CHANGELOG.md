@@ -2,6 +2,28 @@
 
 All notable changes to this workspace are documented here.
 
+## [1.2.0]
+
+### Changed
+
+- **The `.ai/` workspace is private to its checkout.** `ai adopt` now adds the
+  whole `.ai/` folder to the host `.gitignore` instead of narrowing the rule to
+  `.ai/runtime/` and `.ai/worktrees/`, and a rerun removes those superseded
+  entries. The ledger (`tasks/`, `specs/`, `config/`, `docs/`) is therefore local
+  rather than committed to the product repository.
+- **One command installs a cloned workspace.** When `.ai` is found from the host
+  project directory it is treated as a subfolder install even if it still carries
+  the template's own `.git`; `adopt` also bootstraps Gitflow (init, `master`,
+  `develop`, baseline commit) when the host has no product files yet.
+
+### Fixed
+
+- **A cloned template `.git` no longer breaks `adopt`.** Ignoring `.ai/` keeps the
+  nested metadata invisible to the host repository, so adopt neither rejects the
+  workspace as the project root nor needs to relocate the clone.
+- **The host baseline commit no longer stages `.ai/`.** `ai adopt --yes` commits
+  the project files only, so a blanket workspace ignore does not abort staging.
+
 ## [1.1.0] - 2026-11-07
 
 The workspace is now a **Rust program**. Same commands, same on-disk contract,
@@ -317,6 +339,7 @@ landed after 0.9.9 and makes the documented gates hold on the release commit.
 ## [0.9.9] - 2026-11-04
 
 ### Added
+
 - `ai ui`: a read-only terminal dashboard (stdlib only, no new dependency, Python 3.8+).
   - Ten screens (keys 1-9 and 0): Dashboard, Tasks, Board, Specs, Agents, Locks, Activity,
     Health, Metrics, Project. Together they show tasks and their pipeline, spec acceptance
@@ -336,6 +359,7 @@ landed after 0.9.9 and makes the documented gates hold on the release commit.
   `app`), `lib/cmd/ui.py` and `lib/tests/test_ui.py`.
 
 ### Changed
+
 - The `.ai` logo uses the pyfiglet "slant" style.
 - `capabilities` lists `ui`; `lib/README.md` documents the `ui/` package.
 

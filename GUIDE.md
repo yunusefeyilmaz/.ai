@@ -53,10 +53,10 @@ On Windows PowerShell:
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .\.ai\ai.cmd adopt
 ```
 
-The launcher builds the CLI on first use. `adopt` also moves a cloned
-`.ai/.git` to `.ai/runtime/state/template-git/` so the host repository owns the
-workspace. The POSIX launcher is committed executable; if an old clone lost that
-bit, restore it once with `chmod +x .ai/ai`.
+The launcher builds the CLI on first use. `adopt` adds `.ai/` to the host
+`.gitignore`, so the workspace stays private and a cloned template `.git` never
+turns it into an embedded repository. The POSIX launcher is committed executable;
+if an old clone lost that bit, restore it once with `chmod +x .ai/ai`.
 
 `ai start` performs the same wiring automatically, so a first clone can go
 straight to the first pass below.
@@ -70,11 +70,12 @@ straight to the first pass below.
 | `.cursor/rules/ai-workspace.mdc` | Cursor |
 | `.github/copilot-instructions.md` | GitHub Copilot |
 
-It also creates or updates the host project's `.gitignore` with these four pointer
-files, `.ai/runtime/`, `.ai/worktrees/` and `.github/workflows/ai-check.yml`. The
-ledger (`tasks/`, `specs/`, `config/`, `docs/`) stays committed. The workflow path
-is always ignored; `--ci` only writes the workflow file. The pointer files are
-local and ignored, so each clone runs `ai adopt` for its own setup.
+It also creates or updates the host project's `.gitignore`, adding `.ai/` plus
+the four generated pointer files and `.github/workflows/ai-check.yml`. The whole
+workspace folder stays local: the ledger (`tasks/`, `specs/`, `config/`, `docs/`)
+is not committed to the host repository. The workflow path is always ignored;
+`--ci` only writes the workflow file. The pointer files are local and ignored, so
+each clone runs `ai adopt` for its own setup.
 
 Useful variants:
 
