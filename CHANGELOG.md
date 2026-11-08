@@ -2,7 +2,7 @@
 
 All notable changes to this workspace are documented here.
 
-## [Unreleased]
+## [1.2.0]
 
 ### Changed
 
@@ -339,6 +339,7 @@ landed after 0.9.9 and makes the documented gates hold on the release commit.
 ## [0.9.9] - 2026-11-04
 
 ### Added
+
 - `ai ui`: a read-only terminal dashboard (stdlib only, no new dependency, Python 3.8+).
   - Ten screens (keys 1-9 and 0): Dashboard, Tasks, Board, Specs, Agents, Locks, Activity,
     Health, Metrics, Project. Together they show tasks and their pipeline, spec acceptance
@@ -358,6 +359,7 @@ landed after 0.9.9 and makes the documented gates hold on the release commit.
   `app`), `lib/cmd/ui.py` and `lib/tests/test_ui.py`.
 
 ### Changed
+
 - The `.ai` logo uses the pyfiglet "slant" style.
 - `capabilities` lists `ui`; `lib/README.md` documents the `ui/` package.
 

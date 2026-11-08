@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use crate::core::error::{fail, Result};
 
-pub const VERSION: &str = "1.1.0";
+pub const VERSION: &str = "1.2.0";
 
 #[derive(Clone, Debug)]
 pub struct Workspace {
