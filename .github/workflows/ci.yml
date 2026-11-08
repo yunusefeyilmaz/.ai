@@ -160,7 +160,7 @@ jobs:
             cp ai dist/ai-launcher.sh
             chmod +x dist/ai dist/ai-launcher.sh
           fi
-          cp README.md PORTING.md dist/
+          cp README.md dist/
       - uses: actions/upload-artifact@v4
         with:
           name: ai-${{ runner.os }}

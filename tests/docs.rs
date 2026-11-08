@@ -5,7 +5,7 @@
 
 mod support;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::CommandFactory;
 
@@ -40,7 +40,6 @@ fn doc_files() -> Vec<PathBuf> {
         "AGENTS.md",
         "GUIDE.md",
         "CHANGELOG.md",
-        "PORTING.md",
         "tasks/README.md",
         "specs/README.md",
     ] {
@@ -219,22 +218,4 @@ fn agents_md_states_the_staleness_rule() {
     );
     assert!(text.contains("updated_at"), "missing updated_at");
     assert!(text.contains("PID"), "missing PID");
-}
-
-#[test]
-fn porting_notes_describe_the_source_layout() {
-    let text = std::fs::read_to_string(repo().join("PORTING.md")).expect("read PORTING.md");
-    for needle in [
-        "src/core/",
-        "src/tasks/",
-        "src/runtime/",
-        "src/git/",
-        "src/cmd/",
-    ] {
-        assert!(
-            text.contains(needle),
-            "PORTING.md does not mention {needle}"
-        );
-    }
-    let _ = Path::new(".");
 }
