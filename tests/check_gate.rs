@@ -60,13 +60,44 @@ fn empty_check_records_no_green_evidence() {
     let checked = ws.run(&["check", "--task", "0001", "--agent", "alice"]);
     assert_eq!(checked.code, 1, "{}", checked.all());
     assert!(
-        checked.stderr.contains("Evidence recorded"),
+        checked.all().contains("Evidence recorded"),
         "{}",
-        checked.stderr
+        checked.all()
     );
 
     let resume = ws.ok(&["resume", "0001"]).stdout;
     assert!(!resume.contains("still valid"), "{resume}");
+}
+
+#[test]
+fn reuse_evidence_skips_a_second_run_on_the_same_head() {
+    let ws = Ws::new("ai-check-gate-reuse-");
+    ws.set_config(|config| {
+        config["mode"] = serde_json::json!("strict");
+        config["workflow"]["requireCheck"] = serde_json::json!(true);
+        config["checks"] = serde_json::json!([{ "name": "ok", "command": "echo ok" }]);
+    });
+    ws.new_task("Reuse proof").ok("task new");
+    ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
+    ws.ok(&["check", "--task", "0001", "--agent", "alice"]);
+
+    // A failing command proves the reuse path did not execute it.
+    ws.set_config(|config| {
+        config["checks"] = serde_json::json!([{ "name": "ok", "command": "exit 1" }]);
+    });
+    let reused = ws.ok(&[
+        "check",
+        "--task",
+        "0001",
+        "--agent",
+        "alice",
+        "--reuse-evidence",
+    ]);
+    assert!(
+        reused.all().contains("Reusing green evidence"),
+        "{}",
+        reused.all()
+    );
 }
 
 #[test]
@@ -118,9 +149,9 @@ fn an_unclaimed_task_never_gains_evidence() {
         "--allow-empty",
     ]);
     assert!(
-        claimed.stderr.contains("Evidence recorded"),
+        claimed.all().contains("Evidence recorded"),
         "{}",
-        claimed.stderr
+        claimed.all()
     );
 }
 

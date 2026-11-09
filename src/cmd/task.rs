@@ -738,7 +738,7 @@ fn auto_verify(ws: &Workspace, path: &Path, agent: &str) -> Result<Option<String
     if evidence::task_green(ws, &task_id, head.as_deref(), started.as_deref()).0 {
         return Ok(None);
     }
-    eprintln!("Running the project checks for task {task_id} before review...");
+    println!("Running the project checks for task {task_id} before review...");
     let mut results: Vec<Value> = Vec::new();
     let problems = crate::runtime::health::run_commands(ws, &checkout, false, &mut results, None)?;
     let ok = !problems.iter().any(|finding| finding.level == "error");

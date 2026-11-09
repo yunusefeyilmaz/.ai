@@ -111,14 +111,31 @@ pub fn creation_gate(ws: &Workspace, role: Option<&str>) -> Option<String> {
 
 /// No spec, no code.
 pub fn spec_gate(ws: &Workspace, task: &Task) -> Option<String> {
-    if !workflow_config(ws).require_spec {
+    let flow = workflow_config(ws);
+    if !flow.require_spec {
         return None;
     }
-    let problem = spec::spec_problem(ws, &task.meta)?;
-    Some(format!(
-        "Task {} cannot be claimed: {problem}. The chief fills the spec (intent, behavior, acceptance criteria) before any worker starts. Ask the chief, or write the criteria yourself only if the user told you to.",
-        task.id()
-    ))
+    if let Some(problem) = spec::spec_problem(ws, &task.meta) {
+        return Some(format!(
+            "Task {} cannot be claimed: {problem}. The chief fills the spec (intent, behavior, acceptance criteria) before any worker starts. Ask the chief, or write the criteria yourself only if the user told you to.",
+            task.id()
+        ));
+    }
+    // Strict mode: the human gate is real, so an unapproved spec cannot start.
+    if flow.mode == "strict" {
+        if let Some(path) = spec::resolve_spec_path(ws, &task.meta) {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if !spec::is_approved(&text) {
+                    return Some(format!(
+                        "Task {} cannot be claimed: its spec is not approved. In strict mode the user approves the spec first (`ai spec approve {} --agent <user>`, or set `status: approved` and `approved_by` in the spec file).",
+                        task.id(),
+                        task.id()
+                    ));
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn check_required(ws: &Workspace) -> bool {

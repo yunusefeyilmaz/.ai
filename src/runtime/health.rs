@@ -153,12 +153,15 @@ pub fn run_commands(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    if checks.is_empty() {
-        eprintln!(
-            "NOTE  no project checks configured: add your test/lint commands under \"checks\" in config/workspace.json."
-        );
-    }
     let stderr_mode = out.unwrap_or(false);
+    if checks.is_empty() {
+        let note = "NOTE  no project checks configured: add your test/lint commands under \"checks\" in config/workspace.json.";
+        if stderr_mode {
+            eprintln!("{note}");
+        } else {
+            println!("{note}");
+        }
+    }
     for item in &checks {
         if fast_only && !item.get("fast").and_then(Value::as_bool).unwrap_or(false) {
             continue;
@@ -874,7 +877,10 @@ pub fn collect_checks(ws: &Workspace) -> Vec<Finding> {
         if row.orphan {
             problems.push(Finding::new(
                 "warn",
-                format!("worktree {} has no active task", row.name),
+                format!(
+                    "worktree {} has no active task (or its task is already merged)",
+                    row.name
+                ),
                 if row.dirty > 0 {
                     "remove it with `ai worktree prune` (it has uncommitted changes; check them first)"
                 } else {

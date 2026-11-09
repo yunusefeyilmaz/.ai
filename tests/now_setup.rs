@@ -211,6 +211,40 @@ fn stored_answers_unblock_creation() {
 }
 
 #[test]
+fn adding_a_check_does_not_erase_the_other_answers() {
+    let ws = Ws::new("ai-setup-partial-");
+    ws.ok(&[
+        "setup",
+        "--set",
+        "review=yes",
+        "checks=yes",
+        "git=yes",
+        "tests=yes",
+    ]);
+    // A later, partial call only adds a check; it must merge, not rewrite the
+    // questionnaire.
+    ws.ok(&[
+        "setup",
+        "--set",
+        "checks=yes",
+        "--check",
+        "typecheck=echo ok",
+    ]);
+
+    let config = ws.config();
+    assert_eq!(config["testing"]["writeTests"], serde_json::json!(true));
+    assert_eq!(config["workflow"]["requireReview"], serde_json::json!(true));
+    let answered: Vec<&str> = config["preferences"]["answered"]
+        .as_array()
+        .expect("answered array")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(answered.contains(&"tests"), "{answered:?}");
+    assert_eq!(config["checks"][0]["name"], serde_json::json!("typecheck"));
+}
+
+#[test]
 fn check_timeout_is_stored_on_the_named_check() {
     let ws = Ws::new("ai-setup-check-timeout-");
     ws.ok(&[

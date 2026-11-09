@@ -1352,6 +1352,10 @@ fn finish_inner(
     check
         .arg("check")
         .arg("--strict")
+        // The producer already ran the checks after the last commit; a green
+        // record on this exact HEAD is the same proof. Re-running them here
+        // tripled the cost of every task.
+        .arg("--reuse-evidence")
         .arg("--task")
         .arg(task_id);
     if !agent.is_empty() {
@@ -1436,11 +1440,27 @@ fn finish_inner(
     let merged_head = git::run_git(&ws.project, &["rev-parse", "--short", "HEAD"]).stdout;
     let mut deleted = false;
     if let Some(worktree) = worktree {
-        let (freed, note) = worktrees::remove(ws, &worktree, true);
-        if !freed {
-            eprintln!("WARN  merged, but could not remove the worktree: {note}");
+        // Deleting the checkout the caller is standing in fails on Windows and
+        // leaves an orphan. Defer it and say exactly what to run next.
+        let inside = std::env::current_dir()
+            .map(|cwd| cwd.starts_with(&worktree))
+            .unwrap_or(false);
+        if inside {
+            eprintln!(
+                "Merged; the worktree was kept because this command ran inside it. \
+                 Leave it (`cd {project}`) and run `ai worktree prune`.",
+                project = ws.project.display()
+            );
         } else {
-            meta.insert("worktree".into(), Value::Null);
+            let (freed, note) = worktrees::remove(ws, &worktree, true);
+            if !freed {
+                eprintln!(
+                    "WARN  merged, but could not remove the worktree: {note}. \
+                     Leave the directory and run `ai worktree prune`."
+                );
+            } else {
+                meta.insert("worktree".into(), Value::Null);
+            }
         }
     }
     if config.delete_after_merge {

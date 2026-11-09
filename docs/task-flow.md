@@ -247,6 +247,10 @@ A behavior change needs a spec in `specs/active/` with:
 - **Acceptance criteria** — testable statements, each mapped to evidence.
 - **Out of scope** — what this work will not do.
 
+In strict mode a spec also needs the human gate recorded: `ai spec approve <task-id>
+--agent <user>` sets `status: approved` and `approved_by`, and `ai task next` refuses
+to start an unapproved spec.
+
 Copy `specs/TEMPLATE.md`. When the work is shipped, move the spec to
 `specs/done/` and treat it as immutable.
 

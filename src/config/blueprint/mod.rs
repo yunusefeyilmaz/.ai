@@ -222,7 +222,17 @@ pub fn approved_proposal(ws: &Workspace) -> Option<Value> {
             .and_then(|blueprint| blueprint.get("approved"))
             .filter(|value| value.is_object())
         {
-            return Some(proposal.clone());
+            let mut proposal = proposal.clone();
+            // Top-level `checks` is the single source of truth; re-attach it
+            // for readers that display the whole approved proposal.
+            if proposal.get("checks").is_none() {
+                if let Some(checks) = config.get("checks") {
+                    if let Some(object) = proposal.as_object_mut() {
+                        object.insert("checks".into(), checks.clone());
+                    }
+                }
+            }
+            return Some(proposal);
         }
     }
     let document = read(ws)?;

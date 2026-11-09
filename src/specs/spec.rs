@@ -237,6 +237,53 @@ pub fn mark_status(text: &str, status: &str) -> String {
     format!("{}{}{}", &text[..start], updated, &text[end..])
 }
 
+fn frontmatter_value(text: &str, key: &str) -> Option<String> {
+    let front = Regex::new(r"(?s)\A---\n(.*?)\n---\n").expect("static regex");
+    let frontmatter = front.captures(text)?.get(1)?.as_str();
+    let pattern = Regex::new(&format!(r"(?m)^{key}:\s*(.*)$")).expect("static regex");
+    let value = pattern
+        .captures(frontmatter)?
+        .get(1)?
+        .as_str()
+        .trim()
+        .to_string();
+    Some(value)
+}
+
+/// A spec is approved only when the human gate is recorded: status is
+/// `approved` and `approved_by` names who approved it.
+pub fn is_approved(text: &str) -> bool {
+    let status = frontmatter_value(text, "status").unwrap_or_default();
+    let by = frontmatter_value(text, "approved_by").unwrap_or_default();
+    status.eq_ignore_ascii_case("approved") && !by.is_empty() && by != "null"
+}
+
+/// Record a human approval in the spec frontmatter.
+pub fn mark_approved(text: &str, by: &str, at: &str) -> String {
+    let front = Regex::new(r"(?s)\A---\n(.*?)\n---\n").expect("static regex");
+    let caps = match front.captures(text) {
+        Some(caps) => caps,
+        None => return text.to_string(),
+    };
+    let frontmatter = &caps[1];
+    let start = caps.get(1).expect("group").start();
+    let end = caps.get(1).expect("group").end();
+    let set = |body: &str, key: &str, value: &str| -> String {
+        let pattern = Regex::new(&format!(r"(?m)^{key}:.*$")).expect("static regex");
+        if pattern.is_match(body) {
+            pattern
+                .replacen(body, 1, format!("{key}: {value}"))
+                .to_string()
+        } else {
+            format!("{key}: {value}\n{body}")
+        }
+    };
+    let mut updated = set(frontmatter, "status", "approved");
+    updated = set(&updated, "approved_by", by);
+    updated = set(&updated, "approved_on", at);
+    format!("{}{}{}", &text[..start], updated, &text[end..])
+}
+
 pub fn spec_unticked(
     ws: &Workspace,
     meta: &serde_json::Map<String, Value>,

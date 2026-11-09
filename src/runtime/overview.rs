@@ -561,13 +561,32 @@ pub fn build(ws: &Workspace, agent: Option<&str>, history: usize, role_arg: Opti
         .rev()
         .collect();
 
+    let dirty_paths: Vec<String> = state
+        .get("dirty")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let dirty_ledger = dirty_paths
+        .iter()
+        .filter(|path| git::is_workspace_ledger_path(ws, path) || path.starts_with(".ai/"))
+        .count();
+    let dirty_product = dirty_paths.len().saturating_sub(dirty_ledger);
+
     json!({
         "mode": config.get("mode"),
         "git": {
             "ready": git_ready,
             "branch": state.get("branch"),
             "head": state.get("head").and_then(Value::as_str).map(|head| head[..head.len().min(8)].to_string()),
-            "dirty": state.get("dirty").and_then(Value::as_array).map(Vec::len).unwrap_or(0),
+            "dirty": dirty_paths.len(),
+            "dirty_product": dirty_product,
+            "dirty_ledger": dirty_ledger,
             "integration": branches.integration,
         },
         "agent": agent,

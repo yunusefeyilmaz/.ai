@@ -67,7 +67,14 @@ pub fn to_config(ws: &Workspace, proposal: &Value) -> Result<Vec<String>> {
         .or_insert_with(|| json!({}));
     if let Some(entry) = entry.as_object_mut() {
         entry.insert("status".into(), json!("approved"));
-        entry.insert("approved".into(), proposal.clone());
+        // `checks` is operational state copied to the top level; storing a
+        // second copy here would let the two drift and leave "which check is
+        // real?" undefined. Other keys are preserved verbatim.
+        let mut approved = proposal.clone();
+        if let Some(object) = approved.as_object_mut() {
+            object.remove("checks");
+        }
+        entry.insert("approved".into(), approved);
     }
     save(ws, &config)?;
     Ok(applied)
@@ -181,6 +188,13 @@ mod tests {
             json!("Zig")
         );
         assert_eq!(config["checks"][0]["name"], json!("zig"));
+        // Operational checks live in one place; the approved block must not
+        // become a second, drifting copy.
+        assert!(
+            config["blueprint"]["approved"].get("checks").is_none(),
+            "{}",
+            config["blueprint"]["approved"]
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
