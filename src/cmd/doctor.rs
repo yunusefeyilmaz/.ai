@@ -10,6 +10,7 @@ use crate::core::workspace::{Workspace, VERSION};
 use crate::git::repo as git;
 use crate::runtime::evidence;
 use crate::runtime::health::{self, Finding};
+use crate::tasks::gates;
 use crate::tasks::store;
 
 use crate::{CheckArgs, DoctorArgs};
@@ -106,7 +107,7 @@ fn checkout_for(ws: &Workspace, task_id: Option<&str>) -> PathBuf {
 /// Evidence is proof of the claimant's work, not a lever any agent may pull on
 /// somebody else's task. Only a task being worked on (by the caller) or one that
 /// is already in review may gain a record.
-fn may_record_evidence(ws: &Workspace, task_id: &str, agent: Option<&str>) -> bool {
+fn may_record_evidence(ws: &Workspace, task_id: &str, agent: Option<&str>, json: bool) -> bool {
     let task = match store::task_of(ws, task_id) {
         Some(task) => task,
         None => return false,
@@ -118,17 +119,26 @@ fn may_record_evidence(ws: &Workspace, task_id: &str, agent: Option<&str>) -> bo
         "in_progress" => match (owner, agent) {
             (Some(owner), Some(agent)) => owner == agent,
             (Some(owner), None) => {
-                eprintln!(
-                    "NOTE  task {task_id} is owned by {owner}; pass --agent {owner} to record evidence."
-                );
+                let note =
+                    format!("NOTE  task {task_id} is owned by {owner}; pass --agent {owner} to record evidence.");
+                if json {
+                    eprintln!("{note}");
+                } else {
+                    println!("{note}");
+                }
                 false
             }
             (None, _) => true,
         },
         other => {
-            eprintln!(
+            let note = format!(
                 "NOTE  no evidence recorded for task {task_id}: it is '{other}', not claimed by a worker."
             );
+            if json {
+                eprintln!("{note}");
+            } else {
+                println!("{note}");
+            }
             false
         }
     }
@@ -148,9 +158,9 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
             args.agent.as_deref().unwrap_or("-")
         );
     }
-    let attach = task_id
+    let mut attach = task_id
         .as_deref()
-        .map(|task_id| may_record_evidence(ws, task_id, args.agent.as_deref()))
+        .map(|task_id| may_record_evidence(ws, task_id, args.agent.as_deref(), args.json))
         .unwrap_or(false);
     let checkout = checkout_for(ws, task_id.as_deref());
     let mut problems: Vec<Finding> = health::collect_checks(ws);
@@ -164,14 +174,47 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
     };
     let config_opt_out =
         config::preference(ws, "workflow.requireCheck", json!("strict")) == Value::Bool(false);
-    if config_readable && !args.no_commands && checks.is_empty() {
+    // review/finish used to run the same expensive checks three times per task.
+    // Reuse a green record taken on this exact HEAD after the claim; that is the
+    // same proof the gate would produce again.
+    let reuse = if args.reuse_evidence {
+        task_id
+            .as_deref()
+            .filter(|_| attach)
+            .map(|id| {
+                let head = git::state_at(&checkout)
+                    .get("head")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string);
+                let started = gates::claim_started(ws, id);
+                evidence::task_green(ws, id, head.as_deref(), started.as_deref()).0
+            })
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    if reuse {
+        attach = false;
+        if !args.json {
+            println!(
+                "Reusing green evidence for task {} on this HEAD; the project checks already passed.",
+                task_id.as_deref().unwrap_or("-")
+            );
+        }
+    } else if config_readable && !args.no_commands && checks.is_empty() {
         if allow_empty || config_opt_out {
             let reason = if allow_empty {
                 "--allow-empty was given"
             } else {
                 "workflow.requireCheck is false in config/workspace.json"
             };
-            eprintln!("ALLOW-EMPTY  no project checks are configured; passing because {reason}.");
+            let note =
+                format!("ALLOW-EMPTY  no project checks are configured; passing because {reason}.");
+            if args.json {
+                eprintln!("{note}");
+            } else {
+                println!("{note}");
+            }
         } else {
             problems.push(Finding::new(
                 "error",
@@ -215,7 +258,10 @@ pub fn check(ws: &Workspace, args: &CheckArgs) -> Result<i32> {
             ) {
                 Ok(record) => {
                     if !args.json {
-                        eprintln!(
+                        // Informational success goes to stdout: PowerShell turns
+                        // native-command stderr into NativeCommandError, which
+                        // made a green check look red in scripts and CI.
+                        println!(
                             "Evidence recorded for task {task_id}: {}",
                             evidence::summary(&record)
                         );

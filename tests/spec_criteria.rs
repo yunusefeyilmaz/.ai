@@ -63,6 +63,20 @@ fn gated() -> Ws {
 // --- parser -----------------------------------------------------------------
 
 #[test]
+fn strict_mode_refuses_an_unapproved_spec_until_it_is_approved() {
+    let ws = Ws::with_mode("ai-criteria-approval-", "strict");
+    ws.new_task("Approval scenario").ok("task new");
+    write_spec(&ws);
+    ws.set_config(|config| config["workflow"]["requireSpec"] = serde_json::json!(true));
+
+    let refused = ws.fails(&["task", "claim", "0001", "--agent", "w1"]);
+    assert!(refused.all().contains("not approved"), "{}", refused.all());
+
+    ws.ok(&["spec", "approve", "0001", "--agent", "user"]);
+    ws.ok(&["task", "claim", "0001", "--agent", "w1"]);
+}
+
+#[test]
 fn the_parser_preserves_the_ticked_state() {
     assert_eq!(
         spec::acceptance_criteria(SPEC),

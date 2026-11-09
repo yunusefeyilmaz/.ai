@@ -154,6 +154,27 @@ fn ancestors(key: &str, by_key: &HashMap<String, Value>, seen: &mut HashSet<Stri
     }
 }
 
+/// Root files a package manager rewrites no matter which subproject a task
+/// locks. Two parallel installs therefore race on a resource nobody declared.
+const SHARED_ROOT_FILES: &[&str] = &[
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "tsconfig.json",
+    "tsconfig.base.json",
+    "eslint.config.js",
+    "eslint.config.mjs",
+    ".eslintrc",
+    ".eslintrc.json",
+    "vite.config.ts",
+    "next.config.js",
+    "prisma/schema.prisma",
+];
+
 fn lock_warnings(items: &[Value]) -> Vec<String> {
     let by_key: HashMap<String, Value> = items
         .iter()
@@ -184,6 +205,40 @@ fn lock_warnings(items: &[Value]) -> Vec<String> {
                     }
                 }
             }
+        }
+    }
+    // A plan with independent tasks may still have an undeclared shared
+    // resource: the root manifest a package manager rewrites. Flag it once,
+    // before the run, instead of letting the second worker discover it via a
+    // live lock refusal.
+    let has_independent_pair = items.iter().enumerate().any(|(i, a)| {
+        items.iter().skip(i + 1).any(|b| {
+            let a_key = a.get("key").and_then(Value::as_str).unwrap_or("");
+            let b_key = b.get("key").and_then(Value::as_str).unwrap_or("");
+            let mut seen_b = HashSet::new();
+            ancestors(b_key, &by_key, &mut seen_b);
+            let mut seen_a = HashSet::new();
+            ancestors(a_key, &by_key, &mut seen_a);
+            !seen_b.contains(a_key) && !seen_a.contains(b_key)
+        })
+    });
+    if has_independent_pair {
+        let missing: Vec<&str> = SHARED_ROOT_FILES
+            .iter()
+            .copied()
+            .filter(|manifest| {
+                !items.iter().any(|task| {
+                    list(task.get("locks"))
+                        .iter()
+                        .any(|glob| resources_overlap(glob, manifest).unwrap_or(false))
+                })
+            })
+            .collect();
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "independent tasks do not lock the shared root manifests ({}). If any task runs a package manager (npm install, cargo build, prisma generate...), it rewrites those files: lock the manifest in one task and add depends_on between tasks that install, or the second task will block on a live lock.",
+                missing.join(", ")
+            ));
         }
     }
     warnings

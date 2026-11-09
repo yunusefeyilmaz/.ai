@@ -52,8 +52,15 @@ pub fn run(ws: &Workspace, args: &SpecArgs) -> Result<i32> {
     match &args.action {
         Some(SpecAction::Show { task_id, json }) => show(ws, task_id, *json),
         Some(SpecAction::Check { task_id, n }) => check(ws, task_id, *n),
+        Some(SpecAction::Approve {
+            task_id,
+            agent,
+            json,
+        }) => approve(ws, task_id, agent, *json),
         None => {
-            eprintln!("Usage: ai spec show <task-id> | ai spec check <task-id> <n>");
+            eprintln!(
+                "Usage: ai spec show <task-id> | ai spec check <task-id> <n> | ai spec approve <task-id> --agent <user>"
+            );
             Ok(1)
         }
     }
@@ -107,6 +114,56 @@ fn show(ws: &Workspace, task_id: &str, json_out: bool) -> Result<i32> {
     for (done, item) in &criteria {
         println!("  [{}] {item}", if *done { 'x' } else { ' ' });
     }
+    Ok(0)
+}
+
+fn approve(ws: &Workspace, task_id: &str, agent: &str, json_out: bool) -> Result<i32> {
+    let path = match store::find_task(ws, task_id) {
+        Some(path) => path,
+        None => {
+            eprintln!("No task with id {task_id}.");
+            return Ok(1);
+        }
+    };
+    let (meta, _, _) = store::parse_task(&path)?;
+    let (spec_path, error) = linked_spec(ws, &meta);
+    let spec_path = match (spec_path, error) {
+        (Some(path), _) => path,
+        (None, Some(error)) => {
+            eprintln!("{error}");
+            return Ok(1);
+        }
+        (None, None) => return Ok(1),
+    };
+    let text = match read_text(&spec_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!(
+                "Cannot read {}: {error}",
+                relative_to(&ws.project, &spec_path)
+            );
+            return Ok(1);
+        }
+    };
+    let at = crate::core::time::iso(None);
+    let updated = spec_lib::mark_approved(&text, agent, &at);
+    write_text_atomic(&spec_path, &updated)?;
+    if json_out {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "task": task_id,
+                "spec": relative_to(&ws.project, &spec_path),
+                "approvedBy": agent,
+                "approvedOn": at,
+            }))?
+        );
+        return Ok(0);
+    }
+    println!(
+        "Approved spec {} for task {task_id} (by {agent}).",
+        relative_to(&ws.project, &spec_path)
+    );
     Ok(0)
 }
 

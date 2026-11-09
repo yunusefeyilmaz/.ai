@@ -136,7 +136,54 @@ pub fn create(
     (true, path, "created".to_string())
 }
 
+fn is_registered(ws: &Workspace, path: &Path) -> bool {
+    let wanted = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    git::run_git(&ws.project, &["worktree", "list", "--porcelain"])
+        .stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .any(|registered| {
+            let registered = PathBuf::from(registered);
+            fs::canonicalize(&registered).unwrap_or(registered) == wanted
+        })
+}
+
+fn is_dirty(path: &Path) -> bool {
+    git::run_git(path, &["status", "--porcelain"])
+        .stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .any(|line| {
+            let changed = line.get(3..).unwrap_or("").trim();
+            !BRIEFING_FILES.contains(&changed) && !changed.starts_with(".ai/")
+        })
+}
+
 pub fn remove(ws: &Workspace, path: &Path, force: bool) -> (bool, String) {
+    // A directory that git no longer knows about (for example after a failed
+    // removal or a manual delete) is still ours to clean up, but never with
+    // uncommitted work unless the caller asked to discard it.
+    if !is_registered(ws, path) {
+        if !path.is_dir() {
+            let _ = git::run_git(&ws.project, &["worktree", "prune"]);
+            return (true, String::new());
+        }
+        if !force && is_dirty(path) {
+            return (
+                false,
+                "it is not a registered git worktree and has uncommitted changes".to_string(),
+            );
+        }
+        if fs::remove_dir_all(path).is_err() {
+            let _ = git::run_git(&ws.project, &["worktree", "prune"]);
+            return (false, "could not delete the worktree directory".to_string());
+        }
+        let _ = git::run_git(&ws.project, &["worktree", "prune"]);
+        return (
+            true,
+            "removed an unregistered worktree directory".to_string(),
+        );
+    }
     let path_text = path.to_string_lossy().to_string();
     let mut args: Vec<&str> = vec!["worktree", "remove"];
     if force {
@@ -159,9 +206,20 @@ pub fn remove(ws: &Workspace, path: &Path, force: bool) -> (bool, String) {
                 },
             );
         }
+        // Windows cannot delete a directory that is a process's current
+        // directory. Leave the task worktree first so the cleanup can finish.
+        if std::env::current_dir()
+            .map(|cwd| cwd.starts_with(path))
+            .unwrap_or(false)
+        {
+            let _ = std::env::set_current_dir(&ws.project);
+        }
         if fs::remove_dir_all(path).is_err() {
             let _ = git::run_git(&ws.project, &["worktree", "prune"]);
-            return (false, "could not delete the worktree directory".to_string());
+            return (
+                false,
+                "could not delete the worktree directory (leave it first, then run `ai worktree prune`)".to_string(),
+            );
         }
         let _ = git::run_git(&ws.project, &["worktree", "prune"]);
         return (
@@ -223,10 +281,16 @@ pub fn listing(ws: &Workspace, tasks: &[Task]) -> Vec<Row> {
         let rel = relative(ws, &full);
         let task = by_path.get(&rel).copied();
         let branch = git::run_git(&full, &["rev-parse", "--abbrev-ref", "HEAD"]).stdout;
+        // Briefing files and ledger copies are workspace-owned, not unfinished
+        // product work. Counting them made a clean, merged worktree look dirty.
         let dirty = git::run_git(&full, &["status", "--porcelain"])
             .stdout
             .lines()
             .filter(|line| !line.trim().is_empty())
+            .filter(|line| {
+                let changed = line.get(3..).unwrap_or("").trim();
+                !BRIEFING_FILES.contains(&changed) && !changed.starts_with(".ai/")
+            })
             .count();
         rows.push(Row {
             path: full.to_string_lossy().to_string(),
@@ -246,7 +310,11 @@ pub fn listing(ws: &Workspace, tasks: &[Task]) -> Vec<Row> {
             }),
             owner: task.and_then(Task::owner),
             dirty,
-            orphan: task.map(|task| !task.is_active()).unwrap_or(true),
+            // A merged task no longer needs its checkout even while it is still
+            // in review waiting for `ai task done`.
+            orphan: task
+                .map(|task| !task.is_active() || task.get_str("merged_at").is_some())
+                .unwrap_or(true),
         });
     }
     rows

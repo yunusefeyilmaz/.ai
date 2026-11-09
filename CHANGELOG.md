@@ -23,6 +23,31 @@ All notable changes to this workspace are documented here.
   workspace as the project root nor needs to relocate the clone.
 - **The host baseline commit no longer stages `.ai/`.** `ai adopt --yes` commits
   the project files only, so a blanket workspace ignore does not abort staging.
+- **`ai git verify` no longer reports an empty index as green.** It refuses with
+  the same "Nothing is staged" error as `ai git commit`.
+- **`ai setup --set` merges partial answers.** Adding a `--check` no longer drops
+  previously stored questionnaire answers such as `tests=yes`.
+- **Worktree cleanup no longer leaves orphans.** Removing an unregistered worktree
+  directory works, briefing files do not count as uncommitted product work, and
+  `ai git finish` defers removal with a clear next command when run from inside
+  the checkout.
+- **Informational check output goes to stdout.** `Evidence recorded` and the
+  allow-empty notes no longer turn a green `ai check` into a PowerShell
+  `NativeCommandError`; `--json` keeps stdout pure.
+- **Parallel plans warn about shared root manifests.** `package.json`,
+  `package-lock.json`, `Cargo.lock` and similar files are flagged when independent
+  tasks lock only subdirectories, before two workers race on the same lockfile.
+- **`ai lock acquire` takes several paths and `--wait`.** A failed batch releases
+  the paths it already took, and waiting avoids manual polling.
+- **Widened task scope is recorded.** `ai lock acquire` writes a `scope widened`
+  entry to the task log so reviewers can see it.
+- **Strict mode enforces spec approval.** An unapproved spec cannot be claimed;
+  `ai spec approve <task-id> --agent <user>` records the human gate.
+- **Review and finish reuse green evidence.** A passing record on the exact HEAD
+  is accepted with `--reuse-evidence`, so the project checks no longer run three
+  times per task.
+- **One source for checks.** The approved blueprint no longer keeps a second copy
+  of the operational `checks` array.
 
 ## [1.1.0] - 2026-11-07
 

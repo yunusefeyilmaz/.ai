@@ -152,6 +152,24 @@ fn plan_apply_commits_the_task_ledger() {
 }
 
 #[test]
+fn parallel_tasks_warn_about_unlocked_root_manifests() {
+    let ws = Ws::new("ai-flow-plan-shared-root-");
+    ws.write(
+        "plan.json",
+        r#"{"tasks":[
+            {"key":"web","title":"Web app","locks":["frontend/**"]},
+            {"key":"api","title":"API","locks":["backend/**"]}
+        ]}"#,
+    );
+    let out = ws.ok(&["plan", "apply", "plan.json", "--dry-run"]);
+    assert!(
+        out.all().contains("shared root manifests"),
+        "the planner must flag package-lock.json before two workers race on it: {}",
+        out.all()
+    );
+}
+
+#[test]
 fn strict_mode_requires_the_users_plan_approval() {
     let ws = Ws::with_mode("ai-flow-plan-approval-", "strict");
     ws.git_init();

@@ -11,6 +11,7 @@ use crate::git::repo as git;
 use crate::runtime::evidence;
 use crate::specs::spec as spec_lib;
 use crate::tasks::history;
+use crate::tasks::scope;
 use crate::tasks::store;
 
 use crate::ReviewArgs;
@@ -113,6 +114,7 @@ struct DiffPayload {
     base: Option<String>,
     stat: String,
     patch: String,
+    changed_files: Vec<String>,
     lines: usize,
     truncated: bool,
     total_lines: usize,
@@ -131,6 +133,7 @@ fn diff_payload(
         base: None,
         stat: String::new(),
         patch: String::new(),
+        changed_files: Vec::new(),
         lines: 0,
         truncated: false,
         total_lines: 0,
@@ -165,6 +168,13 @@ fn diff_payload(
     let base = output.stdout.clone();
     payload.base = Some(base.clone());
     payload.stat = git::run_git(cwd, &["diff", "--stat", &format!("{base}..{branch}")]).stdout;
+    payload.changed_files =
+        git::run_git(cwd, &["diff", "--name-only", &format!("{base}..{branch}")])
+            .stdout
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(crate::core::fsio::normalize_rel_path)
+            .collect();
     if stat_only {
         return payload;
     }
@@ -322,9 +332,28 @@ pub fn run(ws: &Workspace, args: &ReviewArgs) -> Result<i32> {
     let criteria_complete = spec.total > 0 && spec.done >= spec.total;
     let mut checklist: Vec<&str> = CHECKLIST.to_vec();
     checklist.push("claim it before approving: ai task next --review --agent <you>");
-    let checklist_boxes: Vec<bool> = std::iter::once(criteria_complete)
-        .chain(std::iter::repeat_n(false, checklist.len() - 1))
-        .collect();
+    let evidence_state = evidence_value
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    let in_scope = scope::violations(&meta, &diff.changed_files).is_empty();
+    let task_branch = meta.get("branch").and_then(Value::as_str).unwrap_or("");
+    let current_branch = state.get("branch").and_then(Value::as_str).unwrap_or("");
+    let clean = state
+        .get("dirty")
+        .and_then(Value::as_array)
+        .map(Vec::is_empty)
+        .unwrap_or(true);
+    // Mark what this package can prove automatically; the human/reviewer still
+    // owns the judgement items (criteria mapping, test coverage, claim).
+    let checklist_boxes: Vec<bool> = vec![
+        criteria_complete,
+        in_scope,
+        false,
+        evidence_state == "green" && on_this_head,
+        clean && (task_branch.is_empty() || task_branch == current_branch),
+        false,
+    ];
 
     let diff_value = json!({
         "base": diff.base,

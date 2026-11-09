@@ -33,7 +33,7 @@ fn widen_scope(
         None => return Ok(None),
     };
     let _guard = workspace_state_guard(ws)?;
-    let (mut meta, body, _) = store::parse_task(&path)?;
+    let (mut meta, mut body, _) = store::parse_task(&path)?;
     let owner = meta.get("owner").and_then(Value::as_str).unwrap_or("");
     if !owner.is_empty() && owner != agent {
         return Ok(None);
@@ -52,8 +52,28 @@ fn widen_scope(
         "scope_allowed".into(),
         json!(task_scope::join_globs(Some(&widened)).unwrap_or_default()),
     );
-    meta.insert("updated".into(), json!(crate::core::time::iso(None)));
+    let stamp = crate::core::time::iso(None);
+    meta.insert("updated".into(), json!(stamp));
+    // Make the silent scope expansion reviewable: the task log records who
+    // widened it and by which path, so a reviewer can see it without diffing
+    // the spec against the committed files.
+    let entry = format!("- {stamp} scope widened by {agent}: +{resource}\n");
+    if body.ends_with('\n') {
+        body.push_str(&entry);
+    } else {
+        body.push('\n');
+        body.push_str(&entry);
+    }
     store::write_task(&path, &meta, &body)?;
+    append_event(
+        ws,
+        "scope_widened",
+        &[
+            ("task", json!(task_id)),
+            ("agent", json!(agent)),
+            ("resource", json!(resource)),
+        ],
+    );
     Ok(Some(resource.to_string()))
 }
 
@@ -71,58 +91,93 @@ pub fn run(ws: &Workspace, args: &LockArgs) -> Result<i32> {
             agent,
             task,
             ttl,
+            wait,
             force,
         } => {
-            let result = acquire_lock(ws, resource, Some(agent), task.as_deref(), *ttl, *force)?;
-            if result.ok {
-                if let Some(covered) = &result.covered_by {
-                    println!("'{resource}' is already covered by {agent}'s lock '{covered}'.");
-                } else {
-                    println!("Acquired '{resource}' for {agent}.");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(*wait);
+            loop {
+                // All or nothing: a batch of paths either locks every one of
+                // them or releases the ones this call just took.
+                let mut acquired: Vec<&str> = Vec::new();
+                let mut failure: Option<(String, leases::LockResult)> = None;
+                for item in resource {
+                    let result =
+                        acquire_lock(ws, item, Some(agent), task.as_deref(), *ttl, *force)?;
+                    if result.ok {
+                        if result.covered_by.is_none() && !result.refreshed {
+                            acquired.push(item.as_str());
+                        }
+                        if let Some(covered) = &result.covered_by {
+                            println!("'{item}' is already covered by {agent}'s lock '{covered}'.");
+                        } else {
+                            println!("Acquired '{item}' for {agent}.");
+                        }
+                        if let Some(widened) = widen_scope(ws, task.as_deref(), item, agent)? {
+                            println!(
+                                "Added '{widened}' to task {}'s scope_allowed (so the commit gate accepts it).",
+                                task.as_deref().unwrap_or("-")
+                            );
+                        }
+                    } else {
+                        failure = Some((item.clone(), result));
+                        break;
+                    }
                 }
-                if let Some(widened) = widen_scope(ws, task.as_deref(), resource, agent)? {
-                    println!(
-                        "Added '{widened}' to task {}'s scope_allowed (so the commit gate accepts it).",
-                        task.as_deref().unwrap_or("-")
+                let (resource, result) = match failure {
+                    None => return Ok(0),
+                    Some(failure) => failure,
+                };
+                if !*force {
+                    for item in acquired {
+                        let _ = release_lock(ws, item, Some(agent), false, true);
+                    }
+                }
+                if std::time::Instant::now() < deadline {
+                    eprintln!(
+                        "'{resource}' is held; waiting {} more second(s).",
+                        deadline
+                            .saturating_duration_since(std::time::Instant::now())
+                            .as_secs()
                     );
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    continue;
                 }
-                return Ok(0);
-            }
-            if let Some(error) = &result.error {
-                eprintln!("Cannot acquire '{resource}': {error}");
+                if let Some(error) = &result.error {
+                    eprintln!("Cannot acquire '{resource}': {error}");
+                    return Ok(1);
+                }
+                let holder = result.holder.clone().unwrap_or(json!({}));
+                eprintln!(
+                    "'{resource}' is held by {} (task {}, since {}).",
+                    holder
+                        .get("agent")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown"),
+                    holder.get("task").and_then(Value::as_str).unwrap_or("-"),
+                    holder
+                        .get("started_at")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-")
+                );
+                append_event(
+                    ws,
+                    "lock_refused",
+                    &[
+                        ("resource", json!(resource)),
+                        ("agent", json!(agent)),
+                        ("task", json!(task)),
+                        (
+                            "conflict",
+                            holder.get("resource").cloned().unwrap_or(Value::Null),
+                        ),
+                        (
+                            "conflict_agent",
+                            holder.get("agent").cloned().unwrap_or(Value::Null),
+                        ),
+                    ],
+                );
                 return Ok(1);
             }
-            let holder = result.holder.clone().unwrap_or(json!({}));
-            eprintln!(
-                "'{resource}' is held by {} (task {}, since {}).",
-                holder
-                    .get("agent")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown"),
-                holder.get("task").and_then(Value::as_str).unwrap_or("-"),
-                holder
-                    .get("started_at")
-                    .and_then(Value::as_str)
-                    .unwrap_or("-")
-            );
-            append_event(
-                ws,
-                "lock_refused",
-                &[
-                    ("resource", json!(resource)),
-                    ("agent", json!(agent)),
-                    ("task", json!(task)),
-                    (
-                        "conflict",
-                        holder.get("resource").cloned().unwrap_or(Value::Null),
-                    ),
-                    (
-                        "conflict_agent",
-                        holder.get("agent").cloned().unwrap_or(Value::Null),
-                    ),
-                ],
-            );
-            Ok(1)
         }
         LockAction::Release {
             resource,

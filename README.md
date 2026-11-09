@@ -27,6 +27,7 @@ Install the workspace in **one command** from your project folder:
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai && .ai/ai adopt
+# PowerShell: git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .ai/ai adopt
 ```
 
 **Windows (PowerShell)**

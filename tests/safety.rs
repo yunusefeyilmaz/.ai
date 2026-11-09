@@ -50,6 +50,21 @@ fn a_done_task_is_immutable_until_reopened() {
 }
 
 #[test]
+fn verify_refuses_an_empty_index_instead_of_reporting_green() {
+    let ws = Ws::new("ai-safety-verify-empty-");
+    ws.git_init();
+    ws.new_task("Nothing staged yet").ok("task new");
+    ws.ok(&["task", "claim", "0001", "--agent", "alice"]);
+
+    let out = ws.fails(&["git", "verify", "--strict", "--task", "0001"]);
+    assert!(
+        out.all().contains("Nothing is staged"),
+        "verify must fail like commit does: {}",
+        out.all()
+    );
+}
+
+#[test]
 fn blocking_a_task_frees_its_file_leases() {
     let ws = Ws::new("ai-safety-block-locks-");
     ws.new_task("Blocked with lease").ok("task new");
@@ -63,7 +78,7 @@ fn blocking_a_task_frees_its_file_leases() {
     ]);
 
     let status = ws.ok(&["lock", "status", "--json"]).json();
-    let locks = status["locks"].as_array().cloned().unwrap_or_default();
+    let locks = status.as_array().cloned().unwrap_or_default();
     assert!(
         !locks.iter().any(|lock| lock["resource"] == "src/a.rs"),
         "the file lease must be released: {locks:?}"

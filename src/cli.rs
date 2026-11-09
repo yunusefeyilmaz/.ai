@@ -210,6 +210,10 @@ pub struct CheckArgs {
     pub task: Option<String>,
     #[arg(long)]
     pub agent: Option<String>,
+    /// Reuse green evidence recorded on this exact HEAD instead of running the
+    /// project checks again (the expensive part of review and finish).
+    #[arg(long = "reuse-evidence")]
+    pub reuse_evidence: bool,
     #[arg(long)]
     pub json: bool,
 }
@@ -395,13 +399,17 @@ pub struct LockArgs {
 #[derive(Subcommand, Debug, Clone)]
 pub enum LockAction {
     Acquire {
-        resource: String,
+        #[arg(required = true, num_args = 1..)]
+        resource: Vec<String>,
         #[arg(long, default_value = "unknown")]
         agent: String,
         #[arg(long)]
         task: Option<String>,
         #[arg(long)]
         ttl: Option<u64>,
+        /// Seconds to keep retrying while another agent holds a lock.
+        #[arg(long, default_value_t = 0)]
+        wait: u64,
         #[arg(long)]
         force: bool,
     },
@@ -601,6 +609,14 @@ pub enum SpecAction {
     Check {
         task_id: String,
         n: usize,
+    },
+    /// Record the user's approval of a spec (strict mode requires it).
+    Approve {
+        task_id: String,
+        #[arg(long, default_value = "user")]
+        agent: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 

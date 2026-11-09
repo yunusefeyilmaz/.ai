@@ -45,6 +45,7 @@ The CLI notices that the workspace is the project root.
 
 ```sh
 git clone https://github.com/yunusefeyilmaz/.ai.git .ai && .ai/ai adopt
+# PowerShell: git clone https://github.com/yunusefeyilmaz/.ai.git .ai; .ai/ai adopt
 ```
 
 On Windows PowerShell:

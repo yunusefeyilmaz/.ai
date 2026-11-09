@@ -166,20 +166,29 @@ pub fn run(ws: &Workspace, args: &GitArgs) -> Result<i32> {
                 }
             };
             let state = git::state_at(&checkout);
+            let staged: Vec<String> = state
+                .get("staged")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(crate::core::fsio::normalize_rel_path)
+                        .collect()
+                })
+                .unwrap_or_default();
+            // `verify` and `commit` must judge the same set. An empty index used
+            // to print "all staged paths are covered" and then commit refused
+            // with "Nothing is staged": a false green.
+            if staged.is_empty() {
+                eprintln!(
+                    "Nothing is staged. Stage only the files you own with `git add <path>`, then retry `ai git verify`."
+                );
+                return Ok(1);
+            }
             let (uncovered, locks) = gitflow::uncovered_staged(ws, &state);
             let mut out_of_scope = Vec::new();
             if scoped {
-                let staged: Vec<String> = state
-                    .get("staged")
-                    .and_then(Value::as_array)
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(crate::core::fsio::normalize_rel_path)
-                            .collect()
-                    })
-                    .unwrap_or_default();
                 out_of_scope = scope::violations(&meta, &staged);
             }
             if *json {

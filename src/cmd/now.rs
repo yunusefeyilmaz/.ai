@@ -24,6 +24,10 @@ pub fn now(ws: &Workspace, args: &NowArgs) -> Result<i32> {
         let mut payload = overview::compact(&data);
         if let Some(object) = payload.as_object_mut() {
             object.insert("schema".into(), json!(2));
+            // This is a snapshot, not a subscription: a `BUSY` line can be a
+            // second stale after a worker releases. Consumers can use the
+            // stamp to decide whether to re-read before acting.
+            object.insert("snapshot_at".into(), json!(crate::core::time::iso(None)));
             let recommended = data.get("recommended").cloned().unwrap_or(json!({}));
             object.insert(
                 "needs_human".into(),
@@ -52,9 +56,16 @@ pub fn now(ws: &Workspace, args: &NowArgs) -> Result<i32> {
         return Ok(0);
     }
     let git = data.get("git").cloned().unwrap_or(json!({}));
-    let dirty = git.get("dirty").and_then(Value::as_u64).unwrap_or(0);
+    let dirty = git
+        .get("dirty_product")
+        .and_then(Value::as_u64)
+        .unwrap_or_else(|| git.get("dirty").and_then(Value::as_u64).unwrap_or(0));
+    let ledger = git.get("dirty_ledger").and_then(Value::as_u64).unwrap_or(0);
     let tree = if dirty > 0 {
         format!("dirty:{dirty}")
+    } else if ledger > 0 {
+        // Coordination files are expected to move; they are not product work.
+        format!("ledger:{ledger}")
     } else {
         "clean".to_string()
     };
@@ -88,6 +99,17 @@ pub fn now(ws: &Workspace, args: &NowArgs) -> Result<i32> {
         .flatten()
     {
         lines.push(format!("YOU   {}", task_line(task)));
+        let id = task.get("id").and_then(Value::as_str).unwrap_or("");
+        let status = task.get("status").and_then(Value::as_str).unwrap_or("");
+        if status == "in_progress"
+            && !id.is_empty()
+            && crate::runtime::checkpoints::read_checkpoint(ws, id).is_none()
+        {
+            lines.push(format!(
+                "NOTE  {id} is in progress with no checkpoint; run `ai checkpoint {id} --agent {} --next \"<step>\"` early, not only at check time.",
+                args.agent.as_deref().unwrap_or("<you>")
+            ));
+        }
     }
     let recommended = data.get("recommended").cloned().unwrap_or(json!({}));
     let command = recommended.get("cmd").and_then(Value::as_str).unwrap_or("");

@@ -178,6 +178,45 @@ fn reclaiming_your_own_task_renews_the_lease_in_place() {
 }
 
 #[test]
+fn acquire_takes_several_paths_in_one_call() {
+    let ws = Ws::new("ai-locks-multi-");
+    ws.ok(&[
+        "lock", "acquire", "src/a.rs", "src/b.rs", "src/c.rs", "--agent", "alice",
+    ]);
+    let status = ws.ok(&["lock", "status", "--json"]).json();
+    let resources: Vec<&str> = status
+        .as_array()
+        .expect("locks")
+        .iter()
+        .filter_map(|lock| lock["resource"].as_str())
+        .collect();
+    for path in ["src/a.rs", "src/b.rs", "src/c.rs"] {
+        assert!(resources.contains(&path), "{path} missing: {resources:?}");
+    }
+}
+
+#[test]
+fn a_failed_batch_releases_the_paths_it_already_took() {
+    let ws = Ws::new("ai-locks-multi-rollback-");
+    ws.ok(&["lock", "acquire", "src/b.rs", "--agent", "bob"]);
+    ws.fails(&[
+        "lock", "acquire", "src/a.rs", "src/b.rs", "--agent", "alice",
+    ]);
+    // alice's first path was rolled back; bob still owns src/b.rs.
+    let status = ws.ok(&["lock", "status", "--json"]).json();
+    let locks = status.as_array().cloned().unwrap_or_default();
+    assert!(
+        !locks
+            .iter()
+            .any(|lock| lock["resource"] == "src/a.rs" && lock["agent"] == "alice"),
+        "partial batch must not leak: {locks:?}"
+    );
+    assert!(locks
+        .iter()
+        .any(|lock| lock["resource"] == "src/b.rs" && lock["agent"] == "bob"));
+}
+
+#[test]
 fn release_without_agent_names_the_owner_and_refuses() {
     let ws = task_workspace();
     ws.ok(&[

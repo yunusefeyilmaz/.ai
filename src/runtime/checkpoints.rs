@@ -520,13 +520,12 @@ pub fn resume_prompt(ws: &Workspace, task_id: &str) -> String {
     format!(
         r#"You are resuming task {task_id} in the .ai engineering workspace.
 
-1. Read {prefix}AGENTS.md, {prefix}GUIDE.md and {prefix}docs/task-flow.md.
-2. Read {rel} and {checkpoint}.
-3. Verify the real repository state before trusting the checkpoint (git status, git log, tests).
-4. Claim or refresh ownership: `{cli} task claim {task_id} --agent <name>` (or `{cli} lock heartbeat task-{task_id}`).
-5. Continue from the first unchecked item in "Next steps". Do not redo "Done" items.
-6. Checkpoint at the next milestone, and always before your context window fills: `{cli} checkpoint {task_id} --agent <name>`.
-7. Never call it done without `{cli} check`.
+1. Read {prefix}AGENTS.md, then {rel} and {checkpoint}. Open {prefix}GUIDE.md or {prefix}docs/task-flow.md only if you need a command or rule you do not already have; do not re-read them for context.
+2. Verify the real repository state before trusting the checkpoint (git status, git log, tests).
+3. Claim or refresh ownership: `{cli} task claim {task_id} --agent <name>` (or `{cli} lock heartbeat task-{task_id}`).
+4. Continue from the first unchecked item in "Next steps". Do not redo "Done" items.
+5. Checkpoint at the next milestone, and always before your context window fills: `{cli} checkpoint {task_id} --agent <name>`.
+6. Never call it done without `{cli} check`.
 "#
     )
 }
